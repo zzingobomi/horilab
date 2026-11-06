@@ -1,0 +1,12 @@
+# 공개하지 않는 개인 자료
+docs-local/
+
+# Claude Code 개인 설정
+.claude/settings.local.json
+
+# 생성물
+build/
+
+# Python
+.venv/
+__pycache__/
