@@ -27,6 +27,16 @@ def test_heavy_case_needs_more_than_direct_shoulder() -> None:
     assert worst.shoulder > STS3250_RATED
 
 
+def test_wrist_templates_are_solvable_and_reach_tasks() -> None:
+    from horilab_design.ik import AnalyticIK
+    from horilab_design.studies.wrist_type import best_solution, masses, spherical, ur_type
+
+    for robot in (spherical(), ur_type()):
+        ik = AnalyticIK(robot)
+        load = masses(robot)
+        assert all(best_solution(robot, ik, T, load) is not None for T in task_poses(0.30, steps=3))
+
+
 def test_task_poses_point_the_tool_down() -> None:
     for T in task_poses(0.30, steps=3):
         np.testing.assert_allclose(T[:3, 2], [0.0, 0.0, -1.0], atol=1e-12)
