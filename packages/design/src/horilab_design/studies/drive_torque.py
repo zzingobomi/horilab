@@ -37,6 +37,7 @@ from horilab_design.studies.common import (
     STS3215_RATED,
     STS3250_RATED,
     TASK_HEIGHTS,
+    MassCase,
     pick_solution,
     point_masses,
     task_solutions,
@@ -93,6 +94,18 @@ def direct_drive_radius(robot: Robot, masses: list[PointMass]) -> float:
     return float(max(ok, default=0.0))
 
 
+def remote_elbow_masses(robot: Robot, case: MassCase, payload: float) -> list[PointMass]:
+    """팔꿈치 서보(STS3215)를 위팔의 어깨 쪽 끝(어깨에서 3 cm)에 두고, 팔꿈치에는 풀리(20 g)만 남긴다."""
+    masses: list[PointMass] = []
+    for point in point_masses(robot, case, payload, elbow_mass=STS3215_MASS):
+        if point.label == "팔꿈치 서보":
+            masses.append(PointMass("팔꿈치 서보 (어깨 쪽)", 2, (0.0, 0.0, 0.03), point.mass))
+            masses.append(PointMass("팔꿈치 풀리", 2, point.position, 0.02))
+        else:
+            masses.append(point)
+    return masses
+
+
 def main() -> None:
     robot = ur_arm()
     shoulder_options = {
@@ -127,6 +140,19 @@ def main() -> None:
             f"| {r_max * 100:.0f} cm | {case.name} | {payload * 1000:.0f} g | {proposed.shoulder:.2f} |"
             f" {ratios} | {with_3215.elbow / STS3215_RATED:.2f} | {proposed.elbow / STS3250_RATED:.2f}"
             f" | {proposed.unreachable} |"
+        )
+
+    print("\n## 팔꿈치 서보(STS3215)를 어깨 쪽에 두고 2:1 벨트로 팔꿈치를 돌릴 때 (반지름 30 cm)")
+    print("| 질량 | 짐 | 어깨 2:1 (팔꿈치 STS3250 직결) | 어깨 2:1 (팔꿈치 벨트) | 팔꿈치 벨트 |")
+    print("|---|---|---|---|---|")
+    elbow_belt_capacity = 2 * STS3215_RATED * BELT_EFFICIENCY
+    for case, payload in itertools.product(MASS_CASES, (0.0, 0.1)):
+        direct = worst_torques(robot, point_masses(robot, case, payload), 0.30)
+        remote = worst_torques(robot, remote_elbow_masses(robot, case, payload), 0.30)
+        print(
+            f"| {case.name} | {payload * 1000:.0f} g | {direct.shoulder / shoulder_options['2:1 벨트']:.2f}"
+            f" | {remote.shoulder / shoulder_options['2:1 벨트']:.2f}"
+            f" | {remote.elbow / elbow_belt_capacity:.2f} |"
         )
 
     print(f"\n## 어깨 직결이 정격의 {RATED_MARGIN} 안에 드는 가장 먼 작업 반지름 (짐 50 g)")
