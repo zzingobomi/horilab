@@ -19,7 +19,7 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
 - 웹 검색과 조사는 무엇을 왜 찾을지 말하고 허락을 받은 뒤에만 한다. 레포 문서와 이전 프로젝트 기록([horibot](https://github.com/zzingobomi/horibot))은 묻기 전에 먼저 찾아본다.
 - 질문은 한 번에 1~2개만, 답이 필요한 시점에 한다. 답은 짧고 직접적으로 한다.
 - Claude는 실물을 볼 수 없다. 맞는지는 측정값과 사진으로 확인한다. 부품마다 한두 번 다시 출력하는 건 정상이다.
-- 제작 방법은 기본 공구만으로 할 수 있는 것을 고른다 ([docs/design.md](docs/design.md)).
+- 제작과 조립은 기본 공구만으로 쉽게 할 수 있는 것을 고른다. 대안을 비교할 때 조립 난이도도 같이 따진다 ([docs/design.md](docs/design.md#설계-원칙)).
 - 모든 작업 PC에 NVIDIA GPU가 있다. 도구와 방법을 고를 때 GPU를 쓰는 방법을 먼저 따진다 ([docs/software.md](docs/software.md#개발-환경)).
 - 실물 로봇을 움직이는 명령은 확인을 받은 뒤에 실행한다 ([docs/hardware.md](docs/hardware.md#안전)).
 - 도구 설치 같은 환경 작업은 Claude가 직접 한다.
