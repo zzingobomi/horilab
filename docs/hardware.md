@@ -16,7 +16,7 @@
 | 카메라 | Intel RealSense D405 | 1 | 새 팔의 손목에 단다. 아래 "D405" 참고 |
 | | UVC 광각 카메라 | 1 | |
 | 프린터 | 뱀부랩 P1S (출력 범위 256 × 256 × 256 mm, 기본 스테인리스 노즐) | 1 | AMS 고장. 한 번에 한 가지 필라멘트만 쓴다 |
-| 필라멘트 | PLA 흰색, PLA 파란색, PETG-CF 티타늄 그레이 | | 쓰임은 [manufacturing.md](manufacturing.md#색) |
+| 필라멘트 | PLA 흰색, PLA 파란색, PETG-CF 티타늄 그레이, 뱀부랩 PLA Basic 검정 (2026-11-07 주문) | | 쓰임은 [manufacturing.md](manufacturing.md#색) |
 | 전원 | 델로나 DC 30V 10A 파워서플라이 (모델 LW-K3010D, 0~30 V, 0~10 A) | 1 | 서보 전원. 아래 "전원" 참고 |
 | 공구 | 디지털 캘리퍼스, 기본 공구상자, 클램프 | | |
 | 컴퓨터 | 데스크톱 PC (Windows 11, NVIDIA GeForce RTX 3060 12 GB) | 1 | 작업하는 다른 PC도 Windows에 NVIDIA GPU가 있다 (GPU 모델은 PC마다 다를 수 있다) |

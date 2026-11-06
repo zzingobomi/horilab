@@ -33,6 +33,7 @@ from horilab_design.studies.common import (
     LT,
     MASS_CASES,
     RATED_MARGIN,
+    ST3120_RATED,
     STS3215_MASS,
     STS3215_RATED,
     STS3250_RATED,
@@ -112,6 +113,7 @@ def main() -> None:
         "직결": STS3250_RATED,
         "2:1 벨트": 2 * STS3250_RATED * BELT_EFFICIENCY,
         "STS3250 두 개": 2 * STS3250_RATED * DUAL_SHARE,
+        "ST-3120 직결": ST3120_RATED,
     }
 
     print("## 도구가 아래를 향할 때 닿는 거리 (UR형)")
@@ -127,10 +129,12 @@ def main() -> None:
         f" 목표는 {RATED_MARGIN} 이하)"
     )
     print(
-        "| 반지름 | 질량 | 짐 | 어깨 [N·m] | 직결 | 2:1 벨트 | 두 개 | 팔꿈치 STS3215 | 팔꿈치 STS3250 | 못 닿음 |"
+        "| 반지름 | 질량 | 짐 | 어깨 [N·m] | 직결 | 2:1 벨트 | 두 개 | ST-3120 |"
+        " 팔꿈치 STS3215 | 팔꿈치 STS3250 | 못 닿음 |"
     )
-    print("|---|---|---|---|---|---|---|---|---|---|")
-    for r_max, case, payload in itertools.product((0.25, 0.30), MASS_CASES, (0.0, 0.1)):
+    print("|---|---|---|---|---|---|---|---|---|---|---|")
+    # 40 cm는 도구가 아래를 향한 채 TCP 높이 16 cm에서 닿는 끝이다
+    for r_max, case, payload in itertools.product((0.25, 0.30, 0.40), MASS_CASES, (0.0, 0.1)):
         proposed = worst_torques(robot, point_masses(robot, case, payload), r_max)
         with_3215 = worst_torques(
             robot, point_masses(robot, case, payload, elbow_mass=STS3215_MASS), r_max
