@@ -8,6 +8,7 @@
 |---|---|---|---|
 | Feetech 서보 | STS3215 (C018, 기어비 1/345, 12V, 최대 30 kg·cm ≈ 2.9 N·m) | 6 | SO-101 Follower 전자부품 키트 (Amazon B0GH35175P) |
 | | STS3250 (C002, 기어비 1/345, 12V, 최대 50 kg·cm ≈ 4.9 N·m) | 1 | 키트와 별도로 구매 (WowRobo) |
+| | ST-3120 (C001, 판매명 STS3120M, 12V, 최대 120 kg·cm ≈ 11.8 N·m) | 1 | 2026-11-07 주문 (AliExpress), 11/12~18 도착 예정 |
 | | Waveshare 버스 서보 어댑터 | 1 | SO-101 키트에 들어 있던 "Waveshare serial bus servo driver board (USB-C)". Bus Servo Adapter (A)일 가능성이 크다 (사진으로 확인) |
 | | 12V 5A 전원 어댑터 | 1 | SO-101 키트에 들어 있던 것. 전압 고정. 쓰지 않는다 (서보 전원은 가변 전원 하나만 쓴다) |
 | ROBOTIS | XL430-W250 (1.5 N·m) | 3 | 이번 팔에는 쓰지 않는다 |
@@ -95,3 +96,4 @@ SO-101 키트 설명에는 "Waveshare serial bus servo driver board (USB-C)"로 
 |---|---|---|
 | [굿나잇몰](https://goodnightmall.com) | 볼트, 너트, 와셔 | 원하는 규격·길이·개수로 산다. 렌치볼트(유두, 둥근머리, 접시머리, 무두)는 스텐(SUS304)과 SCM435 두 재질이 있고 M2부터 있다. 육각너트는 M2부터, 나일론·후렌지 너트와 와셔는 M3부터 있다. 열 인서트는 팔지 않는다 (2026-11 목록 기준) |
 | [WowRobo](https://shop.wowrobo.com) | Feetech STS3250 C002 (12 V, 1/345) | 이전 프로젝트에서 2026-05에 1개 샀다. 그때 계획 문서의 가격은 $50~70였다 (STS3215는 약 $30). 지금 가격은 다시 본다 |
+| AliExpress | Feetech ST-3120-C001 (옵션 "STS3120M 12V 120kg") | 2026-11-07에 1개 샀다 (151,000원). 주문에서 도착까지 1~2주 |
