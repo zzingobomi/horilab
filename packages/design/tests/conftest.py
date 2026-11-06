@@ -1,4 +1,4 @@
-"""design 테스트가 같이 쓰는 테스트용 로봇 두 대 (구형 손목, UR형). 실제 치수는 골격 설계에서 정한다."""
+"""design 테스트가 같이 쓰는 로봇: 테스트용 두 대(구형 손목, UR형)와 레포의 값 파일로 만든 지금 설계."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import pytest
 
 from horilab_design.robot import Joint, Mat, Robot, Vec3, rotation
 from horilab_design.urdf import matrix_from_rpy
+from horilab_design.values import load_robot
 
 X: Vec3 = (1.0, 0.0, 0.0)
 Y: Vec3 = (0.0, 1.0, 0.0)
@@ -52,7 +53,11 @@ def ur_type_robot() -> Robot:
     return Robot("ur_type_test", joints, transform(rotation(X, -np.pi / 2), (0.0, 0.10, 0.0)))
 
 
-ROBOTS = {"spherical_wrist": spherical_wrist_robot(), "ur_type": ur_type_robot()}
+ROBOTS = {
+    "spherical_wrist": spherical_wrist_robot(),
+    "ur_type": ur_type_robot(),
+    "horilab": load_robot(),
+}
 
 
 @pytest.fixture(params=sorted(ROBOTS))

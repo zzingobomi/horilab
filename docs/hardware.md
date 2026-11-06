@@ -28,7 +28,7 @@
 
 ## 서보 사양
 
-STS3215, STS3250은 Feetech 공식 페이지, ST-3120은 판매처(AliExpress) 자료 기준이다 (2026-11 조사). 치수와 무게는 사양표를 믿지 않고 실물을 잰다 ([design.md](design.md#모터-배치)).
+STS3215, STS3250은 Feetech 공식 페이지, ST-3120은 판매처(AliExpress) 자료 기준이다 (2026-11 조사). 치수와 무게는 사양표를 믿지 않고 실물을 잰다 ([design.md](design.md#모터-배치)). 코드가 쓰는 값(정격·스톨 토크, 속도, 스톨 전류, 무게)은 같은 값으로 [params/servos.toml](../params/servos.toml)에 있다.
 
 | | STS3215 (12 V, C018) | STS3250 (12 V) | ST-3120 (C001) |
 |---|---|---|---|

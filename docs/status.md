@@ -8,10 +8,11 @@
 
 - 폴더 구조, Python 환경, 도구 설정, 구조 테스트는 해 두었다.
 - 골격 설계에 쓸 검토 도구를 만들었다: 로봇 기술 → FK, MJCF(막대 모델), URDF, 해석적 IK, 버팀 토크, 백래시 끝점 오차 (`packages/design`). 관절 구동([0011](decisions/0011-joint-drives.md))과 손목 형식([0013](decisions/0013-wrist-type.md))을 이것으로 정했다.
+- 치수 값 파일의 뼈대를 만들었다 ([0006](decisions/0006-data-and-pipeline.md)): `params/arm.toml`, `params/servos.toml`, `data/measured.toml`을 읽어 검사하고 로봇 기술로 바꾼다 ([software.md](software.md#하나의-치수-값에서-모든-결과물을)).
 
 ## 다음 할 일
 
-- Claude: 치수 값 파일의 뼈대([0006](decisions/0006-data-and-pipeline.md))와 출력 공차 시험편을 만든다.
+- Claude: 출력 공차 시험편을 만든다. 그 전에 시험편에 넣을 베어링 후보와 볼트·너트 규격, 서보에서 잴 항목을 정한다.
 - 직접: SO-101에서 서보를 빼고, 서보 모델마다 치수와 무게를 잰다 (저울이 필요하다). 검정 PLA가 오면 공차 시험편을 출력해서 잰다.
 - 골격 설계(1단계)에 들어가려면 박스 크기, 팔레트 위치, 쌓는 높이가 필요하다. 이것으로 작업 공간과 링크 길이를 정한다.
 

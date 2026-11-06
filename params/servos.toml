@@ -1,0 +1,24 @@
+# 서보 모델의 명목 사양 (12 V). 출처와 주의할 점은 docs/hardware.md의 "서보 사양"에 있다.
+# 무게는 저울로 재면 data/measured.toml의 값을 쓴다.
+# 읽는 코드: packages/design/src/horilab_design/values.py
+
+[STS3215] # C018
+rated_torque_kgcm = 10
+stall_torque_kgcm = 30
+no_load_speed_s_per_60deg = 0.222
+stall_current_a = 2.7
+mass_g = 55
+
+[STS3250] # C002
+rated_torque_kgcm = 16
+stall_torque_kgcm = 50
+no_load_speed_s_per_60deg = 0.133
+stall_current_a = 4.2
+mass_g = 74.5
+
+[ST-3120] # C001, 판매처 자료
+rated_torque_kgcm = 40
+stall_torque_kgcm = 120
+no_load_speed_s_per_60deg = 0.454
+stall_current_a = 4.7
+mass_g = 210
