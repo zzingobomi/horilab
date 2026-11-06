@@ -41,8 +41,9 @@ target-version = "py312"
 [tool.ruff.lint]
 # 기본 규칙(E4, E7, E9, F)에 스타일, import 정렬, 흔한 버그, 최신 문법 규칙을 더한다.
 select = ["E", "F", "W", "I", "B", "UP", "RUF"]
-# 코드 줄 길이는 포맷터가 맞춘다. 한국어 주석은 글자 폭이 2로 세어져 길이 검사에서 뺀다.
-ignore = ["E501"]
+# E501: 코드 줄 길이는 포맷터가 맞춘다. 한국어 주석은 글자 폭이 2로 세어져 길이 검사에서 뺀다.
+# RUF001~003: 문서에서 쓰는 ×(곱하기) 같은 기호를 헷갈리는 문자로 잡는 규칙이라 뺀다.
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["horilab_design", "horilab_motor", "horilab_control", "horilab_camera"]
