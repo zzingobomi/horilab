@@ -1,0 +1,20 @@
+[project]
+name = "horilab-camera"
+version = "0.1.0"
+description = "영상 메시지 형식과 PC 쪽 수신"
+# 파이의 카메라 프로그램도 이 패키지를 쓴다. 파이의 Python 버전은 파이 준비 때 정하므로
+# 3.11도 받아 둔다 (docs/decisions/0007-repo-structure.md).
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "numpy>=1.26",
+    "pyzmq>=26",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+# 파이에서 3.11로 돌 수 있으므로 3.12 이후 문법으로 바꾸지 않게 한다.
+target-version = "py311"

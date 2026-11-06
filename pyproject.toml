@@ -1,0 +1,70 @@
+[project]
+name = "horilab"
+version = "0.1.0"
+description = "3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 로봇팔 (PC 워크스페이스 루트)"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "horilab-camera",
+    "horilab-control",
+    "horilab-design",
+    "horilab-motor",
+]
+
+[tool.uv]
+package = false
+# uv 캐시(C:)와 레포(D:)가 다른 드라이브면 하드링크가 안 돼서 경고가 난다. 처음부터 복사로 둔다.
+link-mode = "copy"
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+horilab-design = { workspace = true }
+horilab-motor = { workspace = true }
+horilab-control = { workspace = true }
+horilab-camera = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pyright[nodejs]>=1.1.414",
+    "pytest>=8",
+    "ruff>=0.17.4",
+    "yourdfpy>=0.0.60",
+]
+
+# 도구 설정. 고른 이유는 docs/decisions/0010-code-test-git-rules.md
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# 기본 규칙(E4, E7, E9, F)에 스타일, import 정렬, 흔한 버그, 최신 문법 규칙을 더한다.
+select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+# 코드 줄 길이는 포맷터가 맞춘다. 한국어 주석은 글자 폭이 2로 세어져 길이 검사에서 뺀다.
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["horilab_design", "horilab_motor", "horilab_control", "horilab_camera"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+include = ["packages", "tests", "conftest.py"]
+# 실물을 움직이는 코드는 더 엄격하게 본다.
+strict = ["packages/motor"]
+# camera는 파이에서 Python 3.11로 돌 수 있다 (0007).
+executionEnvironments = [
+    { root = "packages/camera", pythonVersion = "3.11" },
+    { root = "." },
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages"]
+addopts = ["--import-mode=importlib"]
+markers = [
+    "slow: CAD 생성처럼 느린 테스트",
+    "hardware: 실물 서보·카메라를 쓰는 테스트. --hardware를 줘야 돈다",
+]

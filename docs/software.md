@@ -91,7 +91,11 @@ horilab/
 - Python은 3.12로 고정하고 uv로 관리한다. 패키지 버전은 uv.lock으로 고정하고, 올릴 때는 따로 검토한다.
 - Windows의 기본 인코딩이 cp949라서 파일은 항상 UTF-8로 읽고 쓰고, `PYTHONUTF8=1`을 켠다.
 - conda로만 설치되는 라이브러리는 쓰지 않는다.
-- 맥에서도 작업할 수 있게 한다. 설계(build123d, MuJoCo)는 맥에서도 돈다 (MuJoCo 휠은 Apple Silicon 맥용만 있다). 경로는 `pathlib`으로 다룬다.
+- 작업하는 PC는 모두 Windows이고 NVIDIA GPU가 있다 ([hardware.md](hardware.md#가진-것)). GPU는 기본 전제다. 도구와 방법을 고를 때 GPU로 할 수 있는 방법을 먼저 따진다.
+  - 주로 쓸 곳: 영상 처리(물체 인식, 파지 검출, 포인트 클라우드), 많은 후보를 한꺼번에 돌리는 시뮬레이션.
+  - CAD 커널(OpenCascade)과 서보 통신은 CPU 일이고, 라즈베리파이에는 CUDA가 없다.
+  - Windows에서 CUDA를 지원하는지 확인한다 (PyTorch는 지원한다). 꼭 필요한 GPU 도구가 리눅스 전용이면, 그 부분만 WSL2로 돌리는 방법과 같이 따져서 정한다.
+- 맥은 지원 대상에 넣지 않는다. 경로를 `pathlib`으로 다뤄 OS에 묶이지 않게만 하고, 맥에서 시험하지는 않는다.
 
 ## 패키지
 

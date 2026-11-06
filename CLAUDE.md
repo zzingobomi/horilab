@@ -7,6 +7,7 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
 1. [docs/status.md](docs/status.md)를 읽고 지금 단계와 다음 할 일을 확인한다.
 2. 작업에 필요한 주제 문서만 읽는다. 문서 목록은 [README.md](README.md)에 있다.
 3. `docs-local/`이 있으면 개인 참고 자료다. 이 폴더가 없는 PC도 있으니, 작업에 꼭 필요한 정보는 여기에 두지 않는다.
+4. 처음 쓰는 PC면 [docs/setup.md](docs/setup.md)대로 준비한다.
 
 ## 작업 방식
 
@@ -19,10 +20,21 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
 - 질문은 한 번에 1~2개만, 답이 필요한 시점에 한다. 답은 짧고 직접적으로 한다.
 - Claude는 실물을 볼 수 없다. 맞는지는 측정값과 사진으로 확인한다. 부품마다 한두 번 다시 출력하는 건 정상이다.
 - 제작 방법은 기본 공구만으로 할 수 있는 것을 고른다 ([docs/design.md](docs/design.md)).
+- 모든 작업 PC에 NVIDIA GPU가 있다. 도구와 방법을 고를 때 GPU를 쓰는 방법을 먼저 따진다 ([docs/software.md](docs/software.md#개발-환경)).
 - 실물 로봇을 움직이는 명령은 확인을 받은 뒤에 실행한다 ([docs/hardware.md](docs/hardware.md#안전)).
 - 도구 설치 같은 환경 작업은 Claude가 직접 한다.
 - 작업 단위가 끝나면 `docs/status.md`를 고친다.
 - 커밋은 의미 있는 단계가 끝날 때 한다. 커밋하기 전에 git 작성자(user.name, user.email)가 기존 커밋과 같은지 확인한다. push는 확인을 받은 뒤에 한다.
+
+## 자주 쓰는 명령
+
+- 환경 맞추기: `uv sync`
+- 커밋 전 검사. 모두 통과해야 커밋한다:
+  - `uv run ruff format --check .`
+  - `uv run ruff check .`
+  - `uv run pyright`
+  - `uv run pytest`
+- 실물 서보·카메라 테스트는 `uv run pytest --hardware`다. 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
 
 ## 문서 쓰는 법
 

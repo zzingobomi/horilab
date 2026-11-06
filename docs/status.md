@@ -13,14 +13,16 @@
 | 3 | 아키텍처: 하드웨어 연결 구조, 치수 값에서 결과물까지의 흐름, 치수 값·부품표 데이터 형식, 제어 구조 | 완료 ([0005](decisions/0005-connection-architecture.md), [0006](decisions/0006-data-and-pipeline.md), [0009](decisions/0009-control-architecture.md)) |
 | 4 | 폴더 구조 | 완료 ([0007](decisions/0007-repo-structure.md)) |
 | 5 | 개발 환경과 패키지 | 완료 ([0008](decisions/0008-environment-and-packages.md)) |
-| 6 | 코드 규칙: 단위, 좌표계, 이름, 주석, 린트·포맷·타입 검사 | |
-| 7 | 테스트 | |
-| 8 | git 규칙과 라이선스 | |
-| 9 | README, CLAUDE.md, setup.md 마무리 | |
+| 6 | 코드 규칙: 단위, 좌표계, 이름, 주석, 린트·포맷·타입 검사 | 제안 검토 중 ([0010](decisions/0010-code-test-git-rules.md)) |
+| 7 | 테스트 | 제안 검토 중 ([0010](decisions/0010-code-test-git-rules.md)) |
+| 8 | git 규칙과 라이선스 | 제안 검토 중 ([0010](decisions/0010-code-test-git-rules.md)) |
+| 9 | README, CLAUDE.md, setup.md 마무리 | 초안 (0010 채택 뒤 확정) |
+
+- 제작 로드맵 0단계 중 소프트웨어 준비(uv 워크스페이스, 패키지 뼈대, 도구 설정, 구조 테스트)는 0010 제안대로 먼저 해 두었다.
 
 ## 다음 할 일
 
-- 6번 코드 규칙을 정한다.
+- 0010 제안(코드, 테스트, git 규칙)의 검토를 받는다. 라이선스는 MIT로 정했다.
 
 ## 제작 로드맵
 
@@ -38,7 +40,7 @@
 
 부품표는 데이터 형식을 정한 뒤 만든다. 그 전까지 살 것은 여기에 적는다. 구매 방식은 [0004](decisions/0004-purchasing.md).
 
-- 검정 PLA 1롤: 구조색 필라멘트. 공차 시험편도 이걸로 뽑는다.
+- 검정 PLA 1롤 (뱀부랩 PLA Basic): 구조색 필라멘트. 공차 시험편도 이걸로 뽑고, 구조 부품은 같은 제품으로 맞춘다. 빈 스풀이 없으면 스풀 포함으로 산다.
 - 5 m USB-C 케이블: 서보 어댑터(USB-C)를 PC에 연결한다. PC 쪽 커넥터는 PC 포트에 맞추고, USB 2.0이면 충분하다. 보드 모델을 사진으로 확인한 뒤 산다.
 - 랜 케이블 (필요하면): 카메라용 파이를 PC 쪽 네트워크에 유선으로 연결한다.
 
