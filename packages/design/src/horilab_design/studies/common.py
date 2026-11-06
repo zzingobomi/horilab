@@ -78,14 +78,18 @@ def spherical_arm(L1: float = L1, L2: float = L2, lw: float = SPHERICAL_LW) -> R
     return Robot("spherical", joints, np.eye(4))
 
 
-def ur_arm(L1: float = L1, L2: float = L2, offset: float = UR_OFFSET) -> Robot:
+def ur_arm(L1: float = L1, L2: float = L2, offset: float = UR_OFFSET, *, wrist: int = 1) -> Robot:
     """UR형 막대 모델. J2, J3, J4가 나란하고(y), J5는 영점에서 아래팔 방향(z), J6는 다시 y다.
 
+    wrist는 작업 자세의 J5 부호다 (configuration_flags). 도구가 아래를 향하면 J5는 ±90°이고,
+    wrist = 1(J5 > 0)이면 J6가 J4보다 베이스 쪽에, wrist = -1(J5 < 0)이면 바깥쪽에 온다.
+
     서보는 한 바퀴(360°) 안에서만 돌므로, 관절마다 작업에 쓰는 각도가 범위 가운데에 오도록
-    영점(서보 혼 방향)을 정한다. 도구가 아래를 향한 자세에서 J4는 180° 둘레를 쓰므로 범위를
-    5°~355°로 둔다.
+    영점(서보 혼 방향)을 정한다. 도구가 아래를 향한 자세에서 J4는 wrist = 1이면 180° 둘레,
+    -1이면 0° 둘레를 쓰므로 범위를 각각 5°~355°, -175°~175°로 둔다.
     """
-    j4 = Joint("j4", (0.0, 0.0, L2), Y, 5 * DEG, 355 * DEG, effort=1.0, velocity=4.0)
+    j4_lower, j4_upper = (5 * DEG, 355 * DEG) if wrist > 0 else (-175 * DEG, 175 * DEG)
+    j4 = Joint("j4", (0.0, 0.0, L2), Y, j4_lower, j4_upper, effort=1.0, velocity=4.0)
     joints = (
         *_arm_joints(L1),
         j4,
@@ -146,37 +150,52 @@ def task_poses(r_max: float, *, r_min: float = 0.12, steps: int = 9) -> Iterator
         yield tool_down(float(r), z, yaw * DEG)
 
 
-def configuration_flags(q: Mat, target_azimuth: float) -> tuple[bool, bool, bool]:
+def configuration_flags(q: Mat, target_azimuth: float, wrist: int = 1) -> tuple[bool, bool, bool]:
     """산업용 로봇의 자세 구분처럼 해의 모양을 나눈다: (베이스가 뒤를 봄, 팔꿈치가 아래, 손목이 뒤집힘).
 
-    모두 False인 해가 기본 자세다: 베이스가 목표 쪽을 보고, 팔꿈치는 위로(J3 > 0), 손목은 J5 > 0.
+    모두 False인 해가 작업 자세다: 베이스가 목표 쪽을 보고, 팔꿈치는 위로(J3 > 0), J5의 부호는 wrist.
     """
     facing = abs((q[0] - target_azimuth + np.pi) % (2 * np.pi) - np.pi) < np.pi / 2
-    return (not facing, not q[2] > 0, not q[4] > 0)
+    return (not facing, not q[2] > 0, not wrist * q[4] > 0)
 
 
-def pick_solution(robot: Robot, ik: AnalyticIK, T: Mat, masses: list[PointMass]) -> Mat | None:
-    """관절 한계 안의 해 중에서 기본 자세(configuration_flags가 모두 False)에 가장 가까운 해를 고른다.
-
-    실제 로봇은 작업 중에 팔꿈치나 손목을 뒤집지 않는다. 토크만 보고 고르면 팔꿈치를 아래로 꺾거나
-    베이스를 반대로 돌린 해가 섞여서, 중력 토크의 방향과 관절 범위가 실제와 다르게 나온다.
-    모양이 같은 해가 여럿이면 어깨 토크가 작은 해를 쓴다.
-    """
-    solutions = list(ik.solve_in_limits(T))
-    if not solutions:
-        return None
+def working_solutions(ik: AnalyticIK, T: Mat, wrist: int = 1) -> list[Mat]:
+    """관절 한계 안의 해 중에서 작업 자세(configuration_flags가 모두 False)인 해들."""
     tcp = T[:3, :3] @ np.array([0.0, 0.0, LT]) + T[:3, 3]
     azimuth = float(np.arctan2(tcp[1], tcp[0]))
-    return min(
-        solutions,
-        key=lambda q: (
-            sum(configuration_flags(q, azimuth)),
-            configuration_flags(q, azimuth),
-            abs(holding_torques(robot, q, masses)[1]),
-        ),
-    )
+    return [q for q in ik.solve_in_limits(T) if not any(configuration_flags(q, azimuth, wrist))]
 
 
-def task_solutions(robot: Robot, masses: list[PointMass], r_max: float) -> list[Mat | None]:
+def pick_solution(
+    robot: Robot, ik: AnalyticIK, T: Mat, masses: list[PointMass], wrist: int = 1
+) -> Mat | None:
+    """작업 자세의 해 중에서 어깨 토크가 가장 작은 해를 고른다. 작업 자세로 닿지 않으면 None이다.
+
+    실제 로봇은 작업 중에 팔꿈치나 손목을 뒤집지 않는다. 다른 자세의 해를 섞으면 중력 토크의 방향,
+    관절 범위, 닿는 거리가 실제와 다르게 나온다.
+    """
+    solutions = working_solutions(ik, T, wrist)
+    if not solutions:
+        return None
+    return min(solutions, key=lambda q: abs(holding_torques(robot, q, masses)[1]))
+
+
+def task_solutions(
+    robot: Robot, masses: list[PointMass], r_max: float, *, wrist: int = 1, r_min: float = 0.12
+) -> list[Mat | None]:
     ik = AnalyticIK(robot)
-    return [pick_solution(robot, ik, T, masses) for T in task_poses(r_max)]
+    return [pick_solution(robot, ik, T, masses, wrist) for T in task_poses(r_max, r_min=r_min)]
+
+
+def reach_band(robot: Robot, height: float, wrist: int = 1) -> tuple[float, float]:
+    """도구가 아래를 향한 채 작업 자세로 TCP가 닿는 가장 가까운, 가장 먼 반지름 [m].
+
+    5 mm 간격으로 보고, 박스 돌림은 0°다. 닿는 곳이 없으면 (0, 0)이다.
+    """
+    ik = AnalyticIK(robot)
+    reachable = [
+        float(r)
+        for r in np.arange(0.0, 0.60, 0.005)
+        if working_solutions(ik, tool_down(float(r), height), wrist)
+    ]
+    return (min(reachable), max(reachable)) if reachable else (0.0, 0.0)

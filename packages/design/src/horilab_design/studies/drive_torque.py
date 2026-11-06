@@ -41,21 +41,11 @@ from horilab_design.studies.common import (
     MassCase,
     pick_solution,
     point_masses,
+    reach_band,
     task_solutions,
     tool_down,
     ur_arm,
 )
-
-
-def max_reach(robot: Robot, height: float) -> float:
-    """도구가 아래를 향한 채 TCP가 닿는 가장 먼 반지름 [m] (5 mm 간격, 박스 돌림 없음)."""
-    ik = AnalyticIK(robot)
-    reachable = [
-        r
-        for r in np.arange(0.10, 0.60, 0.005)
-        if len(ik.solve_in_limits(tool_down(float(r), height)))
-    ]
-    return float(max(reachable, default=0.0))
 
 
 @dataclass(frozen=True)
@@ -116,11 +106,13 @@ def main() -> None:
         "ST-3120 직결": ST3120_RATED,
     }
 
-    print("## 도구가 아래를 향할 때 닿는 거리 (UR형)")
+    print("## 도구가 아래를 향할 때 작업 자세(J5 > 0)로 닿는 반지름 (UR형)")
     for upper, fore in [(L1, L2), (0.17, 0.15)]:
         arm = ur_arm(upper, fore)
         reach = ", ".join(
-            f"TCP 높이 {z * 100:.0f} cm에서 {max_reach(arm, z) * 100:.1f} cm" for z in TASK_HEIGHTS
+            f"TCP 높이 {z * 100:.0f} cm에서 {lo * 100:.1f}~{hi * 100:.1f} cm"
+            for z in TASK_HEIGHTS
+            for lo, hi in [reach_band(arm, z)]
         )
         print(f"- 위팔 {upper * 100:.0f} cm, 아래팔 {fore * 100:.0f} cm: {reach}")
 
@@ -133,8 +125,7 @@ def main() -> None:
         " 팔꿈치 STS3215 | 팔꿈치 STS3250 | 못 닿음 |"
     )
     print("|---|---|---|---|---|---|---|---|---|---|---|")
-    # 40 cm는 도구가 아래를 향한 채 TCP 높이 16 cm에서 닿는 끝이다
-    for r_max, case, payload in itertools.product((0.25, 0.30, 0.40), MASS_CASES, (0.0, 0.1)):
+    for r_max, case, payload in itertools.product((0.25, 0.30), MASS_CASES, (0.0, 0.1)):
         proposed = worst_torques(robot, point_masses(robot, case, payload), r_max)
         with_3215 = worst_torques(
             robot, point_masses(robot, case, payload, elbow_mass=STS3215_MASS), r_max

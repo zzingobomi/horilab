@@ -13,6 +13,7 @@ docs/decisions/0013-wrist-type.md의 숫자를 다시 만든다.
 4. 특이점과의 거리: 손목은 J4와 J6가 나란해질 때, 팔꿈치는 팔이 곧게 펴질 때
 5. 한 점에 TCP를 둔 채 도구를 기울일 수 있는 범위 (포인터 시험)
 6. D405를 비켜 달 때 손목 백래시를 누르는 방향이 박스 돌림과 상관없이 같은지
+7. UR형의 손목 자세(J5 부호)와 링크 길이에 따라 닿는 반지름, 팔이 펴진 정도, 어깨·팔꿈치 토크
 """
 
 from __future__ import annotations
@@ -29,15 +30,20 @@ from horilab_design.studies.common import (
     DEG,
     LT,
     MASS_CASES,
+    ST3120_RATED,
+    STS3250_RATED,
+    TASK_HEIGHTS,
     UR_OFFSET,
     Y,
     Z,
     pick_solution,
     point_masses,
+    reach_band,
     task_poses,
     task_solutions,
     tool_down,
     ur_arm,
+    working_solutions,
 )
 from horilab_design.studies.common import spherical_arm as spherical
 
@@ -64,16 +70,57 @@ def torque_ranges(robot: Robot, load: list[PointMass], joints: tuple[int, ...]) 
 
 
 def pointer_test(robot: Robot) -> tuple[int, float]:
-    """TCP를 (반지름 22 cm, 높이 10 cm)에 둔 채 모든 방향으로 기울일 수 있는 최대 각 [deg]과 닿는 비율."""
+    """TCP를 (반지름 22 cm, 높이 10 cm)에 둔 채 모든 방향으로 기울일 수 있는 최대 각 [deg]과 닿는 비율.
+
+    시험 중에 손목을 뒤집지 않으므로 작업 자세(J5 > 0)의 해만 센다.
+    """
     ik = AnalyticIK(robot)
     results = [
-        (tilt, len(ik.solve_in_limits(tilted(0.22, 0.10, tilt * DEG, azimuth * DEG))) > 0)
+        (tilt, len(working_solutions(ik, tilted(0.22, 0.10, tilt * DEG, azimuth * DEG))) > 0)
         for tilt, azimuth in itertools.product(range(0, 91, 10), range(0, 360, 30))
     ]
     full_cone = max(
         (t for t in range(0, 91, 10) if all(ok for tt, ok in results if tt <= t)), default=-10
     )
     return full_cone, float(np.mean([ok for _, ok in results]))
+
+
+def wrist_sides() -> None:
+    """UR형의 두 손목 자세를 링크 길이와 함께 본다. 토크는 무거운 가정, 짐 100 g의 최댓값이다."""
+    print("\n## UR형 손목 자세: J5 > 0이면 J6가 J4보다 베이스 쪽, J5 < 0이면 바깥쪽 (도구가 아래)")
+    print(
+        "| J5 | 위팔/아래팔 | 닿는 반지름, TCP 높이 4 cm / 16 cm | 12~30 cm 자세 |"
+        " J3의 sin 절댓값 최소 | 어깨 ST-3120 | 팔꿈치 STS3250 |"
+    )
+    print("|---|---|---|---|---|---|---|")
+    cases = [(1, 0.20, 0.18), (1, 0.21, 0.19), (1, 0.22, 0.20), (-1, 0.20, 0.18)]
+    for wrist, upper, fore in cases:
+        robot = ur_arm(upper, fore, wrist=wrist)
+        heavy = point_masses(robot, MASS_CASES[1], 0.1)
+        bands = " / ".join(
+            f"{lo * 100:.1f}~{hi * 100:.1f}"
+            for z in TASK_HEIGHTS
+            for lo, hi in [reach_band(robot, z, wrist)]
+        )
+        reached = [q for q in task_solutions(robot, heavy, 0.30, wrist=wrist) if q is not None]
+        Q = np.array(reached)
+        taus = np.abs(np.array([holding_torques(robot, q, heavy) for q in reached]))
+        print(
+            f"| {'> 0' if wrist > 0 else '< 0'} | {upper * 100:.0f}/{fore * 100:.0f} cm | {bands} cm"
+            f" | {len(reached)}/90 | {np.abs(np.sin(Q[:, 2])).min():.2f}"
+            f" | {taus[:, 1].max() / ST3120_RATED:.2f} | {taus[:, 2].max() / STS3250_RATED:.2f} |"
+        )
+
+    robot = ur_arm(wrist=-1)
+    heavy = point_masses(robot, MASS_CASES[1], 0.1)
+    solutions = task_solutions(robot, heavy, 0.40, wrist=-1, r_min=0.16)
+    reached = [q for q in solutions if q is not None]
+    taus = np.abs(np.array([holding_torques(robot, q, heavy) for q in reached]))
+    print(
+        f"- J5 < 0으로 16~40 cm를 쓸 때: {len(reached)}/{len(solutions)}에 닿음,"
+        f" 어깨 ST-3120 {taus[:, 1].max() / ST3120_RATED:.2f},"
+        f" 팔꿈치 STS3250 {taus[:, 2].max() / STS3250_RATED:.2f}"
+    )
 
 
 def main() -> None:
@@ -140,6 +187,8 @@ def main() -> None:
         ]
         (j4_lo, j4_hi), (j5_lo, j5_hi) = torque_ranges(robot, [*base, camera], (3, 4))
         print(f"- {label}: J4 {j4_lo:+.3f} ~ {j4_hi:+.3f}, J5 {j5_lo:+.3f} ~ {j5_hi:+.3f}")
+
+    wrist_sides()
 
 
 if __name__ == "__main__":

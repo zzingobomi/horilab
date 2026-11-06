@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import numpy as np
 
+from horilab_design.ik import AnalyticIK
 from horilab_design.studies.common import (
     MASS_CASES,
     TASK_YAWS_DEG,
+    pick_solution,
     point_masses,
     spherical_arm,
     task_poses,
     task_solutions,
+    tool_down,
     ur_arm,
 )
 
@@ -27,3 +30,19 @@ def test_both_wrist_templates_reach_every_task_pose_and_keep_one_wrist_side() ->
         solutions = task_solutions(robot, point_masses(robot, MASS_CASES[0], 0.05), 0.30)
         assert all(q is not None for q in solutions)
         assert all(q[4] > 0 for q in solutions if q is not None)
+
+
+def test_far_target_is_not_reached_by_flipping_the_wrist() -> None:
+    robot = ur_arm()
+    ik = AnalyticIK(robot)
+    T = tool_down(0.40, 0.16)
+    assert len(ik.solve_in_limits(T)) > 0  # 손목을 뒤집은 해로는 닿는다
+    assert pick_solution(robot, ik, T, point_masses(robot, MASS_CASES[0], 0.05)) is None
+
+
+def test_outward_wrist_keeps_j5_negative() -> None:
+    robot = ur_arm(wrist=-1)
+    masses = point_masses(robot, MASS_CASES[0], 0.05)
+    solutions = task_solutions(robot, masses, 0.40, wrist=-1, r_min=0.16)
+    assert all(q is not None for q in solutions)
+    assert all(q[4] < 0 and q[2] > 0 for q in solutions if q is not None)
