@@ -4,7 +4,7 @@ docs/decisions/0011-joint-drives.md의 숫자를 다시 만든다.
 
     uv run python -m horilab_design.studies.drive_torque
 
-- 팔은 0013에서 제안한 UR형 막대 모델이다 (common.py). 실제 축 배치와 길이는 골격 설계에서 정한다.
+- 팔은 0013에서 정한 UR형 막대 모델이다 (common.py). 실제 축 배치와 길이는 골격 설계에서 정한다.
 - 목표 자세는 박스 쌓기처럼 도구가 아래를 향한 자세다. 박스를 돌려 놓는 각도까지 바꿔 가며 본다.
 - 질량은 점 질량으로 어림한 가정이다 (common.MASS_CASES). 실물을 재면 바꾼다.
 """
