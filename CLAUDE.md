@@ -40,4 +40,4 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
 
 - 결정, 근거, 사실만 쓴다. 공개 레포라서 대화 내용을 옮기거나 개인에 대한 서술을 넣지 않는다.
 - 정보는 한 곳에만 쓰고 다른 곳에서는 링크한다.
-- 자세한 규칙은 [docs/conventions.md](docs/conventions.md)에 있다.
+- 문서, 코드, 테스트, git의 자세한 규칙은 [docs/conventions.md](docs/conventions.md)에 있다.
