@@ -95,8 +95,7 @@ horilab/
   - 주로 쓸 곳: 영상 처리(물체 인식, 파지 검출, 포인트 클라우드), 많은 후보를 한꺼번에 돌리는 시뮬레이션.
   - CAD 커널(OpenCascade)과 서보 통신은 CPU 일이고, 라즈베리파이에는 CUDA가 없다.
   - Windows에서 CUDA를 지원하는지 확인한다 (PyTorch는 지원한다). 꼭 필요한 GPU 도구가 리눅스 전용이면, 그 부분만 WSL2로 돌리는 방법과 같이 따져서 정한다.
-  - NVIDIA Warp와 MuJoCo Warp(Warp로 만든 GPU용 MuJoCo)는 지금은 쓰지 않는다. Windows와 RTX 3060에서 도는 것은 확인했다 (2026-11-07, warp 1.19.0, mujoco-warp 4.0.0, mujoco 3.17.0). 6축 막대 모델로 재 보니 세계 3만여 개를 한꺼번에 돌릴 때 초당 약 500만 스텝으로, CPU 한 코어(약 19만)보다 25배쯤 빨랐다. 하지만 세계 하나는 CPU보다 약 50배 느렸다. 지금 필요한 일(골격 설계의 IK·작업 범위 계산, 실시간 시뮬레이션 하나)에는 이득이 없다. 강화학습이나 수천 번의 무작위 시험처럼 대량 병렬 시뮬레이션이 필요해지면 먼저 본다. 같은 MJCF를 그대로 쓴다.
-  - MuJoCo Warp는 float32로 계산한다 (CPU MuJoCo는 float64, 확인함). 위치는 1 m에서 0.1 µm 수준이라 문제없지만, 접촉과 충돌은 덜 정확할 수 있다 (차이는 재 보지 않았다). 그래서 써도 탐색용으로만 쓰고, 무언가를 정하는 근거(모델 대조 테스트, 실물과 시뮬레이션 비교, 쌓은 박스의 안정, 부품 사이 여유 거리)는 CPU MuJoCo로 확인한다.
+  - MuJoCo Warp(GPU용 MuJoCo)는 지금은 쓰지 않는다. Windows와 RTX 3060에서 돌지만, 세계 수만 개를 한꺼번에 돌릴 때만 CPU보다 빠르고(약 25배) 세계 하나는 훨씬 느리다 (2026-11-07 측정). 강화학습처럼 대량 병렬 시뮬레이션이 필요해지면 먼저 본다. float32로 계산하므로 써도 탐색용으로만 쓰고, 무언가를 정하는 근거는 CPU MuJoCo(float64)로 확인한다.
 - 맥은 지원 대상에 넣지 않는다. 경로를 `pathlib`으로 다뤄 OS에 묶이지 않게만 하고, 맥에서 시험하지는 않는다.
 
 ## 패키지
@@ -128,6 +127,7 @@ horilab/
 - bd_warehouse 0.4는 build123d 0.12 이상 0.14 미만을 요구한다. build123d를 올릴 때 같이 확인한다.
 - OCP CAD Viewer: VS Code의 Python Environments 확장 때문에 뷰어가 멈추면, VS Code 설정에 `"python-envs.terminal.autoActivationType": "shellStartup"`을 넣는다.
 - MuJoCo 메시는 바이너리 STL이나 OBJ로 넣는다. STL은 면 20만 개 이하다. 관성은 계산한 값을 명시적으로 넣는다.
+- MuJoCo가 MJCF를 XML로 쓸 때 숫자를 유효숫자 6자리로 줄인다 (0.0123456789 → 0.0123457, 2026-11-07 확인). 위치 1 µm, 각도 1 µrad 안쪽이라 쓰는 데는 문제없지만, 다시 읽은 모델과 비교할 때는 그만큼 허용 오차를 둔다.
 - MJCF, URDF, FK가 서로 어긋나는 흔한 원인: mm와 m 혼동, MJCF 각도의 기본 단위가 도(°)인 것, URDF rpy와 MJCF 오일러 순서(`eulerseq="XYZ"`)의 대응, 쿼터니언 순서(MuJoCo는 w가 앞, SciPy는 뒤), 합쳐진 고정 링크(테스트에서 URDF를 MuJoCo로 읽을 때는 `fusestatic`을 끈다), 메시를 출력 방향으로 내보내는 실수, 서보 영점과 방향.
 - pyzmq PUB/SUB: 멀티파트 메시지에는 CONFLATE(최신 메시지만 남기기)가 안 된다. 받는 쪽 큐(RCVHWM)를 작게 잡아 지연이 쌓이지 않게 한다.
 - D405 타임스탬프는 `RS2_OPTION_GLOBAL_TIME_ENABLED`로 호스트 시간에 맞춘다. 파이와 PC 시계는 chrony로 맞추거나 코드에서 차이를 잰다.

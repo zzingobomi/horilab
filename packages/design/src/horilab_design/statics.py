@@ -7,6 +7,7 @@ CAD에서 나온 질량 특성으로 바꾼다 (docs/decisions/0006-data-and-pip
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -58,10 +59,10 @@ def holding_torques(robot: Robot, q: ArrayLike, masses: Sequence[PointMass]) -> 
     return torques
 
 
-def backlash_errors(
+def backlash_displacements(
     robot: Robot, q: ArrayLike, play: ArrayLike, tcp: Vec3 = (0.0, 0.0, 0.0)
 ) -> Mat:
-    """관절마다 각도 틈 play [rad]가 TCP 위치를 얼마나 흔드는지 [m]. 관절별 값이다.
+    """관절마다 각도 틈 play [rad]만큼 돌았을 때 TCP가 움직이는 벡터 [m] (관절 수 × 3, 베이스 좌표계).
 
     tcp는 플랜지 좌표계에서 본 TCP 위치다. 자세(방향) 오차는 보지 않는다.
     """
@@ -71,8 +72,24 @@ def backlash_errors(
     if gaps.shape != (n,):
         raise ValueError(f"틈은 관절 수({n})만큼 줘야 한다")
     tcp_position = frames[n + 1][:3, :3] @ np.asarray(tcp) + frames[n + 1][:3, 3]
-    errors = np.zeros(n)
+    moves = np.zeros((n, 3))
     for i in range(n):
         axis = frames[i + 1][:3, :3] @ np.asarray(robot.joints[i].axis)
-        errors[i] = np.linalg.norm(np.cross(axis, tcp_position - frames[i + 1][:3, 3])) * gaps[i]
-    return errors
+        moves[i] = np.cross(axis, tcp_position - frames[i + 1][:3, 3]) * gaps[i]
+    return moves
+
+
+def backlash_errors(
+    robot: Robot, q: ArrayLike, play: ArrayLike, tcp: Vec3 = (0.0, 0.0, 0.0)
+) -> Mat:
+    """관절마다 각도 틈 play [rad]가 TCP 위치를 얼마나 흔드는지 [m]. 관절별 크기다."""
+    return np.linalg.norm(backlash_displacements(robot, q, play, tcp), axis=1)
+
+
+def worst_backlash_error(moves: Mat) -> float:
+    """여러 관절의 틈이 가장 나쁜 방향으로 겹칠 때 TCP가 흔들리는 양 [m].
+
+    관절마다 틈은 + 또는 - 쪽으로 붙을 수 있으므로, 부호 조합 중 합 벡터가 가장 긴 것을 고른다.
+    """
+    signs = itertools.product((-1.0, 1.0), repeat=len(moves))
+    return max(float(np.linalg.norm(np.asarray(s) @ moves)) for s in signs)

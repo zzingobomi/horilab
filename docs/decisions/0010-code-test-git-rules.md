@@ -45,4 +45,4 @@
 
 ## 영향
 
-- 채택하면 규칙을 [conventions.md](../conventions.md)에 적고, 도구 설정은 레포 준비(제작 로드맵 0단계)에서 pyproject.toml에 넣는다.
+- 채택하면 규칙을 [conventions.md](../conventions.md)에 적는다. 도구 설정은 이 제안대로 이미 pyproject.toml에 넣어 두었다.

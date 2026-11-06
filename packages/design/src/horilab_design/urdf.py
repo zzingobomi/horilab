@@ -30,10 +30,10 @@ def build_urdf(robot: Robot) -> str:
         ET.SubElement(
             element,
             "limit",
-            lower=repr(joint.lower),
-            upper=repr(joint.upper),
-            effort=repr(joint.effort),
-            velocity=repr(joint.velocity),
+            lower=_number(joint.lower),
+            upper=_number(joint.upper),
+            effort=_number(joint.effort),
+            velocity=_number(joint.velocity),
         )
         parent = child
 
@@ -75,6 +75,11 @@ def rpy_from_matrix(R: ArrayLike) -> Mat:
     return np.array([roll, pitch, yaw])
 
 
+def _number(value: float) -> str:
+    # float로 바꾼 뒤 repr: 다시 읽었을 때 같은 값이 되는 가장 짧은 표기다.
+    # numpy 수를 그대로 repr하면 "np.float64(…)"가 나와 URDF가 깨진다.
+    return repr(float(value))
+
+
 def _vector(values: ArrayLike) -> str:
-    # repr는 다시 읽었을 때 같은 float가 되는 가장 짧은 표기다.
-    return " ".join(repr(float(v)) for v in np.asarray(values, dtype=float))
+    return " ".join(_number(v) for v in np.asarray(values, dtype=float))

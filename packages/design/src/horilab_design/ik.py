@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 from eaik.IK_HP import HPRobot
 from numpy.typing import ArrayLike
@@ -26,7 +28,7 @@ class AnalyticIK:
         self._solver = HPRobot(H, P)
         if not self._solver.hasKnownDecomposition():
             raise ValueError(f"{robot.name}: EAIK가 풀 수 있는 축 배치가 아니다")
-        self._joint_count = len(robot.joints)
+        self._robot = robot
         # EAIK의 끝 좌표계는 영점에서 베이스와 같은 방향이다. 플랜지의 회전은 따로 빼고 넣는다.
         self._R_last_flange = robot.T_last_flange[:3, :3]
 
@@ -41,8 +43,30 @@ class AnalyticIK:
         target[:3, :3] = target[:3, :3] @ self._R_last_flange.T
         solutions = self._solver.IK(target)
         Q = np.atleast_2d(np.asarray(solutions.Q, dtype=float))
+        if not Q.size:
+            return np.empty((0, len(self._robot.joints)))
         exact = ~np.asarray(solutions.is_LS, dtype=bool)
-        return wrap_angle(Q[exact]) if Q.size else np.empty((0, self._joint_count))
+        return wrap_angle(Q[exact])
+
+    def solve_in_limits(self, T_base_flange: ArrayLike) -> Mat:
+        """정확한 해 중에서 관절 한계 안에 드는 것만 준다.
+
+        한계가 ±π를 넘는 관절은 2π 차이 나는 각도도 따로 해로 본다 (예: 한계 ±200°면 190°와 -170°).
+        """
+        variants: list[Mat] = []
+        for q in self.solve(T_base_flange):
+            options = [
+                [
+                    a
+                    for k in (-1, 0, 1)
+                    if joint.lower <= (a := angle + 2.0 * np.pi * k) <= joint.upper
+                ]
+                for angle, joint in zip(q, self._robot.joints, strict=True)
+            ]
+            variants.extend(np.array(combo) for combo in itertools.product(*options))
+        if not variants:
+            return np.empty((0, len(self._robot.joints)))
+        return np.array(variants)
 
 
 def wrap_angle(q: ArrayLike) -> Mat:
