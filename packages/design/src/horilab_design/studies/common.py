@@ -23,8 +23,7 @@ Z: Vec3 = (0.0, 0.0, 1.0)
 # 서보 사양 (docs/hardware.md, 12 V). 무게는 실물을 재면 바꾼다.
 STS3215_MASS, STS3215_RATED = 0.055, 0.98  # [kg], [N·m] (정격 10 kg·cm)
 STS3250_MASS, STS3250_RATED = 0.0745, 1.57  # [kg], [N·m] (정격 16 kg·cm)
-# ST-3120은 어깨에만 쓴다. 어깨 축 위에 있어서 무게는 J2·J3 토크에 안 걸린다
-ST3120_RATED = 3.92  # [N·m] (정격 40 kg·cm, 0011의 조사 값)
+ST3120_MASS, ST3120_RATED = 0.21, 3.92  # [kg], [N·m] (정격 40 kg·cm)
 RATED_MARGIN = 0.8  # 정지해 버틸 때 정격 토크의 이 비율까지만 쓴다. 나머지는 가속과 열의 몫이다
 BELT_EFFICIENCY = 0.95  # 2:1 벨트 감속의 효율 (가정)
 DUAL_SHARE = 0.9  # 서보 두 개가 한 관절을 같이 돌릴 때 나눠 갖는 비율 (가정, 서로 밀어내는 손실)
@@ -108,11 +107,14 @@ def point_masses(
     *,
     elbow_mass: float = STS3250_MASS,
 ) -> list[PointMass]:
-    """서보는 관절 원점에, 링크는 가운데에, 플랜지 끝 덩어리는 플랜지 3 cm 앞에, 짐은 TCP에 둔다."""
+    """서보는 관절 원점에, 링크는 가운데에, 플랜지 끝 덩어리는 플랜지 3 cm 앞에, 짐은 TCP에 둔다.
+
+    어깨 서보는 어깨 축 위에 있어서 무게가 어느 관절의 버팀 토크에도 들어가지 않는다.
+    """
     j3, j4, j5, j6 = robot.joints[2:]
     upper, fore = np.linalg.norm(j3.origin), np.linalg.norm(j4.origin)
     return [
-        PointMass("어깨 서보", 1, robot.joints[1].origin, STS3250_MASS + case.housing),
+        PointMass("어깨 서보", 1, robot.joints[1].origin, ST3120_MASS + case.housing),
         PointMass("위팔", 2, tuple(np.asarray(j3.origin) / 2), case.link_per_m * upper),
         PointMass("팔꿈치 서보", 2, j3.origin, elbow_mass + case.housing),
         PointMass("아래팔", 3, tuple(np.asarray(j4.origin) / 2), case.link_per_m * fore),
