@@ -12,14 +12,14 @@
 
 | 대안 | 장점 | 단점 |
 |---|---|---|
-| Windows 네이티브 | 서보 어댑터가 COM 포트로 바로 잡힌다. MuJoCo 뷰어가 GPU로 바로 그린다. 다른 PC에 설치가 간단하다 | 일부 로봇 라이브러리의 Windows 지원이 약하다 (Pinocchio는 conda만, mink는 Windows 실행 미확인). 기본 인코딩이 cp949다 |
+| Windows 네이티브 | 서보 어댑터가 COM 포트로 바로 잡힌다. MuJoCo 뷰어가 GPU로 바로 그린다. 다른 PC에 설치가 간단하다 | 일부 로봇 라이브러리의 Windows 지원이 약하다 (Pinocchio는 conda만). 기본 인코딩이 cp949다 |
 | WSL2 | 로봇 라이브러리 대부분이 리눅스를 1순위로 지원한다 | 서보 어댑터를 usbipd로 넘겨야 하고, USB가 가상 네트워크를 거쳐 지연이 늘 수 있다. MuJoCo 뷰어가 WSLg를 거친다. PC마다 설치할 것이 는다 |
 
 결정: Windows 네이티브를 유지한다.
 
 - 파일은 항상 UTF-8로 읽고 쓰고, `PYTHONUTF8=1`을 켠다.
 - conda로만 설치되는 라이브러리는 쓰지 않는다.
-- mink가 Windows에서 도는지 환경 준비 때 가장 먼저 확인한다.
+- 쓰려는 IK 라이브러리(EAIK, mink)는 Windows에서 동작을 확인했다 ([software.md](../software.md#패키지)).
 - 리눅스가 꼭 필요한 일은 라즈베리파이가 맡는다.
 
 USB 지연과 WSLg 성능은 일반적으로 알려진 내용이고 따로 측정하지 않았다. 결정이 이 두 가지에만 기대지는 않는다.
@@ -47,7 +47,7 @@ USB 지연과 WSLg 성능은 일반적으로 알려진 내용이고 따로 측�
 | 시뮬레이션, MJCF 작성 | mujoco 3.17 | dm_control의 PyMJCF | MjSpec이 공식 방식이고 훨씬 빠르다 |
 | URDF 작성 | 표준 라이브러리 xml.etree | urchin, odio_urdf | 의존성이 없다. 다른 라이브러리는 관리가 약하다 |
 | URDF 검사 (테스트) | yourdfpy | | URDF를 읽고 FK를 따로 계산해 MJCF와 대조한다 |
-| IK | mink로 시작하고, 손목 형식이 정해지면 닫힌 해를 더한다 (구형 손목: py-opw-kinematics 또는 EAIK, UR형: EAIK 또는 roboticstoolbox) | Pinocchio, ikpy | mink는 생성된 MJCF를 그대로 쓰고 관절 한계와 충돌을 다룬다. 닫힌 해는 모든 해를 빠르게 준다. Pinocchio는 Windows에서 conda가 필요하고, ikpy는 느리다 |
+| IK | 해석적 IK는 EAIK, 수치 IK는 mink. 골격 설계부터 둘 다 쓴다 | Pinocchio, ikpy, py-opw-kinematics, roboticstoolbox | EAIK는 축 배치에서 구조를 판별해 구형 손목과 UR형을 모두 풀고, 가능한 해를 전부 빠르게 준다. 그래서 손목 후보의 작업 범위 비교와 해 고르기에 쓴다. mink는 생성된 MJCF를 그대로 쓰고 관절 한계와 충돌을 지키며 풀어서, 이어지는 동작(직선 이동, 조그)과 보정 모델에 쓴다. 시작점은 EAIK의 해로 준다. Pinocchio는 Windows에서 conda가 필요하고, ikpy는 느리다. py-opw-kinematics는 구형 손목만 풀고, EAIK 하나로 두 형식을 다 풀어서 roboticstoolbox도 필요 없다 |
 | 서보 SDK | Feetech 공식 ftservo-python-sdk | rustypot, LeRobot, feetech-servo-sdk | 공식이고 동기 읽기·쓰기를 지원하며 pyserial만 필요하다. Python이 느리면 rustypot으로 바꾼다. LeRobot은 torch 등이 딸려 와 무겁고, feetech-servo-sdk는 2022년 이후 멈췄다 |
 | 영상 전송 | pyzmq (PUB/SUB) | Zenoh, gRPC | 파이 한 대에서 PC 한 대로 보내는 단순한 구조라 자동 탐색이 필요 없다 |
 
@@ -56,7 +56,10 @@ USB 지연과 WSLg 성능은 일반적으로 알려진 내용이고 따로 측�
 
 ## 영향
 
-- 먼저 확인할 것이 둘 있다. 결과가 나쁘면 아래 대안으로 바꾼다.
-  - mink: 환경 준비 때(제작 로드맵 0단계) 확인한다. 설치만 보지 않고, MJCF를 읽어 IK를 풀고 목표 자세에 닿는지까지 본다. 처음에는 예제 팔 모델로, 골격 설계부터는 생성한 모델로 본다. 안 되면 MuJoCo의 자코비안으로 감쇠 최소제곱 IK를 직접 짜거나, 손목 형식에 맞는 닫힌 해 라이브러리를 먼저 쓴다.
-  - 서보 통신 속도: 서보 7개를 연결해, 한 주기(동기 쓰기 + 위치·부하·온도 동기 읽기)에 걸리는 시간과 흔들림을 잰다 (조사로는 100~200 Hz 예상). 이 값으로 모터 프로세스의 주기를 정한다 ([0009](0009-control-architecture.md)). 너무 느리면 rustypot을 시험한다.
+- IK는 골격 설계 때 생성한 모델로 다시 확인하고, EAIK와 mink의 해를 서로 대조하는 테스트를 둔다.
+- 서보 통신 속도는 서보 7개를 연결해 잰다. 한 주기(동기 쓰기 + 위치·부하·온도 동기 읽기)에 걸리는 시간과 흔들림을 보고 (조사로는 100~200 Hz 예상), 이 값으로 모터 프로세스의 주기를 정한다 ([0009](0009-control-architecture.md)). 너무 느리면 rustypot을 시험한다.
 - 영상 압축과 시계 동기화는 카메라를 구현할 때 정한다. 848×480 30 fps면 깊이 영상은 압축 없이 기가비트 랜에 들어간다 (약 195 Mbit/s).
+
+## 바뀐 점
+
+- 2026-11-07: IK를 골격 설계부터 해석적 IK(EAIK)와 수치 IK(mink)를 같이 쓰는 것으로 바꿨다. 처음에는 해석적 IK가 손목 형식마다 다르다고 보고 mink로 시작하려 했다. 그런데 Windows에서 시험해 보니 EAIK가 구형 손목과 UR형을 모두 풀었고, mink가 국소해 때문에 못 푼 목표도 모두 풀었다.
