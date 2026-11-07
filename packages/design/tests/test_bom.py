@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
+import pytest
+from pydantic import ValidationError
+
 from horilab_design import bom
 
 
@@ -14,3 +19,31 @@ def test_bom_document_matches_the_purchase_data() -> None:
 def test_every_item_says_why_it_is_needed() -> None:
     for item in bom.load_purchases().item:
         assert item.why.strip(), item.name
+
+
+def test_an_item_to_buy_has_a_link_or_search_words_and_a_time() -> None:
+    with pytest.raises(ValidationError, match="검색어"):
+        bom.Item(name="나사", qty=1, stage=3, why="체결", when="stage")
+    with pytest.raises(ValidationError, match="since"):
+        bom.Item(name="저울", qty=1, stage=0, why="무게", when="now", search="저울")
+    with pytest.raises(ValidationError, match="when"):
+        bom.Item(name="저울", qty=1, stage=0, why="무게", search="저울")
+    # 주문한 것은 언제 살지와 링크가 없어도 된다
+    bom.Item(name="서보", qty=1, stage=2, why="어깨", ordered=dt.date(2026, 11, 7))
+
+
+def test_ordered_items_leave_the_buy_now_list() -> None:
+    now = bom.Item(
+        name="저울",
+        qty=1,
+        stage=0,
+        why="무게",
+        when="now",
+        since=dt.date(2026, 11, 8),
+        search="저울",
+    )
+    sent = now.model_copy(update={"ordered": dt.date(2026, 11, 9)})
+    text = bom.render(bom.Purchases(item=[sent]))
+    head, _, rest = text.partition("## 배송 중")
+    assert "| 저울 |" not in head
+    assert "| 저울 | 1 | 2026-11-09 |" in rest

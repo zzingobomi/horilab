@@ -5,9 +5,10 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
 ## 세션을 시작하면
 
 1. [docs/status.md](docs/status.md)를 읽고 지금 단계와 다음 할 일을 확인한다.
-2. 작업에 필요한 주제 문서만 읽는다. 문서 목록은 [README.md](README.md)에 있다.
-3. `docs-local/`이 있으면 개인 참고 자료다. 이 폴더가 없는 PC도 있으니, 작업에 꼭 필요한 정보는 여기에 두지 않는다.
-4. 처음 쓰는 PC면 [docs/setup.md](docs/setup.md)대로 준비한다.
+2. [docs/bom.md](docs/bom.md)의 "지금 주문할 것"과 "배송 중"을 보고, 아직 주문하지 않은 것과 도착했을 때가 지난 것을 사용자에게 먼저 짧게 알린다.
+3. 작업에 필요한 주제 문서만 읽는다. 문서 목록은 [README.md](README.md)에 있다.
+4. `docs-local/`이 있으면 개인 참고 자료다. 이 폴더가 없는 PC도 있으니, 작업에 꼭 필요한 정보는 여기에 두지 않는다.
+5. 처음 쓰는 PC면 [docs/setup.md](docs/setup.md)대로 준비한다.
 
 ## 작업 방식
 
@@ -26,6 +27,7 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
 - 모든 작업 PC에 NVIDIA GPU가 있다. 도구와 방법을 고를 때 GPU를 쓰는 방법을 먼저 따진다 ([docs/software.md](docs/software.md#개발-환경)).
 - 실물 로봇을 움직이는 명령은 확인을 받은 뒤에 실행한다 ([docs/hardware.md](docs/hardware.md#안전)).
 - 도구 설치 같은 환경 작업은 Claude가 직접 한다.
+- 살 것을 놓치지 않게 챙긴다. 설계하다 살 것이 정해지면(규격, 개수) 바로 [부품표](docs/bom.md) 데이터에 넣고, 그 자리에서 사용자에게 주문했는지 묻는다. 다음 단계로 넘어갈 때도 그 단계에 필요한데 아직 손에 없는 것을 알린다. 주문했다거나 받았다는 말을 들으면 부품표를 고친다.
 - 작업 단위가 끝나면 `docs/status.md`를 고친다.
 - 커밋은 의미 있는 단계가 끝날 때 한다. 커밋하기 전에 git 작성자(user.name, user.email)가 기존 커밋과 같은지 확인한다. push는 확인을 받은 뒤에 한다.
 
