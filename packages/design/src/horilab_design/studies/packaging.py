@@ -43,7 +43,7 @@ BRIDGE_GAP = 1.5 * MM  # 다리와 서보 가까운 끝 모서리 사이
 FLANGE_T = 6.0 * MM  # 로봇 쪽 플랜지 판 두께
 ADAPTER_T = 10.0 * MM  # 그리퍼 교체 어댑터 두께 (docs/design.md: 10 mm 이내)
 PLA_DENSITY = 1260.0  # [kg/m³] 뱀부랩 PLA Basic 필라멘트 프리셋
-D405_MASS = 0.060  # [kg] (0013)
+D405_MASS = 0.060  # [kg] 홈페이지 값 (사양서는 58 g, docs/hardware.md)
 CONTACT_MARGIN = 2.0 * MM  # 이 거리 안이면 "빠듯함"으로 본다
 PENETRATION = 0.2 * MM  # 이보다 깊이 겹치면 부딪힘으로 본다
 MOVING_GAP = 2.0 * MM  # 서로 움직이는 다른 링크 형상 사이에 두는 틈
@@ -419,7 +419,15 @@ TOOLS = {
     "pointer": Tool("포인터", ADAPTER_T + 0.080, 0.025, 0.0, True),
     "suction": Tool("흡착", ADAPTER_T + 0.060, 0.035, 0.10, True),
     "gripper": Tool("평행 그리퍼", ADAPTER_T + 0.095, 0.140, 0.15, True),
+    # 기둥 카메라 캘리브레이션(eye-to-hand)용 보드: 100 × 80 × 4 mm 판.
+    # "board"는 판 면이 도구 축 방향을 보고, TCP는 판 겉면 가운데다.
+    # "board_side"는 판을 어댑터 옆(플랜지 y 쪽 BOARD_SIDE_OFFSET)에 두고 판 면이 플랜지 쪽(-z)을 본다.
+    # 도구가 아래를 향하면 판 면이 위를 본다.
+    "board": Tool("보드", ADAPTER_T + 0.004, 0.030, 0.0, False),
+    "board_side": Tool("옆 보드", ADAPTER_T, 0.040, 0.0, False),
 }
+BOARD_HALF = (0.050, 0.040)  # 보드 판의 반 크기 (플랜지 x, 플랜지 y) [m]
+BOARD_SIDE_OFFSET = 0.090  # 옆 보드 가운데의 플랜지 y [m]
 
 
 def arm(layout: Layout) -> Robot:
@@ -609,6 +617,39 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
             mass=tool.mass,
             group="도구",
         )
+    elif tool.name == "보드":
+        # 링크 6 좌표계에서 플랜지 x는 +z, 플랜지 y는 +x다 (T_last_flange).
+        bx, by = BOARD_HALF
+        b.box(
+            6,
+            "board",
+            (-by, tool_lo, -bx),
+            (by, tool_lo + 0.004, bx),
+            material="tool",
+            mass=tool.mass,
+            group="도구",
+        )
+    elif tool.name == "옆 보드":
+        bx, by = BOARD_HALF
+        c = BOARD_SIDE_OFFSET
+        b.box(
+            6,
+            "board_arm",
+            (0.020, tool_lo - 0.004, -0.010),
+            (c - by, tool_lo + 0.004, 0.010),
+            material="tool",
+            mass=tool.mass * 0.25,
+            group="도구",
+        )
+        b.box(
+            6,
+            "board",
+            (c - by, tool_lo, -bx),
+            (c + by, tool_lo + 0.004, bx),
+            material="tool",
+            mass=tool.mass * 0.75,
+            group="도구",
+        )
     else:
         # STS3215 하나로 랙·피니언을 돌리는 몸통, 그 아래 손가락 두 개 (열린 폭 40 mm).
         b.box(
@@ -647,7 +688,8 @@ class Scene:
     geom_prim: dict[int, Prim]
 
 
-def build_scene(robot: Robot, prims: list[Prim]) -> Scene:
+def build_scene(robot: Robot, prims: list[Prim], fixed: list[Prim] | None = None) -> Scene:
+    """fixed는 책상에 고정된 물건(카메라 기둥 등)이다. 베이스와 따로 "fixture" 몸체에 둔다."""
     spec = mujoco.MjSpec()
     spec.compiler.degree = False
     spec.option.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_FILTERPARENT)
@@ -664,27 +706,29 @@ def build_scene(robot: Robot, prims: list[Prim]) -> Scene:
         body = bodies[-1].add_body(name=f"link{i + 1}", pos=list(joint.origin))
         body.add_joint(name=joint.name, type=mujoco.mjtJoint.mjJNT_HINGE, axis=list(joint.axis))
         bodies.append(body)
-    names = []
-    for p in prims:
+    fixture = world.add_body(name="fixture")
+    fixed = fixed or []
+    placed = [(p, bodies[p.link], p.link == 0) for p in prims] + [(p, fixture, True) for p in fixed]
+    for p, body, static in placed:
         quat = np.zeros(4)
         mujoco.mju_mat2Quat(quat, p.rot.flatten())
         size = list(p.size) if p.shape == "box" else [p.size[0], p.size[1], 0.0]
         gtype = mujoco.mjtGeom.mjGEOM_BOX if p.shape == "box" else mujoco.mjtGeom.mjGEOM_CYLINDER
-        bodies[p.link].add_geom(
+        body.add_geom(
             name=p.name,
             type=gtype,
             size=size,
             pos=list(p.pos),
             quat=list(quat),
             contype=1,
-            conaffinity=1 if p.link == 0 else 3,
+            conaffinity=1 if static else 3,
             margin=CONTACT_MARGIN,
         )
-        names.append(p.name)
+    all_prims = [*prims, *fixed]
     model = spec.compile()
     data = mujoco.MjData(model)
-    geom_prim = {mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, p.name): p for p in prims}
-    return Scene(robot, prims, model, data, geom_prim)
+    geom_prim = {mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, p.name): p for p in all_prims}
+    return Scene(robot, all_prims, model, data, geom_prim)
 
 
 @dataclass(frozen=True)
@@ -910,8 +954,8 @@ def torque_ratios(robot: Robot, prims: list[Prim], tool: Tool, qs: list[np.ndarr
     return worst / rated
 
 
-D405_HALF_FOV = 29 * DEG  # 깊이 시야 87° × 58° 중 좁은 쪽의 절반 (Intel 사양)
-D405_MIN_RANGE = 0.07  # [m] 깊이를 재는 가장 가까운 거리 (Intel 사양 7 cm)
+D405_HALF_FOV = 29 * DEG  # 깊이 시야 세로 58°의 절반 (사양서와 홈페이지가 같다. docs/hardware.md)
+D405_MIN_RANGE = 0.07  # [m] 848×480에서 깊이를 재는 가장 가까운 거리 (1280×720은 10 cm)
 
 
 def camera_view(
@@ -1086,7 +1130,7 @@ def report(layout: Layout) -> None:
     print("\n### D405 시야 (앞쪽 20 cm 높이 10 cm 자세, TCP 둘레 ±30 mm)")
     print(
         f"- 광축은 도구 축 쪽으로 {layout.camera_tilt / DEG:.0f}° 기울임, 렌즈 면은 플랜지 면보다 "
-        f"{layout.camera_back * 1000:.0f} mm 뒤. 시야 절반 {D405_HALF_FOV / DEG:.0f}°(좁은 쪽), 최소 거리 {D405_MIN_RANGE * 100:.0f} cm"
+        f"{layout.camera_back * 1000:.0f} mm 뒤. 시야 절반 {D405_HALF_FOV / DEG:.0f}°(좁은 쪽), 최소 거리 {D405_MIN_RANGE * 100:.0f} cm(848×480)"
     )
     for key in ("gripper", "suction", "pointer"):
         t = TOOLS[key]

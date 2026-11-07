@@ -45,19 +45,23 @@ def box_yaw(azimuth: float) -> float:
     return (-azimuth + math.pi / 4) % (math.pi / 2) - math.pi / 4
 
 
-def targets() -> list[tuple[float, float, float]]:
-    """(반지름, 높이, 도구 돌림) 목록. 높이는 박스 윗면과 그 위 APPROACH."""
-    spots: list[tuple[float, float, int]] = [(PICK[0], PICK[1], 1)]
+def spots() -> list[tuple[float, float, int]]:
+    """박스 자리 (x, y, 층 수): 집는 곳 하나와 팔레트 네 자리."""
+    out = [(PICK[0] * math.cos(PICK[1]), PICK[0] * math.sin(PICK[1]), 1)]
     cx, cy = PALLET[0] * math.cos(PALLET[1]), PALLET[0] * math.sin(PALLET[1])
     half = PALLET_PITCH / 2
     for dx, dy in itertools.product((-half, half), repeat=2):
-        x, y = cx + dx, cy + dy
-        spots.append((math.hypot(x, y), math.atan2(y, x), LAYERS))
+        out.append((cx + dx, cy + dy, LAYERS))
+    return out
+
+
+def targets() -> list[tuple[float, float, float]]:
+    """(반지름, 높이, 도구 돌림) 목록. 높이는 박스 윗면과 그 위 APPROACH."""
     poses = []
-    for radius, azimuth, layers in spots:
+    for x, y, layers in spots():
         for layer in range(1, layers + 1):
             for lift in (0.0, APPROACH):
-                poses.append((radius, layer * BOX + lift, box_yaw(azimuth)))
+                poses.append((math.hypot(x, y), layer * BOX + lift, box_yaw(math.atan2(y, x))))
     return poses
 
 

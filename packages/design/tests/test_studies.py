@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from horilab_design.ik import AnalyticIK
-from horilab_design.studies import packaging, skeleton
+from horilab_design.studies import cameras, packaging, skeleton
 from horilab_design.studies.common import (
     MASS_CASES,
     TASK_YAWS_DEG,
@@ -87,6 +87,48 @@ def test_packaging_reports_designed_gaps_but_not_as_collisions() -> None:
     found = packaging.hits(scene, q)
     assert not packaging.collisions(found)
     assert any(h.designed for h in found)  # 서보와 그 혼·브래킷은 일부러 가깝다
+
+
+def test_placed_stacking_poses_keep_the_skeleton_targets() -> None:
+    # 기둥 검토는 박스 쌓기 자세를 실제 방위에 둔다. 반지름과 높이는 골격 검토의 목표와 같아야 한다.
+    tool = packaging.TOOLS["suction"]
+    placed = cameras.placed_stacking_poses(tool)
+    expected = skeleton.targets()
+    assert len(placed) == len(expected)
+    for pose, (radius, height, _) in zip(placed, expected, strict=True):
+        tcp = pose.T[:3, 3] + pose.T[:3, 2] * tool.length
+        assert np.hypot(tcp[0], tcp[1]) == pytest.approx(radius)
+        assert tcp[2] == pytest.approx(height)
+
+
+def test_overhead_post_camera_sees_the_work_spots_and_stays_out_of_the_way() -> None:
+    cam = cameras.RECOMMENDED
+    R, eye = cam.frame(), np.array(cam.eye)
+    for pts in cameras.work_targets().values():
+        assert cameras.in_view(R, eye, pts).all()
+    fixed = cameras.post_prims(cam)
+    tool = packaging.TOOLS["suction"]
+    robot, prims, _ = packaging.build_arm(packaging.Layout(), tool)
+    scene = packaging.build_scene(robot, prims, fixed)
+    poses = cameras.placed_stacking_poses(tool) + cameras.transit_poses(tool)
+    result = packaging.check_set(scene, AnalyticIK(robot), poses, tool.name, tool.symmetric)
+    assert result.clear == result.total, result.failures
+    robot, prims, _ = packaging.build_arm(packaging.Layout(), packaging.TOOLS["gripper"])
+    assert cameras.upright_hits(packaging.build_scene(robot, prims, fixed)) == 0
+
+
+def test_wrist_camera_aim_puts_the_lens_on_the_view_point() -> None:
+    layout = packaging.Layout()
+    robot, _, mods = packaging.build_arm(layout, packaging.TOOLS["suction"])
+    cam = packaging.camera_of(layout, mods)
+    board = np.array([*cameras.CAL_BOARD, 0.0])
+    eye = board + np.array([0.0, 0.0, 0.25])
+    seeds = [np.radians([0.0, 20.0, 80.0, 165.0, 90.0, 10.0])]
+    solutions = cameras.aim(robot, cam, eye, board, seeds)
+    assert solutions
+    lens, axis = cameras.camera_pose(robot, cam, solutions[0])
+    np.testing.assert_allclose(lens, eye, atol=1e-4)
+    assert axis @ np.array([0.0, 0.0, -1.0]) > np.cos(np.radians(0.2))
 
 
 def test_outward_wrist_keeps_j5_negative() -> None:
