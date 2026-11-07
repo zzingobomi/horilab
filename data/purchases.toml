@@ -132,12 +132,28 @@ search = "U3S7AS1MCI / NT552"
 why = "손목 D405 연결 (design.md D405 케이블). 손목을 설계할 때 고른다. Newnex는 해외 주문이다"
 
 [[item]]
-name = "서보 케이블 (3핀 5264, 양쪽 커넥터, 길이별)"
+name = "서보 케이블 300 mm 6개 묶음 (Waveshare 5264-3핀, 900 mm도 있음)"
 qty = 1
 stage = 5
 when = "pick"
-search = "Feetech 서보 케이블 5264 3P 30cm"
-why = "서보끼리 잇는 선. 어림으로 위팔 구간 30~35 cm, 아래팔 25~30 cm, J1을 지나는 구간 30~40 cm, 손목 구간 15~20 cm가 필요하다. 가진 케이블 길이를 재고, 길이와 개수는 배선을 설계하며 정한다. 납땜·압착 없이 완제품만 쓰고, 굵기는 0016의 전류 기준과 같이 본다"
+vendor = "엘레파츠"
+url = "https://www.eleparts.co.kr/EPYKKPVL"
+lead_days = [10, 14]
+unit_price_krw = 4026
+priced = "2026-11-08"
+why = "서보끼리 잇는 선 (ST·SC 시리즈용). 어림으로 위팔 구간 30~35 cm, 아래팔 25~30 cm, J1을 지나는 구간 30~40 cm가 필요하다. 900 mm는 2,992원 더 비싸다. 선 굵기는 페이지에 없다. 길이와 개수는 가진 케이블을 재고 배선을 설계하며 정한다"
+
+[[item]]
+name = "서보 케이블 200 mm (3핀 5264 호환, 양쪽 정방향, 26 AWG, NW3-5264-03)"
+qty = 2
+stage = 5
+when = "pick"
+vendor = "디바이스마트"
+url = "https://www.devicemart.co.kr/goods/view?no=10895279"
+lead_days = [3, 6]
+unit_price_krw = 495
+priced = "2026-11-08"
+why = "손목 구간(어림 15~20 cm)용. 양 끝 선 순서가 같은 정방향이다. 26 AWG라 커넥터 하나에 2 A까지다 (0016)"
 
 [[item]]
 name = "MR106ZZ (6 × 10 × 3)"
