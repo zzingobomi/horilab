@@ -50,6 +50,20 @@ STS3215, STS3250은 Feetech 공식 페이지, ST-3120의 전기 사양은 판매
 - STS3215의 판매처 자료(2026-11): C001은 7.4 V·1:345, C018은 12 V·1:345, C044는 1:191, C046은 1:147이다. 서보를 더 살 때는 12 V·1:345인지 확인한다.
 - 레지스터 표: [Waveshare 문서](https://docs.waveshare.com/Memory_Map_Explanation/ST_Servo_Memory_Map_Explanation)가 가장 보기 쉽다.
 
+### 다른 사람이 잰 값
+
+가진 서보를 다시 재기 전까지 참고한다 (2026-11 조사).
+
+- STS3215:
+  - 백래시는 하중 없이 0.62°, 하중을 걸면 1.30°다 ([논문](https://pmc.ncbi.nlm.nih.gov/articles/PMC13087586/)). 다른 시험에서는 0.77°, 약 1°였다.
+  - 같은 쪽에서 같은 하중으로 돌아오면 ±0.17°다 ([robonine](https://robonine.com/testing-of-feetech-sts3215-servomotor-backlash-repeatability-and-torque/)). 관절에서 25 cm 떨어진 끝에서 ±0.74 mm다.
+  - 약 110분 시험에서 71°C까지 올랐다 (플라스틱 몸체에 열이 갇힌다).
+- STS3250 ([robonine](https://robonine.com/feetech-sts3250-smart-actuator-evaluation-of-accuracy-torque-and-backlash/)):
+  - 백래시는 0.13~0.43°이고, 같은 쪽에서 돌아오면 ±0.012°다.
+  - 20 kg·cm를 계속 걸면 1.23° 처진다.
+  - 하중을 건 채 8분 만에 70°C 보호에 걸렸다. 계속 쓸 때는 25 kg·cm 이하로 쓰고, 1분마다 30초 쉬라고 권한다.
+- ST-3120: 측정 자료를 찾지 못했다.
+
 ### 기구 치수
 
 Feetech 공식 도면 기준이다: [STS3215](https://www.feetechrc.com/525603.html), [STS3250](https://www.feetechrc.com/562636), [ST-3120](https://www.feetechrc.com/570220) (페이지마다 도면, 혼 도면, 사양서 PDF가 있다). Feetech는 STEP 모델을 내지 않는다. STS3215는 Waveshare의 [STEP](https://files.waveshare.com/upload/5/59/ST3215-3D.zip)과 [2D 도면](https://files.waveshare.com/upload/0/08/ST3215-2D.zip)이 공식 도면과 맞는다. 거리는 출력축 중심에서 잰 값이다 [mm].
@@ -100,6 +114,7 @@ SO-101 키트 설명에는 "Waveshare serial bus servo driver board (USB-C)"로 
 - STS의 PID 게인(P, I, D)은 EEPROM(8비트)에 있다. 관절마다 한 번 튜닝해서 구워 두고, 실행 중에는 바꾸지 않는다 (EEPROM 수명).
 - 옮겨 쓰는 모터는 EEPROM 값이 그대로 따라온다. [LeRobot](https://github.com/huggingface/lerobot)으로 세팅한 적이 있으면 P가 32에서 16으로 낮춰져 있을 수 있다 (P가 낮으면 처짐이 커진다). 조립 전에 읽어서 확인한다.
 - 어깨와 팔꿈치는 I 게인을 조금 넣어 중력 처짐을 줄여 본다. 떨리면 낮춘다.
+- 한 버스에 STS3215, STS3250, ST-3120을 같이 물린다. 조립 전에 서보마다 전압판(12 V인지)과 펌웨어 버전을 읽어 둔다. 다른 프로젝트에서 7.4 V판을 12 V 버스에 섞어 과전압 경고가 났고, 펌웨어가 달라 통신 오류가 난 예가 있다 ([lerobot#1010](https://github.com/huggingface/lerobot/issues/1010)).
 
 ## 전원
 
@@ -118,6 +133,8 @@ SO-101 키트 설명에는 "Waveshare serial bus servo driver board (USB-C)"로 
 
 - 비상시에는 가변 전원의 On/Off 버튼을 눌러 서보 전원을 끊는다. 가변 전원은 손이 바로 닿는 곳에 둔다.
 - 서보를 처음 돌릴 때는 토크 제한을 낮게 걸고 시작한다.
+- 서보에는 브레이크가 없다. 토크를 끄거나 전원을 끊으면 팔이 떨어진다. 평소에는 접은 자세로 옮긴 뒤 토크를 끈다. 비상시에 전원을 바로 끊으면 팔이 떨어지므로, 떨어지는 자리에 아무것도 두지 않는다.
+- 그리퍼가 물체를 쥔 채로 오래 두지 않는다. 다른 프로젝트에서 서보가 과열되거나 부서진 예가 있다 ([references.md](references.md#피할-것)). 닫는 쪽 힘은 전류 한계로 막는다.
 - 서보에 토크가 걸려 있는 동안에는 팔이 움직이는 범위에 손을 넣지 않는다.
 - 프로그램은 기본으로 시뮬레이션만 움직이고, 실물은 명시적으로 켰을 때만 움직인다 ([software.md](software.md#제어-구조)).
 - 소프트웨어 쪽 안전 기능(시작 절차, 관절·속도 한계, 통신 오류와 과부하 처리)은 모터 프로세스에 있다. 실물을 처음 움직이기 전에 [0009](decisions/0009-control-architecture.md)의 시험을 통과한다.
