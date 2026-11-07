@@ -17,7 +17,13 @@ def test_coupons_are_valid_solids() -> None:
 
 def test_heights_follow_the_layer_height() -> None:
     # 높이 방향 치수가 층 높이의 배수가 아니면 슬라이서가 반올림해서 칸끼리 차이가 사라진다.
-    heights = [coupons.POCKET_DEPTH, coupons.LABEL_DEPTH, *(h for _, h in coupons.NUT_SLOTS)]
+    heights = [
+        coupons.POCKET_DEPTH,
+        coupons.LABEL_DEPTH,
+        coupons.FRAME_HEIGHT,
+        coupons.HORN_RECESS_DEPTH,
+        *(h for _, h in coupons.NUT_SLOTS),
+    ]
     for height in heights:
         layers = height / coupons.LAYER
         assert layers == pytest.approx(round(layers), abs=1e-9), height

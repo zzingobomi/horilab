@@ -43,6 +43,12 @@ class ServoSpec(_Values):
     no_load_speed_s_per_60deg: float = Field(gt=0)
     stall_current_a: float = Field(gt=0)
     mass_g: float = Field(gt=0)
+    body_length_mm: float = Field(gt=0)  # 출력축에 수직인 단면의 긴 변
+    body_width_mm: float = Field(gt=0)
+    shaft_to_end_mm: float = Field(gt=0)  # 출력축에서 길이 방향으로 가까운 끝까지
+    horn_diameter_mm: float = Field(gt=0)
+    horn_bolt_circle_mm: float = Field(gt=0)
+    horn_bolts: int = Field(gt=0)  # 혼의 M3 구멍 수
 
     @property
     def rated_torque(self) -> float:
@@ -101,6 +107,9 @@ class PrintFit(_Values):
     m3_nut_pocket_mm: float | None = None  # 위에서 눌러 끼우는 육각 홈의 맞변 거리
     m3_nut_slot_width_mm: float | None = None  # 옆에서 밀어 넣는 홈의 폭
     m3_nut_slot_height_mm: float | None = None  # 옆에서 밀어 넣는 홈의 높이
+    # 서보 몸체 자리와 혼 자리: 도면 치수(params/servos.toml)에 더하는 여유. 길이·폭·지름에 그대로 더한다
+    seat_clearance_mm: dict[ServoModel, float] = {}
+    horn_clearance_mm: dict[ServoModel, float] = {}
 
 
 class Measured(_Values):

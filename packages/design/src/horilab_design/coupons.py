@@ -1,7 +1,10 @@
 """공차 시험편 (docs/manufacturing.md의 "공차").
 
-1차는 M3 볼트 구멍과 너트 홈이다. 칸마다 치수를 조금씩 바꾸고 윗면에 그 치수를 새긴다.
-가진 볼트와 너트를 끼워 보고 가장 잘 맞는 칸의 치수를 data/measured.toml에 필라멘트마다 적는다.
+칸마다 치수를 조금씩 바꾸고 윗면에 그 치수를 새긴다. 실물(볼트, 너트, 서보, 혼)을 끼워 보고
+가장 잘 맞는 칸의 치수를 data/measured.toml에 필라멘트마다 적는다.
+
+- 1차: M3 볼트 구멍과 너트 홈
+- 2차: 서보 몸체 자리와 혼 자리. 도면 치수(params/servos.toml)에 여유를 더해 간다
 
     uv run python -m horilab_design.coupons    # build/coupons/에 STL을 만든다
 
@@ -13,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import math
+from collections.abc import Callable
 from pathlib import Path
 
 from build123d import (
@@ -32,7 +36,7 @@ from build123d import (
     extrude,
 )
 
-from horilab_design.values import REPO_ROOT
+from horilab_design.values import REPO_ROOT, ServoSpec, load_servos
 
 OUT_DIR = REPO_ROOT / "build" / "coupons"
 
@@ -53,6 +57,15 @@ NUT_SLOTS = (  # 옆에서 밀어 넣는 홈 (폭, 높이). 앞 넷은 폭을, �
     (5.8, 2.6),
     (5.8, 3.0),
 )
+
+SEAT_CLEARANCES = (0.1, 0.2, 0.3, 0.4, 0.5)  # 서보 단면의 길이와 폭에 더하는 여유
+HORN_CLEARANCES = (0.1, 0.2, 0.3, 0.4)  # 혼 지름에 더하는 여유
+FRAME_WALL = 2.4
+FRAME_HEIGHT = 6.0
+LABEL_TAB = 7.0  # 틀의 한쪽 벽을 넓혀 글자를 새긴다
+CORNER_RELIEF = 2.0  # 안쪽 모서리를 둥글게 더 파서 각진 서보 모서리가 걸리지 않게 한다 (지름)
+HORN_RECESS_DEPTH = 2.0
+HORN_SCREW_RELIEF = 7.0  # 혼 가운데 나사 머리가 들어갈 구멍
 
 PITCH = 11.0  # 칸 간격
 MARGIN = 2.0
@@ -150,11 +163,64 @@ def nut_slots() -> Compound:
     return block
 
 
-COUPONS = {
+def servo_frames(spec: ServoSpec) -> Compound:
+    """서보 몸체가 들어갈 틀. 안쪽은 도면 단면(길이 × 폭)에 여유를 더한 크기이고, 틀 하나에 여유 하나다.
+
+    서보를 출력축 방향으로 넣어 본다. 안쪽 모서리는 둥글게 더 파서 각진 모서리도 걸리지 않는다.
+    """
+    columns = 3
+    frames: list[Compound] = []
+    for i, clearance in enumerate(SEAT_CLEARANCES):
+        length = spec.body_length_mm + clearance
+        width = spec.body_width_mm + clearance
+        outer_x, outer_y = length + 2 * FRAME_WALL, width + FRAME_WALL + LABEL_TAB
+        x0 = (i % columns) * (outer_x + 4.0)
+        y0 = (i // columns) * (outer_y + 4.0)
+        frame: Compound = Pos(x0, y0, 0) * Box(outer_x, outer_y, FRAME_HEIGHT, align=CORNER)
+        inner_x, inner_y = x0 + FRAME_WALL, y0 + LABEL_TAB
+        frame -= Pos(inner_x, inner_y, -1.0) * Box(length, width, FRAME_HEIGHT + 2, align=CORNER)
+        for cx in (inner_x, inner_x + length):
+            for cy in (inner_y, inner_y + width):
+                frame -= _vertical_hole(CORNER_RELIEF, cx, cy, FRAME_HEIGHT)
+        frame -= _label(f"+{clearance:.1f}", x0 + outer_x / 2, y0 + LABEL_TAB / 2, FRAME_HEIGHT)
+        frames.append(frame)
+    return Compound(frames)
+
+
+def horn_recesses(spec: ServoSpec) -> Compound:
+    """혼이 들어갈 얕은 자리. 지름은 혼 지름에 여유를 더하고, M3 구멍이 혼의 구멍 원 위에 있다.
+
+    서보에 달린 혼 위에 시험판을 엎어 얹어 본다.
+    """
+    pitch = spec.horn_diameter_mm + 6.0
+    height = HORN_RECESS_DEPTH + 2.0
+    y = MARGIN + pitch / 2
+    plate: Compound = Box(
+        2 * MARGIN + pitch * len(HORN_CLEARANCES), pitch + LABEL_TAB, height, align=CORNER
+    )
+    for i, clearance in enumerate(HORN_CLEARANCES):
+        x = MARGIN + pitch * (i + 0.5)
+        recess = Cylinder((spec.horn_diameter_mm + clearance) / 2, HORN_RECESS_DEPTH + 1.0)
+        plate -= Pos(x, y, height - HORN_RECESS_DEPTH + (HORN_RECESS_DEPTH + 1.0) / 2) * recess
+        plate -= _vertical_hole(HORN_SCREW_RELIEF, x, y, height)
+        r = spec.horn_bolt_circle_mm / 2
+        for k in range(spec.horn_bolts):
+            angle = 2 * math.pi * k / spec.horn_bolts
+            plate -= _vertical_hole(
+                BOLT_HOLE, x + r * math.cos(angle), y + r * math.sin(angle), height
+            )
+        plate -= _label(f"+{clearance:.1f}", x, y + pitch / 2 + LABEL_TAB / 2 - 1.0, height)
+    return plate
+
+
+COUPONS: dict[str, Callable[[], Compound]] = {
     "fit1_vertical_holes": vertical_holes,
     "fit1_horizontal_holes": horizontal_holes,
     "fit1_nut_pockets": nut_pockets,
     "fit1_nut_slots": nut_slots,
+    # STS3215와 STS3250은 도면이 같아서 같은 시험편으로 본다
+    "fit2_sts_frames": lambda: servo_frames(load_servos()["STS3215"]),
+    "fit2_sts_horn": lambda: horn_recesses(load_servos()["STS3215"]),
 }
 
 

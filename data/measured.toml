@@ -20,7 +20,10 @@
 # m3_nut_pocket_mm = # 위에서 눌러 끼우는 육각 홈의 맞변 거리
 # m3_nut_slot_width_mm = # 옆에서 밀어 넣는 홈의 폭
 # m3_nut_slot_height_mm = # 옆에서 밀어 넣는 홈의 높이
+# 2차 시험편: 서보 몸체 자리와 혼 자리의 여유 (도면 치수에 더하는 값)
+# seat_clearance_mm = { STS3215 = , STS3250 = }
+# horn_clearance_mm = { STS3215 = }
 
 [fit.pla_basic_black] # 항목은 흰색과 같다
 
-# 서보 몸체 자리와 혼 맞춤(2차), 베어링 자리(3차)는 그 시험편을 만들 때 항목을 정한다.
+# 베어링 자리(3차)는 그 시험편을 만들 때 항목을 정한다.

@@ -1,5 +1,6 @@
-# 서보 모델의 명목 사양 (12 V). 출처와 주의할 점은 docs/hardware.md의 "서보 사양"에 있다.
-# 무게는 저울로 재면 data/measured.toml의 값을 쓴다.
+# 서보 모델의 명목 사양 (12 V). 출처와 주의할 점은 docs/hardware.md의 "서보 사양"과
+# "기구 치수"(Feetech 공식 도면)에 있다. 무게는 저울로 재면 data/measured.toml의 값을 쓴다.
+# 몸체 길이·폭은 출력축에 수직인 단면이고, 축에서 가까운 끝까지의 거리는 길이 방향이다.
 # 읽는 코드: packages/design/src/horilab_design/values.py
 
 [STS3215] # C018
@@ -8,17 +9,35 @@ stall_torque_kgcm = 30
 no_load_speed_s_per_60deg = 0.222
 stall_current_a = 2.7
 mass_g = 55
+body_length_mm = 45.22
+body_width_mm = 24.72
+shaft_to_end_mm = 10.11
+horn_diameter_mm = 19.95
+horn_bolt_circle_mm = 14
+horn_bolts = 4 # M3
 
-[STS3250] # C002
+[STS3250] # C002. 기구 치수는 STS3215와 도면이 같다
 rated_torque_kgcm = 16
 stall_torque_kgcm = 50
 no_load_speed_s_per_60deg = 0.133
 stall_current_a = 4.2
 mass_g = 74.5
+body_length_mm = 45.22
+body_width_mm = 24.72
+shaft_to_end_mm = 10.11
+horn_diameter_mm = 19.95
+horn_bolt_circle_mm = 14
+horn_bolts = 4 # M3
 
-[ST-3120] # C001, 판매처 자료
+[ST-3120] # C001. 전기 사양은 판매처 자료, 기구 치수는 Feetech 도면 (표시 없는 치수 ±0.1)
 rated_torque_kgcm = 40
 stall_torque_kgcm = 120
 no_load_speed_s_per_60deg = 0.454
 stall_current_a = 4.7
 mass_g = 210
+body_length_mm = 65
+body_width_mm = 30
+shaft_to_end_mm = 15.9
+horn_diameter_mm = 29.9 # FT110M
+horn_bolt_circle_mm = 24
+horn_bolts = 8 # M3
