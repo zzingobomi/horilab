@@ -24,6 +24,29 @@
 
 서보를 쓰는 팔 중에 J1에 크로스 롤러 베어링을 쓰거나 ST-3120을 쓰는 예는 찾지 못했다.
 
+## 외형
+
+협동로봇처럼 보이게 하는 방법이다.
+
+- **UR식** ([UR3e](https://www.universal-robots.com/products/ur3e/))
+  - 관절마다 둥근 집이 있고, 양쪽 끝에 색 뚜껑이 있다. 뚜껑은 나사로 고정하고, 관절을 손볼 때 연다.
+  - 이음매마다 검은 띠(실링 고리)가 있고, 관절 사이는 민무늬 관이다. 베이스는 원뿔이고, 플랜지는 ISO 9409다.
+  - 요소마다 한 색 부품으로 나눠 뽑을 수 있다.
+  - [UR5e 1:5 출력 모형](https://makerworld.com/en/models/3408581)은 몸체를 한 색으로 뽑고 캡만 따로 뽑는다. 검은 띠 대신 얕은 홈을 팠는데, 사진에서는 그림자 선 정도로만 보인다.
+- **서보로 움직이는 팔**
+  - [myCobot 280](https://robotsguide.com/robots/mycobot)은 서보를 굽은 관 조각 안에 넣어서, 관절이 분할선으로만 보인다.
+  - [RIG-Arm](https://makerworld.com/en/models/2913469)은 끝이 둥근 사각 단면 링크로 서보를 감싼다. 벽은 1.2 mm다.
+  - [Kinova Gen3 lite](https://www.roscomponents.com/product/gen3-lite/)는 링크 끝을 관절 축 중심의 반원으로 만든다.
+- **매끈한 한 덩어리 껍데기**(Franka, Kinova, Lite 6)는 큰 곡면이라 서포트가 많이 들고, 열기 어렵다.
+- **주의할 것**
+  - 열:
+    - STS3215는 덮개 없이도 110분 뒤 71°C까지 올랐다 ([hardware.md](hardware.md#다른-사람이-잰-값)).
+    - 뱀부랩 PLA Basic은 57°C, PETG-CF는 74°C부터 변형된다 (판매처가 옮긴 뱀부랩 자료: [PLA](https://www.crea3d.com/en/filaments/1276-bambu-pla-basic.html), [PETG-CF](https://www.crea3d.com/en/filaments/1308-bambu-petg-cf.html)).
+    - 덮개가 서보 온도를 얼마나 올리는지는 확인하지 못했다.
+  - 무게: 지름 50 mm, 길이 170 mm, 벽 1.2 mm인 덮개는 약 40 g이다(계산). 팔을 수평으로 폈을 때 J2에 약 1.1 kg·cm가 더 걸린다.
+  - 끼워 맞추거나 붙인 뚜껑은 다시 열 수 없다 ([895746 댓글](https://makerworld.com/en/models/895746)).
+  - 케이블이 밖으로 지나가면 협동로봇처럼 보이지 않는다 ([mockway](https://makerworld.com/en/models/3068526), [PRIMO](https://makerworld.com/en/models/2473047)).
+
 ## 피할 것
 
 만든 사람들이 겪은 문제다.
