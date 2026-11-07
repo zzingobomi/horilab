@@ -25,8 +25,9 @@ import numpy as np
 
 from horilab_design.ik import AnalyticIK
 from horilab_design.robot import Mat, Robot
-from horilab_design.statics import FLANGE, GRAVITY, PointMass, frame_poses
+from horilab_design.statics import FLANGE, GRAVITY, PointMass, frame_poses, holding_torques
 from horilab_design.studies import packaging as pk
+from horilab_design.studies.common import RATED_MARGIN
 from horilab_design.studies.packaging import (
     ARM_T,
     BRIDGE_T,
@@ -47,6 +48,7 @@ from horilab_design.studies.packaging import (
     Z,
 )
 
+D405_PLATE_T = 6.0 * MM  # D405 받침판 두께
 E_PLA = 2.0e9  # [Pa] 출력한 PLA의 탄성 계수. 확인하지 않은 어림값이라 낮게 잡았다
 G_PLA = E_PLA / (2 * (1 + 0.35))  # 푸아송 비 0.35 (어림)
 
@@ -84,7 +86,7 @@ class Look:
     tube_wall: float = WALL
     yoke: float = 6.0 * MM  # J2 원통 위에서 두 판을 잇는 가로판 두께
     root_in: float = 10.0 * MM  # 브래킷 팔을 늘인 판이 관 속으로 들어가는 길이
-    column_r: float = 0.044  # J1 기둥 반지름 (돌림판과 같다)
+    column_r: float = 0.044  # J1 몸통 반지름 (돌림판과 같다)
 
 
 @dataclass(frozen=True)
@@ -194,7 +196,8 @@ def build_ur_arm(
                     group=f"J{j} 뚜껑",
                 )
 
-    # J1 기둥(1): 돌림판 위에서 J2 원통 아래까지. 속이 빈 원통이고 J2 서보의 먼 쪽이 그 안에 들어간다.
+    # J1 몸통(1): 돌림판 위에서 J2 원통 아래까지. 속이 빈 원통이고 J2 서보의 먼 쪽이 그 안에 들어간다.
+    # 이름에 "기둥"을 쓰지 않는다. 카메라 검토(cameras.py)가 그 이름으로 책상의 카메라 기둥을 찾는다.
     sh = robot.joints[1].origin[2]
     col0, col1 = 0.062, sh - ds[2].r_out - MOVING_GAP
     b.cyl(
@@ -205,7 +208,7 @@ def build_ur_arm(
         look.column_r,
         col1 - col0,
         inner=look.column_r - WALL,
-        group="J1 기둥",
+        group="J1 몸통",
     )
 
     # 위팔(2): J2 브래킷 팔을 늘인 판 두 장이 J2 원통 위의 가로판에서 만나고, 그 위로 관이 J3 집까지 간다.
@@ -283,15 +286,17 @@ def build_ur_arm(
             group="손목 2",
         )
     # D405: J6 원통 옆(+x), 원통이 도는 뚜껑과 틈을 두고 단다. 렌즈 면 위치와 광축 기울기는 0017과 같다.
+    # 받침판은 카메라 뒷면(평평한 곳 36 × 36 mm)의 M3 구멍 두 개(간격 20 mm, 링크 5의 z 방향)를 잡고
+    # J6 고리에 붙는다. 가진 M3 10 mm 볼트가 카메라에 4 mm 넘게 들어가지 않도록 두께 6 mm다 (0018).
     x_cam = d6.r_out + MOVING_GAP
     lens_y = layout.d6f - layout.camera_back
-    ring_end = layout.mid6 + d6.ring[1]
+    back = lens_y - 0.023
     b.box(
         5,
-        "camera_mount",
-        (d6.r_in, lens_y - 0.023, layout.d56 - 0.015),
-        (x_cam, min(lens_y, ring_end), layout.d56 + 0.015),
-        group="손목 2",
+        "d405_plate",
+        (d6.r_in, back - D405_PLATE_T, layout.d56 - 0.018),
+        (x_cam + 0.039, back, layout.d56 + 0.018),
+        group="D405 받침",
     )
     b.box(
         5,
@@ -525,11 +530,38 @@ def drum_table(layout: Layout, look: Look) -> None:
         )
 
 
+def flange_margin(robot: Robot, prims: list[Prim], tool: Tool, qs: list[np.ndarray]) -> float:
+    """qs의 어느 자세에서도 버팀 토크가 정격의 RATED_MARGIN배를 넘지 않도록 플랜지에 더 달 수 있는 무게 [kg].
+
+    케이블, 나사, 흡착 튜브처럼 형상에 없는 무게가 얼마까지 괜찮은지 본다. 플랜지에 다는 것은 가장 나쁜 경우다.
+    """
+    rated = np.array([j.effort for j in robot.joints])
+    masses = [*prim_masses(prims), PointMass("짐", FLANGE, (0.0, 0.0, tool.length), tool.payload)]
+    unit = [PointMass("더하는 무게", FLANGE, (0.0, 0.0, 0.0), 1.0)]
+    best = math.inf
+    for q in qs:
+        t0 = holding_torques(robot, q, masses)
+        t1 = holding_torques(robot, q, unit)
+        for j in range(len(rated)):
+            if abs(t1[j]) < 1e-9:
+                continue
+            limit = RATED_MARGIN * rated[j]
+            if abs(t0[j]) >= limit:
+                return 0.0
+            # t0 + m t1 = ±limit 중 m ≥ 0인 가장 작은 m
+            best = min(
+                best,
+                *((s * limit - t0[j]) / t1[j] for s in (1, -1) if (s * limit - t0[j]) / t1[j] >= 0),
+            )
+    return best
+
+
 def compare(layout: Layout, look: Look) -> None:
     """상자 링크(지금 배치 검토)와 UR식을 같은 자세로 비교한다."""
     print("\n### 작업 자세: 부딪힘 없이 되는 자세 수와 버팀 토크 / 정격 (상자 링크 → UR식)")
     print("| 도구 | 자세 | 상자 링크 | UR식 | 버팀 토크 상자 링크 | 버팀 토크 UR식 |")
     print("|---|---|---|---|---|---|")
+    margins = []
     for key, poses_of in pk.POSE_SETS:
         tool = TOOLS[key]
         rows = []
@@ -539,6 +571,8 @@ def compare(layout: Layout, look: Look) -> None:
             res = pk.check_set(scene, AnalyticIK(robot), poses_of(tool), tool.name, tool.symmetric)
             ratio = pk.torque_ratios(robot, prims, tool, res.qs) if res.qs else np.zeros(6)
             rows.append((res, ratio))
+            if res.clear_qs:
+                margins.append((build is _ur, flange_margin(robot, prims, tool, res.clear_qs)))
         (rb, tb), (ru, tu) = rows
         print(
             f"| {tool.name} | {rb.total} | {rb.clear} | {ru.clear} | "
@@ -547,6 +581,12 @@ def compare(layout: Layout, look: Look) -> None:
         extra = [f for f in ru.failures if f not in rb.failures]
         for line in extra[:8]:
             print(f"  - UR식에서만: {line}")
+    box_margin = min(m for ur, m in margins if not ur)
+    ur_margin = min(m for ur, m in margins if ur)
+    print(
+        f"- 여유: 플랜지에 {ur_margin * 1000:.0f} g(상자 링크 {box_margin * 1000:.0f} g)까지 더 달아도 위 자세에서 "
+        f"버팀 토크가 정격의 {RATED_MARGIN}배 안이다. 케이블, 나사, 흡착 튜브는 형상 무게에 없다."
+    )
 
 
 def _box(layout: Layout, tool: Tool, look: Look) -> tuple[Robot, list[Prim]]:

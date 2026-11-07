@@ -384,8 +384,10 @@ class Layout:
 
     upper: float = 0.20
     fore: float = 0.17
-    d45: float = 0.055  # J4 → J5 (y). 서보 외형 자료 두 가지에서 다 맞는 값 (main의 비교표)
-    d56: float = 0.055  # J5 → J6 (z)
+    d45: float = (
+        0.063  # J4 → J5 (y). UR식 원통이 두 서보 외형 자료에서 다 들어가는 값 (0019, covers.py)
+    )
+    d56: float = 0.063  # J5 → J6 (z)
     d6f: float = 0.05  # J6 → 플랜지 (y)
     camera_tilt: float = 20 * DEG  # D405 광축을 도구 축 쪽으로 기울이는 각
     camera_back: float = (

@@ -8,7 +8,7 @@
   - 작업 자세(실제 방위)와 박스를 옮기는 길에서 팔이 기둥에 닿지 않는지
   - 플랜지에 단 보드로 캘리브레이션 자세가 몇 개 나오는지 (보드 두 가지)
 - 손목 카메라는 책상 위 캘리브레이션 보드(7 × 5, 25 mm 칸)를 여러 방향에서 볼 수 있는지 본다.
-- 책상과 작업 자리는 0014, 팔 형상과 손목 카메라 자리는 packaging.py(0017)다.
+- 책상과 작업 자리는 0014, 팔 형상과 손목 카메라 자리는 UR식 외형(covers.py)이다.
   책상 가장자리에서 베이스 중심까지는 아직 정하지 않아 어림값(DESK_X)이다.
 """
 
@@ -24,11 +24,18 @@ from numpy.typing import NDArray
 
 from horilab_design.ik import AnalyticIK
 from horilab_design.robot import Mat, Robot, Vec3, link_poses, rotation
+from horilab_design.studies import covers, skeleton
 from horilab_design.studies import packaging as pk
-from horilab_design.studies import skeleton
 from horilab_design.studies.packaging import DEG, Builder, Prim, X, Z
 
 Mask = NDArray[np.bool_]
+
+
+def arm_shapes(layout: pk.Layout, tool: pk.Tool) -> tuple[Robot, list[Prim], pk.Camera]:
+    """UR식 외형의 팔 형상과 D405 자리."""
+    robot, prims, _, cam = covers.build_ur_arm(layout, tool)
+    return robot, prims, cam
+
 
 D405_FOV = (84 * DEG, 58 * DEG)  # 깊이 시야 (가로, 세로). 사양서 값이다 (홈페이지는 가로 87°)
 # [m] 848×480에서 깊이를 재는 가장 가까운 거리(1280×720은 0.10), 사양서가 정확도(±2%)를 주는 거리의 끝
@@ -358,7 +365,7 @@ class CalResult:
 
 
 def eye_to_hand_calibration(cam: PostCam, layout: pk.Layout, key: str) -> CalResult:
-    robot, prims, _ = pk.build_arm(layout, pk.TOOLS[key])
+    robot, prims, _ = arm_shapes(layout, pk.TOOLS[key])
     scene = pk.build_scene(robot, prims, post_prims(cam))
     ik = AnalyticIK(robot)
     R, eye = cam.frame(), np.array(cam.eye)
@@ -462,9 +469,8 @@ def eye_in_hand_calibration(
     layout: pk.Layout, tool: pk.Tool, fixed: list[Prim] | None = None
 ) -> WristResult:
     """보드 칸 모서리의 3/4 이상이 시야 안에 들고 가리지 않으면 된 것으로 본다. fixed는 책상의 기둥."""
-    robot, prims, mods = pk.build_arm(layout, tool)
+    robot, prims, cam = arm_shapes(layout, tool)
     scene = pk.build_scene(robot, prims, fixed)
-    cam = pk.camera_of(layout, mods)
     b = np.array([*CAL_BOARD, 0.002])
     corners = board_corners_on_desk()
     seeds = [
@@ -528,7 +534,7 @@ def baseline_clear(layout: pk.Layout) -> list[int]:
     out = []
     for key, poses_of in TASK_SETS:
         tool = pk.TOOLS[key]
-        robot, prims, _ = pk.build_arm(layout, tool)
+        robot, prims, _ = arm_shapes(layout, tool)
         scene = pk.build_scene(robot, prims)
         res = pk.check_set(scene, AnalyticIK(robot), poses_of(tool), tool.name, tool.symmetric)
         out.append(res.clear)
@@ -546,15 +552,15 @@ def evaluate_post(cam: PostCam, layout: pk.Layout, baseline: list[int]) -> PostR
     lost = []
     for (key, poses_of), base in zip(TASK_SETS, baseline, strict=True):
         tool = pk.TOOLS[key]
-        robot, prims, _ = pk.build_arm(layout, tool)
+        robot, prims, _ = arm_shapes(layout, tool)
         scene = pk.build_scene(robot, prims, fixed)
         res = pk.check_set(scene, AnalyticIK(robot), poses_of(tool), tool.name, tool.symmetric)
         lost.append(base - res.clear)
-    robot, prims, _ = pk.build_arm(layout, pk.TOOLS["gripper"])  # 가장 긴 도구
+    robot, prims, _ = arm_shapes(layout, pk.TOOLS["gripper"])  # 가장 긴 도구
     upright = upright_hits(pk.build_scene(robot, prims, fixed))
 
     tool = pk.TOOLS["suction"]
-    robot, prims, _ = pk.build_arm(layout, tool)
+    robot, prims, _ = arm_shapes(layout, tool)
     scene = pk.build_scene(robot, prims, fixed)
     visible_pts = all_pts[in_view(R, eye, all_pts)]
     best_seen = 0.0

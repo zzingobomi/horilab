@@ -56,7 +56,7 @@ def test_far_target_is_not_reached_by_flipping_the_wrist() -> None:
 
 @pytest.mark.parametrize("sts", ["drawing", "step"])
 def test_packaging_layout_stacks_boxes_without_collisions(sts: str) -> None:
-    # 손목 55 · 55 · 50 mm는 STS 외형 자료 두 가지에서 다 박스 쌓기 자세가 부딪히지 않는다
+    # 지금 손목 오프셋(63 · 63 · 50 mm)은 STS 외형 자료 두 가지에서 다 박스 쌓기 자세가 부딪히지 않는다
     layout = packaging.Layout(sts=sts)  # type: ignore[arg-type]
     tool = packaging.TOOLS["suction"]
     robot, prims, _ = packaging.build_arm(layout, tool)
@@ -109,19 +109,18 @@ def test_overhead_post_camera_sees_the_work_spots_and_stays_out_of_the_way() -> 
         assert cameras.in_view(R, eye, pts).all()
     fixed = cameras.post_prims(cam)
     tool = packaging.TOOLS["suction"]
-    robot, prims, _ = packaging.build_arm(packaging.Layout(), tool)
+    robot, prims, _ = cameras.arm_shapes(packaging.Layout(), tool)
     scene = packaging.build_scene(robot, prims, fixed)
     poses = cameras.placed_stacking_poses(tool) + cameras.transit_poses(tool)
     result = packaging.check_set(scene, AnalyticIK(robot), poses, tool.name, tool.symmetric)
     assert result.clear == result.total, result.failures
-    robot, prims, _ = packaging.build_arm(packaging.Layout(), packaging.TOOLS["gripper"])
+    robot, prims, _ = cameras.arm_shapes(packaging.Layout(), packaging.TOOLS["gripper"])
     assert cameras.upright_hits(packaging.build_scene(robot, prims, fixed)) == 0
 
 
 def test_wrist_camera_aim_puts_the_lens_on_the_view_point() -> None:
     layout = packaging.Layout()
-    robot, _, mods = packaging.build_arm(layout, packaging.TOOLS["suction"])
-    cam = packaging.camera_of(layout, mods)
+    robot, _, cam = cameras.arm_shapes(layout, packaging.TOOLS["suction"])
     board = np.array([*cameras.CAL_BOARD, 0.0])
     eye = board + np.array([0.0, 0.0, 0.25])
     seeds = [np.radians([0.0, 20.0, 80.0, 165.0, 90.0, 10.0])]
@@ -144,9 +143,9 @@ def test_rings_become_box_segments_mapped_to_one_shape() -> None:
 
 
 @pytest.mark.parametrize("sts", ["drawing", "step"])
-def test_ur_covers_fit_whole_with_longer_wrist_offsets(sts: str) -> None:
-    # 손목 오프셋 62 mm면 서보 외형 자료 두 가지에서 다 뚜껑을 줄이지 않고 박스 쌓기 자세가 부딪히지 않는다
-    layout = packaging.Layout(d45=0.062, d56=0.062, sts=sts)  # type: ignore[arg-type]
+def test_ur_covers_fit_whole_at_the_chosen_wrist_offsets(sts: str) -> None:
+    # 손목 오프셋 63 mm(0019)면 서보 외형 자료 두 가지에서 다 뚜껑을 줄이지 않고 박스 쌓기 자세가 부딪히지 않는다
+    layout = packaging.Layout(sts=sts)  # type: ignore[arg-type]
     tool = packaging.TOOLS["suction"]
     robot, prims, mods, _ = covers.build_ur_arm(layout, tool)
     for drum in covers.drums(layout, mods, covers.Look()).values():
