@@ -10,77 +10,87 @@
 #   if_needed  조건이 생기면 산다. 아직 살지 모른다
 # stage: 처음 필요한 제작 로드맵 단계 (docs/status.md)
 # vendor, url: 사는 곳과 링크. 모르면 비우고, search에 찾을 때 쓸 검색어(모델 번호나 규격)를 둔다
-# 값은 확인한 때(priced)의 값이다. 모르면 비워 둔다 (합계에서 빠지고 표에 "모름"으로 나온다)
+# 값은 부가세를 넣은 값이고, 확인한 때(priced)의 값이다. 모르면 비워 둔다 (합계에서 빠지고 표에 "모름"으로 나온다)
+# lead_days는 주문해서 받기까지다 (준비 기간 + 택배)
 
 [[item]]
-name = "디지털 저울 (0.01 g 단위, 500 g)"
+name = "디지털 저울 Coms TB727 (0.01 g 단위, 500 g)"
 qty = 1
 stage = 0
 when = "now"
 since = 2026-11-08
 vendor = "디바이스마트"
-search = "TB727"
-lead_days = [1, 3]
+url = "https://www.devicemart.co.kr/goods/view?no=15811773"
+lead_days = [4, 7]
 unit_price_krw = 14080
-priced = "2026-11"
+priced = "2026-11-08"
 why = "서보, D405, 출력물 무게를 잰다. 서보 무게는 부품 설계 전에 잰다 (0006, 0011)"
 
 [[item]]
-name = "다이얼 게이지 (0.01 mm 눈금, 스템 8 mm)"
+name = "다이얼 게이지 SM2046 (0~10 mm, 0.01 mm 눈금, 스템 8 mm)"
 qty = 1
 stage = 2
 when = "now"
 since = 2026-11-08
 vendor = "디바이스마트"
-search = "SM2046"
-lead_days = [1, 3]
+url = "https://www.devicemart.co.kr/goods/view?no=14115123"
+lead_days = [4, 7]
 unit_price_krw = 28490
-priced = "2026-11"
-why = "관절 틈과 반복 정밀도를 잰다 (0011, 0012). 저울과 같은 곳이라 같이 주문한다. 받침은 출력한다"
+priced = "2026-11-08"
+why = "관절 틈과 반복 정밀도를 잰다 (0011, 0012). 받침은 출력한다"
 
 [[item]]
-name = "USB 케이블 5 m (USB 2.0 이상, 서보 어댑터 쪽 USB-C)"
+name = "USB 2.0 A to C 케이블 5 m (Coms IF091)"
 qty = 1
 stage = 2
 when = "now"
 since = 2026-11-08
-search = "USB A to C 케이블 5m 데이터"
-lead_days = [1, 3]
-why = "서보 어댑터를 PC에 잇는다. PC 쪽 끝(A 또는 C)은 PC 포트에 맞추고, 충전 전용이 아닌 데이터 케이블을 산다"
+vendor = "디바이스마트"
+url = "https://www.devicemart.co.kr/goods/view?no=12508308"
+lead_days = [3, 6]
+unit_price_krw = 6270
+priced = "2026-11-08"
+why = "서보 어댑터(USB-C)를 PC의 USB-A 포트에 잇는다. 데이터 케이블이다"
 
 [[item]]
-name = "나사식 4 mm 바나나 플러그 빨강·검정 (한 쌍)"
+name = "나사식 4 mm 바나나 플러그 (Adafruit 3694, 5개 묶음, 15 A)"
 qty = 1
 stage = 2
 when = "now"
 since = 2026-11-08
-search = "바나나 플러그 4mm 나사식"
-lead_days = [1, 3]
-why = "로봇 전용 전원선의 가변 전원 쪽 끝 (0016). 납땜 없이 나사로 조인다"
+vendor = "디바이스마트 (해외 상품)"
+url = "https://www.devicemart.co.kr/goods/view?no=15820209"
+lead_days = [12, 16]
+unit_price_krw = 9900
+priced = "2026-11-08"
+why = "로봇 전용 전원선의 가변 전원 쪽 끝 (0016). 작은 나사로 선을 물려 납땜이 없고, 18 AWG 선이 들어간다(22~14 AWG). 여러 색 묶음이라 빨강·검정이 없으면 테이프로 +, −를 표시한다"
 
 [[item]]
-name = "크로스 롤러 베어링 RU42 (20 × 70 × 12, 틈 등급 C0)"
+name = "크로스 롤러 베어링 RU42UUCC0 (20 × 70 × 12, 틈 등급 C0)"
 qty = 1
 stage = 5
 when = "now"
 since = 2026-11-08
 vendor = "AliExpress"
-search = "RU42 crossed roller bearing"
+url = "https://www.aliexpress.us/item/3256807234477530.html"
+search = "RU42UUCC0"
 lead_days = [7, 14]
 unit_price_usd = 35
 priced = "2026-11"
-why = "J1 받침 (0015). 배송이 길고, 오면 틈과 돌림을 재서 6806 대안과 비교한 뒤 베이스를 설계한다"
+why = "J1 받침 (0015). 배송이 길고, 오면 틈과 돌림을 재서 6806 대안과 비교한 뒤 베이스를 설계한다. 옵션은 RU42UUCC0(틈 C0)을 고른다. 값은 비슷한 다른 판매 글의 값이라 주문할 때 다시 본다"
 
 [[item]]
-name = "깊은 홈 볼 베어링 6806ZZ (30 × 42 × 7)"
+name = "깊은 홈 볼 베어링 6806ZZ 일제 (30 × 42 × 7)"
 qty = 2
 stage = 5
 when = "now"
 since = 2026-11-08
-search = "6806ZZ 베어링"
-unit_price_krw = 1000
-priced = "2026-11"
-why = "RU42가 나쁠 때의 J1 대안 (0015). 싸서 비교용으로 같이 산다"
+vendor = "디바이스마트"
+url = "https://www.devicemart.co.kr/goods/view?no=1273665"
+lead_days = [3, 6]
+unit_price_krw = 8360
+priced = "2026-11-08"
+why = "RU42가 나쁠 때의 J1 대안 (0015). NSK·NTN·KOYO·NACHI·IJK 중 하나가 온다. 다른 디바이스마트 품목과 같이 산다"
 
 [[item]]
 name = "강철 핀 지름 3 mm (MISUMI MS3)"

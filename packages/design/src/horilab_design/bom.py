@@ -119,8 +119,11 @@ def _total(items: list[Item]) -> str:
     krw = sum(i.unit_price_krw * i.qty for i in items if i.unit_price_krw is not None)
     usd = sum(i.unit_price_usd * i.qty for i in items if i.unit_price_usd is not None)
     unknown = sum(not i.known() for i in items)
-    parts = [f"{krw:,}원"] + ([f"${usd:g}"] if usd else [])
-    return " + ".join(parts) + (f", 값 모름 {unknown}개" if unknown else "")
+    parts = ([f"{krw:,}원"] if krw else []) + ([f"${usd:g}"] if usd else [])
+    text = " + ".join(parts)
+    if unknown:
+        text += (", " if text else "") + f"값 모름 {unknown}개"
+    return text or "0원"
 
 
 def render(purchases: Purchases) -> str:
@@ -154,6 +157,14 @@ def render(purchases: Purchases) -> str:
             f"| {_cell(i.name)} | {i.qty} | {i.price()} | {_where(i)} | {_lead(i)} | {_cell(i.why)} | "
             f"{i.since.isoformat()} |"
         )
+    shops: dict[str, list[Item]] = {}
+    for i in now:
+        shops.setdefault(i.vendor or "사는 곳 찾는 중", []).append(i)
+    lines += [
+        "",
+        "사는 곳별: "
+        + " · ".join(f"{_cell(v)} {len(rows)}개 {_total(rows)}" for v, rows in shops.items()),
+    ]
     if shipping:
         lines += [
             "",
