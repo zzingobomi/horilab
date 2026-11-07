@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from horilab_design.ik import AnalyticIK
+from horilab_design.studies import skeleton
 from horilab_design.studies.common import (
     MASS_CASES,
     TASK_YAWS_DEG,
@@ -30,6 +32,16 @@ def test_both_wrist_templates_reach_every_task_pose_and_keep_one_wrist_side() ->
         solutions = task_solutions(robot, point_masses(robot, MASS_CASES[0], 0.05), 0.30)
         assert all(q is not None for q in solutions)
         assert all(q[4] > 0 for q in solutions if q is not None)
+
+
+def test_skeleton_targets_follow_the_layout() -> None:
+    # 0014: 집는 곳 1자리(박스 1층) + 팔레트 4자리 × 4층, 자리마다 박스 윗면과 그 위 3 cm
+    poses = skeleton.targets()
+    assert len(poses) == (1 + 4 * 4) * 2
+    radii = [radius for radius, _, _ in poses]
+    heights = [height for _, height, _ in poses]
+    assert 0.179 < min(radii) and max(radii) < 0.241
+    assert min(heights) == pytest.approx(0.04) and max(heights) == pytest.approx(0.19)
 
 
 def test_far_target_is_not_reached_by_flipping_the_wrist() -> None:
