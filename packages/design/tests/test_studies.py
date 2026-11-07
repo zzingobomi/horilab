@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import pytest
 
 from horilab_design.ik import AnalyticIK
 from horilab_design.statics import PointMass, frame_poses
-from horilab_design.studies import cameras, covers, packaging, skeleton
+from horilab_design.studies import cameras, covers, packaging, reach, skeleton
 from horilab_design.studies.common import (
     MASS_CASES,
+    RATED_MARGIN,
     TASK_YAWS_DEG,
     pick_solution,
     point_masses,
@@ -71,11 +74,37 @@ def test_packaging_layout_matches_the_value_file() -> None:
     # 배치 검토의 기본 골격은 params/arm.toml(0017)과 같아야 한다
     arm = load_arm().arm
     layout = packaging.Layout()
+    assert layout.shoulder * 1000 == pytest.approx(arm.shoulder_height_mm)
     assert layout.upper * 1000 == pytest.approx(arm.upper_arm_mm)
     assert layout.fore * 1000 == pytest.approx(arm.forearm_mm)
     assert layout.d45 * 1000 == pytest.approx(arm.j4_to_j5_mm)
     assert layout.d56 * 1000 == pytest.approx(arm.j5_to_j6_mm)
     assert layout.d6f * 1000 == pytest.approx(arm.j6_to_flange_mm)
+
+
+def test_skeleton_reaches_the_corners_of_the_main_work_zone() -> None:
+    # 0017: 흡착과 평행 그리퍼가 주 작업 영역의 네 귀퉁이에 도구를 아래로 향해 닿고, 버팀 토크가 목표 안이다
+    s = reach.scenes(packaging.Layout())
+    for r, z in itertools.product((0.16, 0.30), reach.MAIN_Z):
+        cell = reach.cell(s, r, z)
+        assert cell.down and cell.grip, (r, z)
+        assert max(cell.torque) <= RATED_MARGIN, (r, z)
+
+
+def test_desk_share_counts_the_part_of_the_work_zone_on_the_desk() -> None:
+    assert reach.desk_share(0.60, 0.36, 0.06) == pytest.approx(1.0)
+    assert 0.9 < reach.desk_share(0.55, 0.34, 0.06) < 1.0
+
+
+def test_symmetric_tool_flip_stays_inside_the_j6_range() -> None:
+    # 대칭 도구는 J6를 180° 돌린 해도 쓰지만, 그 각도 J6 범위 안이어야 한다
+    tool = packaging.TOOLS["suction"]
+    robot = packaging.arm(packaging.Layout())
+    ik = AnalyticIK(robot)
+    T = packaging.tool_pose((0.22, 0.0, 0.06), 0.0, 0.0, 0.0, tool.length)
+    assert packaging.solve(ik, T)
+    j6 = robot.joints[5]
+    assert all(j6.lower <= q[5] <= j6.upper for q in packaging.solve(ik, T, symmetric=True))
 
 
 def test_packaging_reports_designed_gaps_but_not_as_collisions() -> None:

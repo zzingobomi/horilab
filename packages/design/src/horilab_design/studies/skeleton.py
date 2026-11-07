@@ -66,18 +66,23 @@ def targets() -> list[tuple[float, float, float]]:
 
 
 def with_lengths(
-    params: ArmParams, upper: float, fore: float, offsets: tuple[float, float, float]
+    params: ArmParams,
+    upper: float,
+    fore: float,
+    offsets: tuple[float, float, float],
+    shoulder: float | None = None,
 ) -> ArmParams:
-    arm = params.arm.model_copy(
-        update={
-            "upper_arm_mm": upper * 1000,
-            "forearm_mm": fore * 1000,
-            "j4_to_j5_mm": offsets[0] * 1000,
-            "j5_to_j6_mm": offsets[1] * 1000,
-            "j6_to_flange_mm": offsets[2] * 1000,
-        }
-    )
-    return params.model_copy(update={"arm": arm})
+    """길이를 바꾼 팔 값. shoulder(설치면 → J2 축)를 주지 않으면 값 파일 그대로다."""
+    update = {
+        "upper_arm_mm": upper * 1000,
+        "forearm_mm": fore * 1000,
+        "j4_to_j5_mm": offsets[0] * 1000,
+        "j5_to_j6_mm": offsets[1] * 1000,
+        "j6_to_flange_mm": offsets[2] * 1000,
+    }
+    if shoulder is not None:
+        update["shoulder_height_mm"] = shoulder * 1000
+    return params.model_copy(update={"arm": params.arm.model_copy(update=update)})
 
 
 @dataclass(frozen=True)

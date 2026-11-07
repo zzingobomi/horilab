@@ -37,6 +37,10 @@ class AnalyticIK:
         """EAIK가 판별한 구조 (예: 구형 손목, 평행한 세 축)."""
         return str(self._solver.getKinematicFamily())
 
+    @property
+    def robot(self) -> Robot:
+        return self._robot
+
     def solve(self, T_base_flange: ArrayLike) -> Mat:
         """플랜지 자세에 맞는 정확한 해를 모두 준다 (k × 관절 수, 각은 -π~π). 관절 한계는 보지 않는다."""
         target = np.array(T_base_flange, dtype=float)

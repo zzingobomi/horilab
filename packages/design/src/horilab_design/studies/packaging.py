@@ -382,8 +382,9 @@ class Module:
 class Layout:
     """골격 후보. 길이는 [m], 각도는 [rad]."""
 
-    upper: float = 0.20
-    fore: float = 0.17
+    shoulder: float = 0.16  # 설치면 → J2 축
+    upper: float = 0.22
+    fore: float = 0.18
     d45: float = (
         0.063  # J4 → J5 (y). UR식 원통이 두 서보 외형 자료에서 다 들어가는 값 (0019, covers.py)
     )
@@ -440,7 +441,11 @@ BOARD_SIDE_OFFSET = 0.090  # 옆 보드 가운데의 플랜지 y [m]
 
 def arm(layout: Layout) -> Robot:
     params = with_lengths(
-        load_arm(), layout.upper, layout.fore, (layout.d45, layout.d56, layout.d6f)
+        load_arm(),
+        layout.upper,
+        layout.fore,
+        (layout.d45, layout.d56, layout.d6f),
+        layout.shoulder,
     )
     return arm_robot(params, load_servos())
 
@@ -883,11 +888,13 @@ def grasp_poses(tool: Tool) -> list[Pose]:
 
 
 def solve(ik: AnalyticIK, T: Mat, symmetric: bool = False) -> list[np.ndarray]:
+    """작업 자세의 해. symmetric이면 J6를 180° 돌린 해도 넣는다 (J6 범위 안일 때만)."""
     sols = [np.asarray(q) for q in working_solutions(ik, T)]
     if symmetric:
+        j6 = ik.robot.joints[5]
         for q in list(sols):
             for turn in (math.pi, -math.pi):
-                if abs(q[5] + turn) <= math.pi:
+                if j6.lower <= q[5] + turn <= j6.upper:
                     flipped = q.copy()
                     flipped[5] += turn
                     sols.append(flipped)
