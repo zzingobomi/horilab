@@ -151,14 +151,15 @@ Material = Literal["pla", "servo", "metal", "camera", "tool"]
 
 @dataclass(frozen=True)
 class Prim:
-    """링크 좌표계에 둔 상자나 원기둥 하나. 원기둥 축은 형상 좌표계의 z다."""
+    """링크 좌표계에 둔 상자, 원기둥, 고리(속이 빈 원기둥) 하나. 원기둥과 고리의 축은 형상 좌표계의 z다."""
 
     name: str
     link: int  # 0 베이스, i 관절 i가 움직이는 링크, 7 도구(링크 6에 붙음)
-    shape: Literal["box", "cyl"]
+    shape: Literal["box", "cyl", "ring"]
     pos: np.ndarray
     rot: np.ndarray
-    size: tuple[float, float, float]  # 상자: 반 크기 / 원기둥: (반지름, 반 길이, 0)
+    # 상자: 반 크기 / 원기둥: (반지름, 반 길이, 0) / 고리: (바깥 반지름, 반 길이, 안쪽 반지름)
+    size: tuple[float, float, float]
     material: Material
     mass: float
     group: str  # 보고용 묶음 (예: "J4 서보")
@@ -213,7 +214,9 @@ class Builder:
         mass: float | None = None,
         group: str = "",
         frame: tuple[np.ndarray, np.ndarray] | None = None,
+        inner: float = 0.0,
     ) -> None:
+        """inner > 0이면 안쪽 반지름이 inner인 고리다."""
         origin, R = frame if frame is not None else (np.zeros(3), np.eye(3))
         z = R @ np.asarray(axis, float)
         z /= np.linalg.norm(z)
@@ -221,11 +224,14 @@ class Builder:
         x = np.cross(helper, z)
         x /= np.linalg.norm(x)
         rot = np.column_stack([x, np.cross(z, x), z])
-        vol = math.pi * radius**2 * length
+        vol = math.pi * (radius**2 - inner**2) * length
         m = mass if mass is not None else (PLA_DENSITY * vol if material == "pla" else 0.0)
         pos = origin + R @ np.asarray(center, float)
+        shape: Literal["cyl", "ring"] = "ring" if inner > 0 else "cyl"
         self.prims.append(
-            Prim(name, link, "cyl", pos, rot, (radius, length / 2, 0.0), material, m, group or name)
+            Prim(
+                name, link, shape, pos, rot, (radius, length / 2, inner), material, m, group or name
+            )
         )
 
 
@@ -688,6 +694,28 @@ class Scene:
     geom_prim: dict[int, Prim]
 
 
+RING_SEGMENTS = 32  # 고리를 나누는 상자 수. 상자 바깥 모서리는 고리보다 0.15 mm쯤 나온다
+
+
+def _geom_pieces(p: Prim) -> list[tuple[str, int, list[float], np.ndarray, np.ndarray]]:
+    """MuJoCo geom으로 쓸 조각들 (이름, 종류, 크기, 위치, 회전). MuJoCo에 속 빈 원기둥이 없어서
+    고리는 둘레를 상자로 나눈다. 상자 안쪽 면은 고리 안쪽 원 밖에 있어서 안쪽 틈은 줄지 않는다."""
+    box, cyl = int(mujoco.mjtGeom.mjGEOM_BOX), int(mujoco.mjtGeom.mjGEOM_CYLINDER)
+    if p.shape == "box":
+        return [(p.name, box, list(p.size), p.pos, p.rot)]
+    if p.shape == "cyl":
+        return [(p.name, cyl, [p.size[0], p.size[1], 0.0], p.pos, p.rot)]
+    r_out, half, r_in = p.size
+    mid, width = (r_in + r_out) / 2, r_out * math.tan(math.pi / RING_SEGMENTS)
+    pieces = []
+    for k in range(RING_SEGMENTS):
+        a = 2 * math.pi * k / RING_SEGMENTS
+        pos = p.pos + p.rot @ np.array([mid * math.cos(a), mid * math.sin(a), 0.0])
+        rot = p.rot @ rotation(Z, a)
+        pieces.append((f"{p.name}#{k}", box, [(r_out - r_in) / 2, width, half], pos, rot))
+    return pieces
+
+
 def build_scene(robot: Robot, prims: list[Prim], fixed: list[Prim] | None = None) -> Scene:
     """fixed는 책상에 고정된 물건(카메라 기둥 등)이다. 베이스와 따로 "fixture" 몸체에 둔다."""
     spec = mujoco.MjSpec()
@@ -709,25 +737,28 @@ def build_scene(robot: Robot, prims: list[Prim], fixed: list[Prim] | None = None
     fixture = world.add_body(name="fixture")
     fixed = fixed or []
     placed = [(p, bodies[p.link], p.link == 0) for p in prims] + [(p, fixture, True) for p in fixed]
+    by_name: dict[str, Prim] = {}
     for p, body, static in placed:
-        quat = np.zeros(4)
-        mujoco.mju_mat2Quat(quat, p.rot.flatten())
-        size = list(p.size) if p.shape == "box" else [p.size[0], p.size[1], 0.0]
-        gtype = mujoco.mjtGeom.mjGEOM_BOX if p.shape == "box" else mujoco.mjtGeom.mjGEOM_CYLINDER
-        body.add_geom(
-            name=p.name,
-            type=gtype,
-            size=size,
-            pos=list(p.pos),
-            quat=list(quat),
-            contype=1,
-            conaffinity=1 if static else 3,
-            margin=CONTACT_MARGIN,
-        )
+        for name, gtype, size, pos, rot in _geom_pieces(p):
+            quat = np.zeros(4)
+            mujoco.mju_mat2Quat(quat, rot.flatten())
+            body.add_geom(
+                name=name,
+                type=mujoco.mjtGeom(gtype),
+                size=size,
+                pos=list(pos),
+                quat=list(quat),
+                contype=1,
+                conaffinity=1 if static else 3,
+                margin=CONTACT_MARGIN,
+            )
+            by_name[name] = p
     all_prims = [*prims, *fixed]
     model = spec.compile()
     data = mujoco.MjData(model)
-    geom_prim = {mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, p.name): p for p in all_prims}
+    geom_prim = {
+        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name): p for name, p in by_name.items()
+    }
     return Scene(robot, all_prims, model, data, geom_prim)
 
 

@@ -6,7 +6,8 @@ import numpy as np
 import pytest
 
 from horilab_design.ik import AnalyticIK
-from horilab_design.studies import cameras, packaging, skeleton
+from horilab_design.statics import PointMass, frame_poses
+from horilab_design.studies import cameras, covers, packaging, skeleton
 from horilab_design.studies.common import (
     MASS_CASES,
     TASK_YAWS_DEG,
@@ -129,6 +130,48 @@ def test_wrist_camera_aim_puts_the_lens_on_the_view_point() -> None:
     lens, axis = cameras.camera_pose(robot, cam, solutions[0])
     np.testing.assert_allclose(lens, eye, atol=1e-4)
     assert axis @ np.array([0.0, 0.0, -1.0]) > np.cos(np.radians(0.2))
+
+
+def test_rings_become_box_segments_mapped_to_one_shape() -> None:
+    # MuJoCo에는 속 빈 원기둥이 없어서 고리는 상자 조각으로 나눈다. 부딪힘 보고는 고리 하나로 나와야 한다.
+    robot, prims, _, _ = covers.build_ur_arm(packaging.Layout(), packaging.TOOLS["suction"])
+    scene = packaging.build_scene(robot, prims)
+    rings = [p for p in prims if p.shape == "ring"]
+    assert rings
+    for ring in rings:
+        pieces = [g for g, p in scene.geom_prim.items() if p is ring]
+        assert len(pieces) == packaging.RING_SEGMENTS
+
+
+@pytest.mark.parametrize("sts", ["drawing", "step"])
+def test_ur_covers_fit_whole_with_longer_wrist_offsets(sts: str) -> None:
+    # 손목 오프셋 62 mm면 서보 외형 자료 두 가지에서 다 뚜껑을 줄이지 않고 박스 쌓기 자세가 부딪히지 않는다
+    layout = packaging.Layout(d45=0.062, d56=0.062, sts=sts)  # type: ignore[arg-type]
+    tool = packaging.TOOLS["suction"]
+    robot, prims, mods, _ = covers.build_ur_arm(layout, tool)
+    for drum in covers.drums(layout, mods, covers.Look()).values():
+        assert drum.cap_out_r == pytest.approx(drum.r_out)
+        assert drum.cap_back_r == pytest.approx(drum.r_out)
+    scene = packaging.build_scene(robot, prims)
+    poses = packaging.stacking_poses(tool)
+    result = packaging.check_set(scene, AnalyticIK(robot), poses, tool.name, tool.symmetric)
+    assert result.clear == result.total, result.failures
+
+
+def test_frame_deflection_matches_the_cantilever_formula() -> None:
+    # 수평인 보 끝에 무게 P: TCP의 높이 변화 = -P L² (X - L/3) / (2 E I), X는 보 시작점에서 TCP까지 보 방향 거리
+    robot = packaging.arm(packaging.Layout())
+    q = np.radians([0.0, 90.0, 0.0, 0.0, 0.0, 0.0])
+    z0, z1, r, t = 0.05, 0.15, 0.02, 0.0026
+    beam = covers.tube_beam("관", 2, z0, z1, r, t)
+    mass = PointMass("무게", 2, (0.0, 0.0, z1), 1.0)
+    moved, _ = covers.tcp_deflection(robot, q, [beam], [mass], np.zeros(3))
+    frames = frame_poses(robot, q)
+    start = frames[2][:3, :3] @ np.array([0.0, 0.0, z0]) + frames[2][:3, 3]
+    reach = frames[-1][0, 3] - start[0]
+    length, ei = z1 - z0, beam.ei1
+    expected = -9.81 * length**2 * (reach - length / 3) / (2 * ei)
+    assert moved[2] == pytest.approx(expected, rel=1e-3)
 
 
 def test_outward_wrist_keeps_j5_negative() -> None:
