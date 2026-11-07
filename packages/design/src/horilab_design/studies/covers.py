@@ -747,6 +747,43 @@ def offset_table(look: Look, sts: str) -> None:
         )
 
 
+LETTER_HEIGHT = 8.0 * MM  # 관 글자 높이 (0019, 어림)
+LETTER_DEPTH = 0.5 * MM  # 같은 색으로 파서 새기는 깊이 (0019)
+
+
+def groove_stiffness_loss(
+    r_out: float, wall: float, depth: float, height: float, center: float, n: int = 2000
+) -> float:
+    """관 겉면에 띠 모양 홈(폭 height, 깊이 depth)을 팠을 때 줄어드는 굽힘 강성의 비율.
+
+    center는 굽힘 방향에서 잰 홈 가운데의 각 [rad]이다 (0이면 처지는 쪽 면, π/2면 옆면).
+    글자가 띠를 다 채운다고 보아 크게 잡는다.
+    """
+    r = np.linspace(r_out - wall, r_out, n)
+    th = np.linspace(0.0, 2 * math.pi, n, endpoint=False)
+    rr, tt = np.meshgrid(r, th)
+    da = (r[1] - r[0]) * (th[1] - th[0]) * rr
+    second = (rr * np.cos(tt)) ** 2 * da
+    off = np.abs((tt - center + math.pi) % (2 * math.pi) - math.pi)
+    band = (rr >= r_out - depth) & (off <= height / 2 / r_out)
+    return float(second[band].sum() / second.sum())
+
+
+def lettering_report(look: Look) -> None:
+    print(
+        f"\n### 관 글자: 높이 {LETTER_HEIGHT / MM:.0f} mm, 깊이 {LETTER_DEPTH / MM:.1f} mm 띠를 파냈을 때 "
+        "줄어드는 굽힘 강성 (글자가 띠를 다 채운다고 봄)"
+    )
+    print("| 관 | 양쪽 옆면 | 위아래 면 하나 |")
+    print("|---|---|---|")
+    for name, r_out in (("위팔", look.upper_tube), ("아래팔", look.fore_tube)):
+        side = 2 * groove_stiffness_loss(
+            r_out, look.tube_wall, LETTER_DEPTH, LETTER_HEIGHT, math.pi / 2
+        )
+        top = groove_stiffness_loss(r_out, look.tube_wall, LETTER_DEPTH, LETTER_HEIGHT, 0.0)
+        print(f"| {name} | {side * 100:.2f}% | {top * 100:.1f}% |")
+
+
 def report(layout: Layout, look: Look) -> None:
     source = {"drawing": "2D 도면(축 근처 29, 먼 쪽 35)", "step": "STEP(몸통 33.1, 먼 쪽 37.25)"}[
         layout.sts
@@ -757,6 +794,7 @@ def report(layout: Layout, look: Look) -> None:
     compare(layout, look)
     ranges_and_view(layout, look)
     deflection_report(layout, look)
+    lettering_report(look)
     offset_table(look, layout.sts)
 
 

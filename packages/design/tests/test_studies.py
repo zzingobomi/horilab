@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import math
 
 import numpy as np
 import pytest
@@ -184,6 +185,20 @@ def test_ur_covers_fit_whole_at_the_chosen_wrist_offsets(sts: str) -> None:
     poses = packaging.stacking_poses(tool)
     result = packaging.check_set(scene, AnalyticIK(robot), poses, tool.name, tool.symmetric)
     assert result.clear == result.total, result.failures
+
+
+def test_groove_stiffness_loss_matches_thin_ring_estimate() -> None:
+    # 얇은 고리: 띠 홈이 줄이는 I는 (r⁴ 차이)/4 × ∫cos²θ dθ 이고, 전체 I는 π/4 (r_out⁴ - r_in⁴)이다
+    r_out, wall, depth, height = 0.020, 0.0026, 0.0005, 0.008
+    a = height / 2 / r_out
+    r_in = r_out - wall
+    shell = (r_out**4 - (r_out - depth) ** 4) / 4
+    whole = math.pi / 4 * (r_out**4 - r_in**4)
+    side = shell * (a - math.sin(2 * a) / 2) / whole
+    top = shell * (a + math.sin(2 * a) / 2) / whole
+    loss = covers.groove_stiffness_loss
+    assert loss(r_out, wall, depth, height, math.pi / 2) == pytest.approx(side, rel=0.02)
+    assert loss(r_out, wall, depth, height, 0.0) == pytest.approx(top, rel=0.02)
 
 
 def test_frame_deflection_matches_the_cantilever_formula() -> None:
