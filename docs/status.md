@@ -19,7 +19,9 @@
 
 ## 다음 할 일
 
-- 직접: 1차, 2차 공차 시험편(`build/coupons/`의 STL 여섯 개)을 흰색 PLA로 뽑아, 가장 잘 맞는 칸의 숫자를 고른다 (캘리퍼스는 필요 없다. 판정법은 [manufacturing.md](manufacturing.md#공차)). 검정 PLA가 오면 같은 시험편을 다시 뽑아 비교한다.
+- 직접: 공차 시험편. 흰색 PLA로 여섯 개를 다 뽑았고, 1차(M3 구멍과 너트 홈) 결과는 [data/measured.toml](../data/measured.toml)에 적었다. 남은 것은 아래와 같다 (판정법은 [manufacturing.md](manufacturing.md#공차)).
+  - 2차(서보 틀, 혼 자리): SO-101에서 STS3215 하나와 STS3250을 빼서 끼워 본다.
+  - 검정 PLA가 오면 같은 시험편을 다시 뽑아 비교한다.
 - 직접: SO-101에서 서보를 빼고 [hardware.md](hardware.md#기구-치수)의 "실물로 잴 것"을 잰다. 무게는 저울이 오면 잰다. 예전에 산 베어링 하나의 번호나 치수도 본다.
 - Claude: 링크와 브래킷의 휨 계산을 배치 검토에 넣는다 (부품 설계 전, [design.md](design.md#출력-전-확인)).
 - Claude: 외형은 UR식 모양(둥근 관절, 뚜껑, 이음매의 띠)을 바탕으로 정한다 ([references.md](references.md#외형)).
