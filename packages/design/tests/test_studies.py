@@ -92,6 +92,16 @@ def test_skeleton_reaches_the_corners_of_the_main_work_zone() -> None:
         assert max(cell.torque) <= RATED_MARGIN, (r, z)
 
 
+def test_tool_down_line_across_the_work_zone_is_continuous() -> None:
+    # 0017: 칸 사이도 이어진다. 영역을 가로지르는 직선에서 막힌 걸음이 없고 관절이 튀지 않는다
+    s = reach.scenes(packaging.Layout())
+    tool = packaging.TOOLS["suction"]
+    radii = np.linspace(reach.MAIN_R[0], reach.MAIN_R[1], 15)
+    t = reach.track(s, "suction", [reach.down_pose(float(r), 0.02, tool) for r in radii])
+    assert t.blocked == 0
+    assert np.degrees(t.step) < 10
+
+
 def test_desk_share_counts_the_part_of_the_work_zone_on_the_desk() -> None:
     assert reach.desk_share(0.60, 0.36, 0.06) == pytest.approx(1.0)
     assert 0.9 < reach.desk_share(0.55, 0.34, 0.06) < 1.0
