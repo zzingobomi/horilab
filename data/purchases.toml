@@ -90,7 +90,7 @@ url = "https://www.devicemart.co.kr/goods/view?no=1273665"
 lead_days = [3, 6]
 unit_price_krw = 8360
 priced = "2026-11-08"
-why = "RU42가 나쁠 때의 J1 대안 (0015). NSK·NTN·KOYO·NACHI·IJK 중 하나가 온다. 다른 디바이스마트 품목과 같이 산다"
+why = "RU42가 나쁠 때의 J1 대안 (0015). NSK·NTN·KOYO·NACHI·IJK 중 하나가 온다. 받으면 두 개의 실드에 찍힌 제조사와 틈 등급(C3 같은 표시, 없으면 보통 틈)이 같은지 보고, 손으로 돌려 걸림을 본다"
 
 [[item]]
 name = "강철 핀 지름 3 mm (MISUMI MS3)"
