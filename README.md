@@ -8,7 +8,8 @@
 
 | 문서 | 내용 |
 |---|---|
-| [status.md](docs/status.md) | 지금 단계, 다음 할 일, 구매 예정, 남은 질문 |
+| [status.md](docs/status.md) | 지금 단계, 다음 할 일, 남은 질문 |
+| [bom.md](docs/bom.md) | 부품표: 지금 살 것, 단계에 맞춰 살 것, 주문한 것 |
 | [goals.md](docs/goals.md) | 무엇을 만드나, 목표 기준, 대표 작업, 작업 공간 |
 | [background.md](docs/background.md) | 이전 프로젝트에서 배운 것 |
 | [references.md](docs/references.md) | 다른 로봇팔에서 가져올 점과 피할 것 |

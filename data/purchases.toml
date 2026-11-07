@@ -1,0 +1,157 @@
+# 구매 데이터 (docs/decisions/0002, 0004, 0006). 사람이 보는 표 docs/bom.md는 이 파일에서 만든다:
+#   uv run python -m horilab_design.bom
+# 받은 물건은 여기서 지우고 docs/hardware.md의 "가진 것"으로 옮긴다.
+#
+# status: buy_now(지금 산다) / at_stage(stage 전에 산다) / decide_first(규격을 정한 뒤 산다)
+#         / if_needed(조건이 생기면 산다) / ordered(주문함)
+# stage: 처음 필요한 제작 로드맵 단계 (docs/status.md)
+# 값은 확인한 때의 값이다. 모르면 비워 둔다 (합계에서 빠지고 표에 "미확인"으로 나온다).
+
+[[item]]
+name = "디지털 저울 (0.01 g 단위, 500 g)"
+qty = 1
+stage = 0
+status = "buy_now"
+vendor = "디바이스마트 TB727"
+lead_days = [1, 3]
+unit_price_krw = 14080
+priced = "2026-11"
+why = "서보, D405, 출력물 무게. 서보 무게는 부품 설계 전에 잰다 (0006, 0011)"
+
+[[item]]
+name = "다이얼 게이지 (0.01 mm 눈금, 스템 8 mm)"
+qty = 1
+stage = 2
+status = "buy_now"
+vendor = "디바이스마트 SM2046"
+lead_days = [1, 3]
+unit_price_krw = 28490
+priced = "2026-11"
+why = "관절 틈과 반복 정밀도를 잰다 (0011, 0012). 저울과 같은 곳이라 같이 주문한다. 받침은 출력한다"
+
+[[item]]
+name = "USB-C 케이블 5 m (USB 2.0 이상)"
+qty = 1
+stage = 2
+status = "buy_now"
+vendor = "국내 (미정)"
+lead_days = [1, 3]
+why = "서보 어댑터를 PC에 잇는다. PC 쪽 커넥터는 PC 포트에 맞춘다"
+
+[[item]]
+name = "나사식 4 mm 바나나 플러그 빨강·검정 (한 쌍)"
+qty = 1
+stage = 2
+status = "buy_now"
+vendor = "국내 (미정)"
+lead_days = [1, 3]
+why = "로봇 전용 전원선의 가변 전원 쪽 끝 (0016). 납땜 없이 나사로 조인다"
+
+[[item]]
+name = "크로스 롤러 베어링 RU42 (20 × 70 × 12, 틈 등급 C0)"
+qty = 1
+stage = 5
+status = "buy_now"
+vendor = "AliExpress"
+lead_days = [7, 14]
+unit_price_usd = 35
+priced = "2026-11"
+why = "J1 받침 (0015). 배송이 길고, 오면 틈과 돌림을 재서 6806 대안과 비교한 뒤 베이스를 설계한다"
+
+[[item]]
+name = "깊은 홈 볼 베어링 6806ZZ (30 × 42 × 7)"
+qty = 2
+stage = 5
+status = "buy_now"
+vendor = "미정"
+unit_price_krw = 1000
+priced = "2026-11"
+why = "RU42가 나쁠 때의 J1 대안 (0015). 싸서 비교용으로 같이 산다"
+
+[[item]]
+name = "강철 핀 지름 3 mm (MISUMI MS3)"
+qty = 10
+stage = 3
+status = "at_stage"
+vendor = "MISUMI"
+unit_price_krw = 556
+priced = "2026-11"
+why = "관절 영점 핀 (0015)과 3차 공차 시험편. 길이는 관절 시험 부품을 설계하며 정한다"
+
+[[item]]
+name = "서보 고정 나사 (STS3215 2 mm 자가탭, STS3250 M2, ST-3120 M2.5)"
+qty = 1
+stage = 3
+status = "at_stage"
+vendor = "굿나잇몰"
+lead_days = [1, 3]
+why = "서보 자리 (0015). 길이는 서보 자리를 설계하며 정한다. 국내라 설계 직후 사도 늦지 않다"
+
+[[item]]
+name = "M3 렌치볼트 여러 길이, 와셔"
+qty = 1
+stage = 3
+status = "at_stage"
+vendor = "굿나잇몰"
+lead_days = [1, 3]
+why = "구조 체결 (0003). 관절 시험 부품에서 길이를 정해 한 번에 넉넉히 산다 (0004)"
+
+[[item]]
+name = "흡착 부품 (펌프, 밸브, 흡착컵 지름 20~30 mm, 튜브, 압력 센서, 구동 모듈)"
+qty = 1
+stage = 4
+status = "decide_first"
+vendor = "미정"
+lead_days = [7, 14]
+why = "첫 그리퍼 (design.md 도구 순서). 사양과 제어 방법을 정한 뒤 산다. 해외 배송이면 관절 시험 중에 주문한다"
+
+[[item]]
+name = "D405 나사 고정 USB 3 Micro-B 케이블"
+qty = 1
+stage = 4
+status = "decide_first"
+vendor = "Newnex U3S7AS1MCI 또는 Coms NT552"
+why = "손목 D405 연결 (design.md D405 케이블). 손목을 설계할 때 고른다. Newnex는 해외 주문이다"
+
+[[item]]
+name = "MR106ZZ (6 × 10 × 3)"
+qty = 1
+stage = 3
+status = "if_needed"
+vendor = "미정"
+why = "ST-3120에 뒷면 혼이 없을 때 그 자리를 받친다 (0015)"
+
+[[item]]
+name = "PETG 검정 한 롤"
+qty = 1
+stage = 3
+status = "if_needed"
+vendor = "미정"
+why = "관절 시험에서 서보 둘레가 55~60°C 가까이 오르면 그 부품만 PETG로 뽑는다 (manufacturing.md)"
+
+[[item]]
+name = "랜 케이블"
+qty = 1
+stage = 2
+status = "if_needed"
+vendor = "국내 (미정)"
+why = "카메라용 파이를 유선으로 잇는다 (0005)"
+
+[[item]]
+name = "Feetech ST-3120-C001"
+qty = 1
+stage = 2
+status = "ordered"
+vendor = "AliExpress"
+unit_price_krw = 155960
+servo = true
+priced = "2026-11"
+why = "어깨 서보 (0011). 2026-11-07 주문, 11/12~18 도착 예정"
+
+[[item]]
+name = "뱀부랩 PLA Basic 검정"
+qty = 1
+stage = 0
+status = "ordered"
+vendor = "뱀부랩"
+why = "구조색 (manufacturing.md). 2026-11-07 주문. 오면 공차 시험편을 다시 뽑는다"
