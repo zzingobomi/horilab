@@ -4,37 +4,37 @@
 
 # UR형 6축 (0013). 영점 자세에서 팔은 위로 곧게 서고, 모든 링크 좌표계가 베이스와 같은 방향이다.
 # J1은 z축, J2·J3·J4는 y축, J5는 영점에서 z축, J6는 y축으로 돈다.
-# 길이는 0011, 0013 검토에 쓴 어림값이다. 골격 설계에서 작업 공간에 맞춰 정한다.
+# 길이와 범위는 골격 결정(0017)에서 정했다.
 [arm]
 shoulder_height_mm = 120 # 설치면 → J2 축
 upper_arm_mm = 200 # J2 축 → J3 축
-forearm_mm = 180 # J3 축 → J4 축
-j4_to_j5_mm = 50 # J4 축 방향 (STS3215 하나 크기 어림)
-j5_to_j6_mm = 50 # J5 축 방향
+forearm_mm = 170 # J3 축 → J4 축
+j4_to_j5_mm = 55 # J4 축 방향
+j5_to_j6_mm = 55 # J5 축 방향
 j6_to_flange_mm = 50 # J6 축 방향
 
 # 관절마다 서보(0011)와 범위. 범위는 영점 자세 기준이고 서보 한 바퀴(360°) 안이다.
-# 작업에 쓰는 각도가 범위 가운데에 오도록 영점(서보 혼 방향)을 정한다 (0013).
+# 브래킷이 부딪히기 전까지 돌 수 있는 범위에 여유를 둔 값이다 (0017).
 [joints.j1]
 servo = "STS3215"
-range_deg = [-175, 175]
+range_deg = [-175, 175] # 케이블 경로를 정할 때 다시 본다
 
 [joints.j2]
 servo = "ST-3120"
-range_deg = [-120, 120]
+range_deg = [-110, 110]
 
 [joints.j3]
 servo = "STS3250"
-range_deg = [-150, 150]
+range_deg = [-30, 118] # 아래팔이 위팔 쪽 서보 집에 닿는 한계
 
 [joints.j4]
 servo = "STS3215"
-range_deg = [5, 355] # 도구가 아래를 향하면 J4는 180° 둘레를 쓴다
+range_deg = [80, 235] # 도구가 아래를 향하면 J4는 180° 둘레를 쓴다
 
 [joints.j5]
 servo = "STS3215"
-range_deg = [-175, 175]
+range_deg = [-15, 140]
 
 [joints.j6]
 servo = "STS3215"
-range_deg = [-175, 175]
+range_deg = [-95, 115]

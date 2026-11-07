@@ -18,6 +18,7 @@ from horilab_design.studies.common import (
     tool_down,
     ur_arm,
 )
+from horilab_design.values import load_arm
 
 
 def test_task_poses_point_the_tool_down() -> None:
@@ -63,6 +64,17 @@ def test_packaging_layout_stacks_boxes_without_collisions(sts: str) -> None:
     result = packaging.check_set(scene, AnalyticIK(robot), poses, tool.name, tool.symmetric)
     assert result.reached == result.total == len(poses)
     assert result.clear == result.total, result.failures
+
+
+def test_packaging_layout_matches_the_value_file() -> None:
+    # 배치 검토의 기본 골격은 params/arm.toml(0017)과 같아야 한다
+    arm = load_arm().arm
+    layout = packaging.Layout()
+    assert layout.upper * 1000 == pytest.approx(arm.upper_arm_mm)
+    assert layout.fore * 1000 == pytest.approx(arm.forearm_mm)
+    assert layout.d45 * 1000 == pytest.approx(arm.j4_to_j5_mm)
+    assert layout.d56 * 1000 == pytest.approx(arm.j5_to_j6_mm)
+    assert layout.d6f * 1000 == pytest.approx(arm.j6_to_flange_mm)
 
 
 def test_packaging_reports_designed_gaps_but_not_as_collisions() -> None:
