@@ -1,8 +1,8 @@
-"""카메라 자리 검토: D405를 손목(eye-in-hand)과 책상의 카메라 기둥(eye-to-hand)에 옮겨 달 때 무엇이 보이는지 본다.
+"""카메라 자리 검토: 손목의 D405(eye-in-hand)와 책상 카메라 기둥의 USB 카메라(eye-to-hand)에서 무엇이 보이는지 본다.
 
     uv run python -m horilab_design.studies.cameras
 
-- 기둥 자리 후보마다 본다:
+- 기둥 카메라 자리 후보마다 본다:
   - 작업 자리(집는 곳 박스 윗면, 팔레트 네 층의 윗면, 앞쪽 잡기 자리)가 시야각과 거리 안에 드는지
   - 팔을 비켜 둔 자세에서 팔이 작업 자리를 가리지 않는지
   - 작업 자세(실제 방위)와 박스를 옮기는 길에서 팔이 기둥에 닿지 않는지
@@ -33,7 +33,12 @@ Mask = NDArray[np.bool_]
 D405_FOV = (84 * DEG, 58 * DEG)  # 깊이 시야 (가로, 세로). 사양서 값이다 (홈페이지는 가로 87°)
 # [m] 848×480에서 깊이를 재는 가장 가까운 거리(1280×720은 0.10), 사양서가 정확도(±2%)를 주는 거리의 끝
 D405_RANGE = (0.07, 0.50)
-D405_DEPTH = 0.023 + 0.010  # 몸체 두께 + 맞춤판 [m]
+# 기둥의 USB 카메라 (innomaker U20CAM-720P, docs/hardware.md): 왜곡을 보정한 시야(이전 프로젝트에서 잼).
+# 2D 카메라라 깊이 한계는 없다. 몸체는 32 × 32 mm 보드에 렌즈와 받침을 더한 어림이다.
+POST_FOV = (94 * DEG, 57 * DEG)
+POST_RANGE = (0.0, math.inf)
+POST_BODY = (0.032, 0.032, 0.030)
+POST_PIXELS = 1280  # 가로 화소 수
 DESK_X = (-0.06, 0.28)  # 책상 앞뒤 끝 (베이스 중심 기준, 어림) [m]
 DESK_Y = (-0.275, 0.275)
 BOX = skeleton.BOX
@@ -45,7 +50,7 @@ VISIBLE = 0.999  # 광선이 목표점 앞에서 막히지 않았다고 보는 �
 
 @dataclass(frozen=True)
 class PostCam:
-    """기둥에 단 D405. 가로(87°)는 수평으로 둔다. 위에서 곧장 내려다보면 가로가 책상 긴 변(y)이다."""
+    """기둥에 단 USB 카메라. 넓은 쪽(가로)은 수평으로 둔다. 위에서 곧장 내려다보면 가로가 책상 긴 변(y)이다."""
 
     name: str
     eye: Vec3  # 렌즈 가운데
@@ -67,15 +72,15 @@ class PostCam:
 
 
 def post_prims(cam: PostCam) -> list[Prim]:
-    """기둥(30 × 30 mm), (있으면) 가로 팔(20 × 20 mm), 카메라와 맞춤판."""
+    """기둥(30 × 30 mm), (있으면) 가로 팔(20 × 20 mm), 카메라."""
     b = Builder()
     eye, R = np.array(cam.eye), cam.frame()
-    half_d = D405_DEPTH / 2
+    hw, hh, half_d = POST_BODY[0] / 2, POST_BODY[1] / 2, POST_BODY[2] / 2
     b.box(
         0,
         "post/camera",
-        (-0.021, -0.021, -half_d),
-        (0.021, 0.021, half_d),
+        (-hw, -hh, -half_d),
+        (hw, hh, half_d),
         material="camera",
         frame=(eye - R[:, 2] * half_d, R),
         group="기둥 카메라",
@@ -99,14 +104,14 @@ def post_prims(cam: PostCam) -> list[Prim]:
         b.box(
             0,
             "post/drop",
-            (eye[0] - 0.010, eye[1] - 0.010, eye[2] + D405_DEPTH),
+            (eye[0] - 0.010, eye[1] - 0.010, eye[2] + POST_BODY[2]),
             (eye[0] + 0.010, eye[1] + 0.010, top - 0.020),
             group="기둥",
         )
     return b.prims
 
 
-# 0018 제안: 작업 자리 가운데보다 8 cm 맞은편, 렌즈 높이 45 cm에서 작업 자리 가운데를 겨눈다. 기둥은 맞은편 모서리.
+# 0018: 작업 자리 가운데보다 8 cm 맞은편, 렌즈 높이 45 cm에서 작업 자리 가운데를 겨눈다. 기둥은 맞은편 모서리.
 RECOMMENDED = PostCam(
     "8 cm 비켜 위 (기둥: 맞은편 왼쪽) 45",
     (0.22, 0.0, 0.45),
@@ -168,16 +173,22 @@ def candidates() -> list[PostCam]:
 
 
 def in_view(R: Mat, eye: Mat, pts: Mat) -> Mask:
-    """점마다 시야각 안이고 깊이(광축 방향 거리)가 D405_RANGE 안인지."""
+    """기둥 카메라: 점마다 시야각 안이고 광축 방향 거리가 POST_RANGE 안인지."""
     c = (pts - eye) @ R
     z = c[:, 2]
-    tx, ty = math.tan(D405_FOV[0] / 2), math.tan(D405_FOV[1] / 2)
+    tx, ty = math.tan(POST_FOV[0] / 2), math.tan(POST_FOV[1] / 2)
     return (
-        (np.abs(c[:, 0]) <= z * tx)
+        (z > 0)
+        & (np.abs(c[:, 0]) <= z * tx)
         & (np.abs(c[:, 1]) <= z * ty)
-        & (z >= D405_RANGE[0])
-        & (z <= D405_RANGE[1])
+        & (z >= POST_RANGE[0])
+        & (z <= POST_RANGE[1])
     )
+
+
+def pixel_mm(distance: float) -> float:
+    """기둥 카메라에서 distance [m] 떨어진 면의 한 화소 크기 [mm] (왜곡을 보정한 시야로 어림)."""
+    return 2 * distance * math.tan(POST_FOV[0] / 2) / POST_PIXELS * 1000
 
 
 def in_cone(eye: Mat, axis: Mat, pts: Mat) -> Mask:
@@ -300,7 +311,7 @@ def _flange_face(key: str) -> Mat:
 def board_poses(cam: PostCam, key: str) -> list[tuple[str, Mat, Mat]]:
     """(이름, 플랜지 자세, 보드 겉면 자세): 보드 가운데를 시야 안 여러 곳에 두고 면을 카메라 쪽에서 0~40° 기울인다."""
     R, eye = cam.frame(), np.array(cam.eye)
-    tx, ty = math.tan(D405_FOV[0] / 2), math.tan(D405_FOV[1] / 2)
+    tx, ty = math.tan(POST_FOV[0] / 2), math.tan(POST_FOV[1] / 2)
     face_inv = np.linalg.inv(_flange_face(key))
     out = []
     for dist in (0.22, 0.30, 0.38):
@@ -567,7 +578,8 @@ def evaluate_post(cam: PostCam, layout: pk.Layout, baseline: list[int]) -> PostR
 def main() -> None:
     layout = pk.Layout()
     print(
-        f"# 카메라 자리 검토 (D405 시야 {D405_FOV[0] / DEG:.0f}° × {D405_FOV[1] / DEG:.0f}°, "
+        f"# 카메라 자리 검토 (기둥 USB 카메라 시야 {POST_FOV[0] / DEG:.0f}° × {POST_FOV[1] / DEG:.0f}°, "
+        f"손목 D405 시야 {D405_FOV[0] / DEG:.0f}° × {D405_FOV[1] / DEG:.0f}°, "
         f"깊이 {D405_RANGE[0] * 100:.0f}~{D405_RANGE[1] * 100:.0f} cm)"
     )
     print(
@@ -578,7 +590,7 @@ def main() -> None:
     print("\n## 기둥 카메라 (eye-to-hand). 높이는 렌즈 [cm]")
     n_upright = len(UPRIGHT_J4) * len(UPRIGHT_J1)
     print(
-        "| 자리 | 시야·거리 안: 집는 곳 / 팔레트 1층·4층 / 잡기 | 깊이 [cm] | 팔 비킨 뒤 보임 | "
+        "| 자리 | 시야 안: 집는 곳 / 팔레트 1층·4층 / 잡기 | 광축 거리 [cm] (먼 곳 한 화소) | 팔 비킨 뒤 보임 | "
         "기둥에 막히는 자세: 쌓기/옮기기/포인터/잡기 | 곧게 선 팔이 닿는 J1·J4 조합 | "
         "캘리브레이션 자세: 축 보드 · 옆 보드 (종류/9) |"
     )
@@ -591,7 +603,8 @@ def main() -> None:
             f"{len(c.ok)}/{c.total} ({len(c.kinds())})" for c in r.calibration.values()
         )
         print(
-            f"| {cam.name} | {view} | {r.depth[0] * 100:.0f}~{r.depth[1] * 100:.0f} | "
+            f"| {cam.name} | {view} | {r.depth[0] * 100:.0f}~{r.depth[1] * 100:.0f} "
+            f"({pixel_mm(r.depth[1]):.2f} mm) | "
             f"{r.seen_parked:.0%} | {'/'.join(map(str, r.lost))} | {r.upright}/{n_upright} | {cal} |",
             flush=True,
         )
