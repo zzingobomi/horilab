@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from horilab_design.ik import AnalyticIK
-from horilab_design.studies import skeleton
+from horilab_design.studies import packaging, skeleton
 from horilab_design.studies.common import (
     MASS_CASES,
     TASK_YAWS_DEG,
@@ -50,6 +50,31 @@ def test_far_target_is_not_reached_by_flipping_the_wrist() -> None:
     T = tool_down(0.40, 0.16)
     assert len(ik.solve_in_limits(T)) > 0  # 손목을 뒤집은 해로는 닿는다
     assert pick_solution(robot, ik, T, point_masses(robot, MASS_CASES[0], 0.05)) is None
+
+
+@pytest.mark.parametrize("sts", ["drawing", "step"])
+def test_packaging_layout_stacks_boxes_without_collisions(sts: str) -> None:
+    # 손목 55 · 55 · 50 mm는 STS 외형 자료 두 가지에서 다 박스 쌓기 자세가 부딪히지 않는다
+    layout = packaging.Layout(sts=sts)  # type: ignore[arg-type]
+    tool = packaging.TOOLS["suction"]
+    robot, prims, _ = packaging.build_arm(layout, tool)
+    scene = packaging.build_scene(robot, prims)
+    poses = packaging.stacking_poses(tool)
+    result = packaging.check_set(scene, AnalyticIK(robot), poses, tool.name, tool.symmetric)
+    assert result.reached == result.total == len(poses)
+    assert result.clear == result.total, result.failures
+
+
+def test_packaging_reports_designed_gaps_but_not_as_collisions() -> None:
+    tool = packaging.TOOLS["gripper"]
+    robot, prims, _ = packaging.build_arm(packaging.Layout(), tool)
+    scene = packaging.build_scene(robot, prims)
+    q = packaging.solve(
+        AnalyticIK(robot), packaging.tool_pose((0.2, 0.0, 0.1), 0.0, 0.0, 0.0, tool.length)
+    )[0]
+    found = packaging.hits(scene, q)
+    assert not packaging.collisions(found)
+    assert any(h.designed for h in found)  # 서보와 그 혼·브래킷은 일부러 가깝다
 
 
 def test_outward_wrist_keeps_j5_negative() -> None:
