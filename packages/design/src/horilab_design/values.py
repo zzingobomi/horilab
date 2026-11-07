@@ -89,8 +89,23 @@ class ArmParams(_Values):
         return self
 
 
+Filament = Literal["pla_basic_white", "pla_basic_black"]
+
+
+class PrintFit(_Values):
+    """공차 시험편으로 고른 설계 치수 [mm]. 필라멘트마다 하나다 (docs/manufacturing.md의 "공차")."""
+
+    m3_hole_mm: float | None = None  # 세로 구멍: M3 볼트가 걸리지 않고 지나가는 가장 작은 지름
+    m3_hole_horizontal_mm: float | None = None  # 가로 구멍(물방울 모양)의 원 지름
+    m3_tap_hole_mm: float | None = None  # M3 볼트를 플라스틱에 바로 조여 넣는 구멍
+    m3_nut_pocket_mm: float | None = None  # 위에서 눌러 끼우는 육각 홈의 맞변 거리
+    m3_nut_slot_width_mm: float | None = None  # 옆에서 밀어 넣는 홈의 폭
+    m3_nut_slot_height_mm: float | None = None  # 옆에서 밀어 넣는 홈의 높이
+
+
 class Measured(_Values):
     servo_mass_g: dict[ServoModel, float] = {}
+    fit: dict[Filament, PrintFit] = {}
 
 
 def read_toml(path: Path) -> dict[str, Any]:
