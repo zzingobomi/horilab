@@ -189,7 +189,6 @@ ordered = 2026-11-07
 arrive = [2026-11-12, 2026-11-18]
 vendor = "AliExpress"
 unit_price_krw = 155960
-servo = true
 priced = "2026-11"
 why = "어깨 서보 (0011)"
 

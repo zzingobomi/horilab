@@ -64,7 +64,6 @@ class Item(_Values):
     unit_price_krw: int | None = None
     unit_price_usd: float | None = None
     priced: str = ""  # 값을 확인한 때
-    servo: bool = False  # 서보는 30만 원 예산과 따로 센다 (0004)
 
     @model_validator(mode="after")
     def _complete(self) -> Item:
@@ -128,29 +127,20 @@ def _total(items: list[Item]) -> str:
 
 
 def _budget(rows: list[tuple[str, list[Item]]]) -> list[str]:
-    """서보와 그 밖을 나눠 묶음마다 합을 보이고, 모두 더한다."""
-    out = [
-        "| | 서보 (30만 원과 따로) | 그 밖 (30만 원 예산) |",
-        "|---|---|---|",
-    ]
+    """묶음마다 합을 보이고, 모두 더한 값을 예산 기준과 견준다."""
+    out = ["| | 값 |", "|---|---|"]
     for title, group in rows:
-        servo = [i for i in group if i.servo]
-        other = [i for i in group if not i.servo]
-        out.append(
-            f"| {title} | {_total(servo) if servo else '-'} | {_total(other) if other else '-'} |"
-        )
+        out.append(f"| {title} | {_total(group) if group else '-'} |")
     every = [i for _, group in rows for i in group]
-    servo = [i for i in every if i.servo]
-    other = [i for i in every if not i.servo]
-    out.append(f"| **합** | **{_total(servo)}** | **{_total(other)}** |")
-    spent = sum(i.unit_price_krw * i.qty for i in other if i.unit_price_krw is not None)
+    out.append(f"| **합** | **{_total(every)}** |")
+    krw = sum(i.unit_price_krw * i.qty for i in every if i.unit_price_krw is not None)
+    gap = BUDGET_KRW - krw
+    side = f"{gap:,}원 남는다" if gap >= 0 else f"{-gap:,}원 넘는다"
     out += [
         "",
-        "- 서보는 꼭 필요하면 30만 원과 따로 더 쓴다 ([0004](decisions/0004-purchasing.md)). "
-        '"필요해지면" 품목은 아직 살지 몰라서 넣지 않는다.',
-        f"- 모두 더하면 {_total(every)}이다.",
-        f"- {BUDGET_KRW:,}원 예산에서 원화로 값을 아는 것을 빼면 {BUDGET_KRW - spent:,}원이 남는다 "
-        "(달러 값과 값 모름은 아직 빼지 않았다).",
+        f"- 예산은 {BUDGET_KRW:,}원 안팎이고 서보도 들어간다. 조금 넘는 것은 괜찮고, 수십만 원 차이가 나면 "
+        '다시 생각한다 ([0004](decisions/0004-purchasing.md)). "필요해지면" 품목은 아직 살지 몰라서 넣지 않는다.',
+        f"- 원화로 값을 아는 것만 빼면 {side}. 달러 값과 값 모름은 아직 들어가지 않았다.",
         "- 값은 확인한 때의 값이다. 지금 주문할 것의 값은 주문할 때 다시 본다.",
     ]
     return out

@@ -41,11 +41,12 @@ def test_received_items_stay_in_the_budget() -> None:
         ordered=dt.date(2026, 11, 7),
         received=dt.date(2026, 11, 14),
         unit_price_krw=155960,
-        servo=True,
     )
     text = bom.render(bom.Purchases(item=[got]))
     assert "## 배송 중" not in text
-    assert "| 받은 것 | 155,960원 | - |" in text
+    assert "| 받은 것 | 155,960원 |" in text
+    assert "| **합** | **155,960원** |" in text
+    assert "144,040원 남는다" in text
     assert "| 서보 | 1 | 2026-11-14 |" in text
 
 
