@@ -32,6 +32,23 @@ def test_an_item_to_buy_has_a_link_or_search_words_and_a_time() -> None:
     bom.Item(name="서보", qty=1, stage=2, why="어깨", ordered=dt.date(2026, 11, 7))
 
 
+def test_received_items_stay_in_the_budget() -> None:
+    got = bom.Item(
+        name="서보",
+        qty=1,
+        stage=2,
+        why="어깨",
+        ordered=dt.date(2026, 11, 7),
+        received=dt.date(2026, 11, 14),
+        unit_price_krw=155960,
+        servo=True,
+    )
+    text = bom.render(bom.Purchases(item=[got]))
+    assert "## 배송 중" not in text
+    assert "| 받은 것 | 155,960원 | - |" in text
+    assert "| 서보 | 1 | 2026-11-14 |" in text
+
+
 def test_ordered_items_leave_the_buy_now_list() -> None:
     now = bom.Item(
         name="저울",

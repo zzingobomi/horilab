@@ -1,7 +1,8 @@
 # 구매 데이터 (docs/decisions/0004, 0006). 사람이 보는 부품표 docs/bom.md는 이 파일에서 만든다:
 #   uv run python -m horilab_design.bom
 #
-# 아직 손에 없는 것만 둔다. 주문하면 ordered(와 arrive)를 넣고, 받으면 지우고 docs/hardware.md의 "가진 것"에 넣는다.
+# 주문하면 ordered(와 arrive)를 넣고, 받으면 received를 넣는다. 받은 것은 지우지 않고 예산에 남기며,
+# docs/hardware.md의 "가진 것"에도 넣는다.
 #
 # when: 언제 사나 (주문한 품목은 쓰지 않는다)
 #   now        지금 주문한다. since는 지금 사기로 한 날
@@ -198,4 +199,6 @@ qty = 1
 stage = 0
 ordered = 2026-11-07
 vendor = "뱀부랩"
+unit_price_krw = 25000
+priced = "2026-11-07"
 why = "구조색 (manufacturing.md). 오면 공차 시험편을 다시 뽑는다"

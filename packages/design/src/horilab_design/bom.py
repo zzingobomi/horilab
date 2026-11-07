@@ -56,6 +56,7 @@ class Item(_Values):
     since: dt.date | None = None  # 지금 사기로 한 날 (when = "now")
     ordered: dt.date | None = None  # 주문한 날. 있으면 배송 중이다
     arrive: tuple[dt.date, dt.date] | None = None  # 도착 예정 (첫날, 끝날)
+    received: dt.date | None = None  # 받은 날. 있으면 예산과 받은 것에만 나온다
     vendor: str = ""
     url: str = ""  # 상품이나 사는 곳 링크
     search: str = ""  # 찾을 때 쓸 검색어 (모델 번호나 규격)
@@ -63,11 +64,11 @@ class Item(_Values):
     unit_price_krw: int | None = None
     unit_price_usd: float | None = None
     priced: str = ""  # 값을 확인한 때
-    servo: bool = False  # 서보는 예산과 따로 센다 (0004)
+    servo: bool = False  # 서보는 30만 원 예산과 따로 센다 (0004)
 
     @model_validator(mode="after")
     def _complete(self) -> Item:
-        if self.ordered is None:
+        if self.ordered is None and self.received is None:
             if self.when is None:
                 raise ValueError(f"{self.name}: 주문하지 않은 품목은 when(언제 사나)이 있어야 한다")
             if self.when == "now" and self.since is None:
@@ -126,8 +127,41 @@ def _total(items: list[Item]) -> str:
     return text or "0원"
 
 
+def _budget(rows: list[tuple[str, list[Item]]]) -> list[str]:
+    """서보와 그 밖을 나눠 묶음마다 합을 보이고, 모두 더한다."""
+    out = [
+        "| | 서보 (30만 원과 따로) | 그 밖 (30만 원 예산) |",
+        "|---|---|---|",
+    ]
+    for title, group in rows:
+        servo = [i for i in group if i.servo]
+        other = [i for i in group if not i.servo]
+        out.append(
+            f"| {title} | {_total(servo) if servo else '-'} | {_total(other) if other else '-'} |"
+        )
+    every = [i for _, group in rows for i in group]
+    servo = [i for i in every if i.servo]
+    other = [i for i in every if not i.servo]
+    out.append(f"| **합** | **{_total(servo)}** | **{_total(other)}** |")
+    spent = sum(i.unit_price_krw * i.qty for i in other if i.unit_price_krw is not None)
+    out += [
+        "",
+        "- 서보는 꼭 필요하면 30만 원과 따로 더 쓴다 ([0004](decisions/0004-purchasing.md)). "
+        '"필요해지면" 품목은 아직 살지 몰라서 넣지 않는다.',
+        f"- 모두 더하면 {_total(every)}이다.",
+        f"- {BUDGET_KRW:,}원 예산에서 원화로 값을 아는 것을 빼면 {BUDGET_KRW - spent:,}원이 남는다 "
+        "(달러 값과 값 모름은 아직 빼지 않았다).",
+        "- 값은 확인한 때의 값이다. 지금 주문할 것의 값은 주문할 때 다시 본다.",
+    ]
+    return out
+
+
 def render(purchases: Purchases) -> str:
-    items = purchases.item
+    items = [i for i in purchases.item if i.received is None]
+    received = sorted(
+        (i for i in purchases.item if i.received is not None),
+        key=lambda i: i.received or dt.date.min,
+    )
     now = sorted((i for i in items if i.ordered is None and i.when == "now"), key=lambda i: i.stage)
     shipping = [i for i in items if i.ordered is not None]
     later = [i for i in items if i.ordered is None and i.when != "now"]
@@ -138,7 +172,8 @@ def render(purchases: Purchases) -> str:
         "고칠 때는 데이터 파일을 고친다. 구매 방식은 [0004](decisions/0004-purchasing.md), "
         "가진 것은 [hardware.md](hardware.md#가진-것)에 있다.",
         "",
-        "여기에는 아직 손에 없는 것만 있다. 주문하면 배송 중으로 옮기고, 받으면 지우고 가진 것에 넣는다.",
+        "위에는 아직 손에 없는 것만 있다. 주문하면 배송 중으로 옮기고, 받으면 맨 아래 받은 것으로 옮겨 "
+        "예산에 남긴다 (가진 것에도 넣는다).",
         "",
         "| 지금 주문할 것 | 배송 중 | 나중에 살 것 |",
         "|---|---|---|",
@@ -202,14 +237,28 @@ def render(purchases: Purchases) -> str:
                 f"| {_cell(i.name)} | {i.qty} | {STAGES[i.stage]} | {price} | {_where(i)} | {_lead(i)} | "
                 f"{_cell(i.why)} |"
             )
-    budget = [i for i in items if not i.servo and i.when != "if_needed"]
-    lines += [
-        "",
-        "## 예산",
-        "",
-        f"- 예산 {BUDGET_KRW:,}원 (서보와 필요해지면 품목은 빼고) 중 값을 아는 것: {_total(budget)}",
-        "- 값은 확인한 때의 값이다. 지금 주문할 것의 값은 주문할 때 다시 본다.",
-    ]
+    lines += ["", "## 예산", ""]
+    lines += _budget(
+        [
+            ("받은 것", received),
+            ("배송 중", shipping),
+            ("지금 주문할 것", now),
+            ("나중에 살 것", [i for i in later if i.when != "if_needed"]),
+        ]
+    )
+    if received:
+        lines += [
+            "",
+            "## 받은 것",
+            "",
+            "| 품목 | 수량 | 받은 날 | 사는 곳 | 값 |",
+            "|---|---|---|---|---|",
+        ]
+        for i in received:
+            assert i.received is not None
+            lines.append(
+                f"| {_cell(i.name)} | {i.qty} | {i.received.isoformat()} | {_where(i)} | {i.price()} |"
+            )
     return "\n".join(lines) + "\n"
 
 
