@@ -107,12 +107,12 @@ why = "구조 체결 (0003)과 서보 고정 (0015). 부품을 설계하면 자�
 name = "흡착 부품 (펌프 DAP-3798, 밸브 SMC S070C, 컵 F.TEC 20 mm, 센서 M5Stack U130, 모듈 DFR0457 두 개, 관과 이음, 잭과 레버 커넥터)"
 qty = 1
 stage = 4
-when = "pick"
+when = "if_needed"
 search = "DAP-3798, S070C-6CG-32, VFB20-N-18F, M5Stack U130, DFR0457"
 lead_days = [3, 10]
 unit_price_krw = 125000
 priced = "2026-11-08 어림, 배송비 포함"
-why = "첫 그리퍼 (design.md 도구 순서). 구성과 전원·제어는 0020 제안이다. 관절 시험 중에 0020의 확인 항목(펌프 노즐, 센서 입구, 밸브 이음, OpenRB-150 USB, 밸브 재고)을 마치고 산다"
+why = "흡착 그리퍼는 나중이다. 첫 그리퍼는 평행 그리퍼다 (design.md 도구 순서). 흡착을 달 때 0020의 구성과 확인 항목(펌프 노즐, 센서 입구, 밸브 이음, OpenRB-150 USB, 밸브 재고)을 다시 보고 산다"
 
 [[item]]
 name = "D405 나사 고정 USB 3 케이블 2 m (Newnex U3S7AS1MCI-020)"

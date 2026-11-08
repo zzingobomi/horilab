@@ -112,8 +112,16 @@ class PrintFit(_Values):
     horn_clearance_mm: dict[ServoModel, float] = {}
 
 
+class ServoBody(_Values):
+    """캘리퍼스로 잰 서보 몸통 치수 [mm] (docs/hardware.md의 "기구 치수")."""
+
+    far_thickness_mm: float = Field(gt=0)  # 라벨 쪽 끝 두께: 앞면 ~ 뒷면의 볼록한 판
+    horn_to_back_mm: float = Field(gt=0)  # 출력 혼 윗면 ~ 뒷면 (축 가까운 쪽)
+
+
 class Measured(_Values):
     servo_mass_g: dict[ServoModel, float] = {}
+    servo_body: dict[ServoModel, ServoBody] = {}
     fit: dict[Filament, PrintFit] = {}
 
 

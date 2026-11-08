@@ -380,8 +380,8 @@ def _masses(
     return out
 
 
-def _worst_down(s: Scenes, key: str, joint: int) -> tuple[float, float, np.ndarray]:
-    """주 작업 영역에서 도구가 아래일 때 관절 joint의 버팀 토크가 가장 큰 칸과 그 자세."""
+def _worst_down(s: Scenes, key: str, joint: int) -> tuple[float, float, np.ndarray] | None:
+    """주 작업 영역에서 도구가 아래일 때 관절 joint의 버팀 토크가 가장 큰 칸과 그 자세 (닿는 칸이 없으면 None)."""
     tool = TOOLS[key]
     _, prims = s.by_tool[key]
     masses = _masses(prims, tool)
@@ -395,8 +395,7 @@ def _worst_down(s: Scenes, key: str, joint: int) -> tuple[float, float, np.ndarr
         tau = abs(float(holding_torques(s.robot, q, masses)[joint]))
         if best is None or tau > best[0]:
             best = (tau, r, z, q)
-    assert best is not None
-    return best[1], best[2], best[3]
+    return None if best is None else (best[1], best[2], best[3])
 
 
 def _inertia(robot: Robot, q: np.ndarray, masses: list[PointMass], joint: int) -> float:
@@ -434,7 +433,16 @@ def torque_report(layouts: tuple[Layout, ...]) -> None:
         s = scenes(layout)
         _, prims = s.by_tool[key]
         for joint, name in ((1, "J2 어깨"), (2, "J3 팔꿈치")):
-            r, z, q = _worst_down(s, key, joint)
+            worst = _worst_down(s, key, joint)
+            if worst is None:
+                # 어깨가 돌림판 윗면(packaging.TURNTABLE_TOP)보다 많이 낮은 골격은 J2 원통이 돌림판에 닿는다
+                print(
+                    f"| {label(layout)} | {name} | 닿는 칸 없음 | "
+                    + " | ".join("-" for _ in PARTS)
+                    + " | - | - | - | - |"
+                )
+                continue
+            r, z, q = worst
             rated = s.robot.joints[joint].effort
             parts = [
                 abs(float(holding_torques(s.robot, q, _masses(prims, tool, links))[joint])) / rated

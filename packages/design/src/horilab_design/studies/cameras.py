@@ -240,7 +240,10 @@ def work_targets() -> dict[str, Mat]:
 
 
 def placed_stacking_poses(tool: pk.Tool) -> list[pk.Pose]:
-    """박스 쌓기 자세를 실제 방위에 둔다 (packaging.stacking_poses는 반지름만 본다)."""
+    """박스 쌓기 자세를 실제 방위에 둔다 (packaging.stacking_poses는 반지름만 본다).
+
+    TCP는 박스 윗면(과 그 위 접근 높이)에서 도구가 박스를 잡는 깊이(tool.box_depth)만큼 아래다.
+    """
     out = []
     for x, y, layers in skeleton.spots():
         yaw = skeleton.box_yaw(math.atan2(y, x))
@@ -250,7 +253,7 @@ def placed_stacking_poses(tool: pk.Tool) -> list[pk.Pose]:
                 out.append(
                     pk.Pose(
                         f"박스 ({x * 100:.0f}, {y * 100:.0f}) h{h * 100:.0f}",
-                        pk.tool_pose((x, y, h), 0.0, 0.0, yaw, tool.length),
+                        pk.tool_pose((x, y, h - tool.box_depth), 0.0, 0.0, yaw, tool.length),
                     )
                 )
     return out
@@ -265,9 +268,10 @@ def transit_poses(tool: pk.Tool) -> list[pk.Pose]:
     return out
 
 
+# 박스 쌓기와 옮기는 길은 첫 그리퍼인 평행 그리퍼로 한다 (docs/design.md의 도구 순서)
 TASK_SETS = (
-    ("suction", placed_stacking_poses),
-    ("suction", transit_poses),
+    ("gripper", placed_stacking_poses),
+    ("gripper", transit_poses),
     ("pointer", pk.pointer_poses),
     ("gripper", pk.grasp_poses),
 )
@@ -559,7 +563,7 @@ def evaluate_post(cam: PostCam, layout: pk.Layout, baseline: list[int]) -> PostR
     robot, prims, _ = arm_shapes(layout, pk.TOOLS["gripper"])  # 가장 긴 도구
     upright = upright_hits(pk.build_scene(robot, prims, fixed))
 
-    tool = pk.TOOLS["suction"]
+    tool = pk.TOOLS["gripper"]
     robot, prims, _ = arm_shapes(layout, tool)
     scene = pk.build_scene(robot, prims, fixed)
     visible_pts = all_pts[in_view(R, eye, all_pts)]
@@ -620,7 +624,7 @@ def main() -> None:
         ("pointer", None),
         ("suction", None),
         ("gripper", None),
-        ("suction", post_prims(RECOMMENDED)),
+        ("gripper", post_prims(RECOMMENDED)),
     ):
         r = eye_in_hand_calibration(layout, pk.TOOLS[key], fixed)
         total = len(r.ok) + len(r.out_of_range) + len(r.collided) + len(r.hidden)
@@ -629,7 +633,7 @@ def main() -> None:
             f"- {pk.TOOLS[key].name}{where}: 됨 {len(r.ok)}/{total}, 관절 범위 밖 {len(r.out_of_range)}, "
             f"부딪힘 {len(r.collided)}, 시야 밖이거나 가림 {len(r.hidden)}"
         )
-        if key == "suction" and not fixed:
+        if key == "gripper" and not fixed:
             print(f"  - 된 방향: {', '.join(r.ok)}")
 
 

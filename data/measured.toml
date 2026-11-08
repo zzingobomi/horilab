@@ -10,6 +10,13 @@
 # STS3250 =
 # ST-3120 =
 
+# 서보 몸통 실측 [mm] (디지털 캘리퍼스, 2026-11-08). 출력 혼은 단 채로, 뒷면 혼은 빼고 쟀다.
+# - far_thickness: 라벨 쪽 끝 두께. 앞면과 뒷면의 볼록한 판을 물었다
+# - horn_to_back: 출력 혼 윗면 ~ 뒷면. 축에서 라벨 쪽으로 약 7 mm, 혼 나사와 뒷면 보스를 피한 자리다
+[servo_body]
+STS3215 = { far_thickness_mm = 35.01, horn_to_back_mm = 33.21 }
+STS3250 = { far_thickness_mm = 35.01, horn_to_back_mm = 33.38 }
+
 # 공차 시험편으로 고른 설계 치수 [mm]. 필라멘트마다 적는다 (docs/manufacturing.md의 "공차").
 # 1차 시험편(M3 볼트 구멍, 너트 홈): uv run python -m horilab_design.coupons
 # 출력 설정은 docs/manufacturing.md의 "출력 설정"이다.

@@ -2,20 +2,22 @@
 
     uv run python -m horilab_design.studies.packaging
 
-- 서보 외형은 Feetech 공식 도면 값이다 (docs/hardware.md의 기구 치수). STS3215와 STS3250은 도면이 같다:
-  축 근처 두께 29, 먼 쪽 35(라벨판 포함), 두 혼 바깥면 사이 37.25 mm.
+- 서보 외형은 Feetech 공식 도면 값과 실측이다 (docs/hardware.md의 기구 치수, data/measured.toml).
+  STS3215와 STS3250은 도면이 같다: 몸통 32, 출력축 둘레는 혼이 앉는 오목한 자리, 먼 쪽은 뒷면 판까지 35 mm.
 - 관절 구조는 docs/decisions/0015-joint-structure.md다. 자식 링크의 ㄷ자 브래킷이 출력 혼과 뒷면 혼을 잡고,
   다리(브래킷의 두 팔을 잇는 판)는 서보의 가까운 끝 너머에 있다. 부모 링크는 서보 몸체의 먼 쪽만 감싼다.
   브래킷이 도는 동안 쓸고 지나가는 자리에는 부모 링크의 형상을 두지 않는다.
 - 모양은 상자와 원기둥으로 만든 개념 형상이다. 부딪힘(MuJoCo 충돌 검사), 관절 범위, 무게, 시야를 어림한다.
   부품을 설계하면 같은 검사를 실제 형상으로 다시 한다 (docs/design.md의 "출력 전 확인").
-- 도구는 docs/design.md의 도구 순서 세 가지(포인터, 흡착, 평행 그리퍼)와 교체 어댑터(두께 10 mm)다.
+- 도구는 docs/design.md의 도구 순서 세 가지(포인터, 평행 그리퍼, 흡착)와 교체 어댑터(두께 10 mm)다.
+  박스 쌓기는 평행 그리퍼가 박스 윗면 구멍 안에서 잡는다 (0014).
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from functools import cache
 from typing import Literal
 
 import mujoco
@@ -27,7 +29,14 @@ from horilab_design.statics import FLANGE, PointMass, holding_torques
 from horilab_design.studies.common import working_solutions
 from horilab_design.studies.skeleton import targets as stacking_targets
 from horilab_design.studies.skeleton import with_lengths
-from horilab_design.values import ServoModel, arm_robot, load_arm, load_servos
+from horilab_design.values import (
+    ServoBody,
+    ServoModel,
+    arm_robot,
+    load_arm,
+    load_measured,
+    load_servos,
+)
 
 MM = 1e-3
 DEG = math.pi / 180
@@ -56,16 +65,16 @@ TURNTABLE_T = 9.5 * MM
 
 @dataclass(frozen=True)
 class ServoShape:
-    """서보 외형 (서보 좌표계: x는 축에서 가까운 끝 쪽, y는 출력 축 방향, 원점은 축 위).
+    """서보 외형 (서보 좌표계: x는 축에서 가까운 끝 쪽, y는 출력 축 방향, z는 x × y, 원점은 축 위).
 
-    몸통은 길이 방향 구간마다 두께가 다른 상자 여러 개다: (x0, x1, y0, y1) [m].
+    몸통은 상자 여러 개다: (x0, x1, y0, y1, z0, z1) [m].
     """
 
     model: ServoModel
     near: float  # 축 → 가까운 끝
     far: float  # 축 → 먼 끝
     half_width: float
-    zones: tuple[tuple[float, float, float, float], ...]
+    zones: tuple[tuple[float, float, float, float, float, float], ...]
     horn_r: float
     horn_out: tuple[float, float]  # 출력 혼의 y 범위
     horn_back: tuple[
@@ -80,61 +89,74 @@ class ServoShape:
         return min(z[2] for z in far_zones), max(z[3] for z in far_zones)
 
 
-Zone = tuple[float, float, float, float]
+Zone = tuple[float, float, float, float, float, float]
 Span = tuple[float, float]
 
 
-def _zone(x0: float, x1: float, y0: float, y1: float) -> Zone:
-    """mm 값을 m로: 몸통 상자 하나 (x0, x1, y0, y1)."""
-    return (x0 * MM, x1 * MM, y0 * MM, y1 * MM)
+def _zone(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) -> Zone:
+    """mm 값을 m로: 몸통 상자 하나 (x0, x1, y0, y1, z0, z1)."""
+    return (x0 * MM, x1 * MM, y0 * MM, y1 * MM, z0 * MM, z1 * MM)
 
 
 def _span(a: float, b: float) -> Span:
     return (a * MM, b * MM)
 
 
-# STS3215·STS3250 외형은 자료가 둘로 갈린다. 실물을 재기 전까지 두 가지로 다 검사한다.
-#  - "drawing": Waveshare가 ST3215 2D 도면으로 낸 PDF(제목 SCS215). 축 근처 29, 몸통 32, 먼 쪽 35,
-#    두 혼 바깥면 37.25.
-#  - "step": Waveshare ST3215 STEP을 잘라 잰 값. 몸통 33.1, 먼 쪽(축에서 15.9 mm부터) 37.25, 출력 스플라인
-#    끝은 몸통 면에서 1.9 mm 나온다. 혼을 스플라인 끝과 몸통 면에 붙인다고 보면 두 혼 바깥면은 42.6이다.
-STS_SHAPES: dict[str, tuple[tuple[Zone, ...], Span, Span]] = {
-    "drawing": (
-        (
-            _zone(-11.0, 10.11, -14.5, 14.5),
-            _zone(-15.9, -11.0, -16.0, 16.0),
-            _zone(-35.11, -15.9, -17.5, 17.5),
+# STS3215·STS3250 외형 [mm]: Feetech 도면(docs/hardware.md의 기구 치수)과 실측(data/measured.toml, 2026-11-08).
+# 서보 좌표계의 y 원점은 뒷면(축 가까운 쪽)에서 14.5 mm 앞이다. 실측 전 외형 모델과 뒷면 혼, 먼 쪽 자리가 같다.
+# - 몸통 두께는 32다 (뒷면 -14.5 ~ 앞면 +17.5). 앞면은 끝까지 평평하다.
+# - 출력축 둘레(축에서 -11 ~ 가까운 끝)는 혼이 앉는 둥근 오목한 자리다 (도면의 "축 근처 29"). 바닥은 혼 아래
+#   HORN_GAP에 두고, 양옆(|z| ≥ STS_WALL_Z)은 앞면 높이까지 찬 것으로 둔다.
+# - 먼 쪽(축에서 -15.9 ~ 먼 끝)은 뒷면에 볼록한 판이 있어 두께가 실측 far_thickness다 (도면 35).
+# - 출력 혼(두께 4.5) 윗면은 뒷면에서 실측 horn_to_back이다. 뒷면 혼(두께 3.1)은 뒷면 보스에 끼워 뒷면에서
+#   HORN_GAP 띄운다.
+STS_BACK = -14.5
+STS_BODY = 32.0
+STS_NEAR, STS_FAR = 10.11, 35.11
+STS_HALF_WIDTH = 12.36
+STS_RECESS_X = -11.0  # 혼 자리가 시작하는 x (가까운 끝까지)
+STS_WALL_Z = 10.0  # 혼 자리 옆이 앞면 높이인 |z|
+STS_PAD_X = -15.9  # 뒷면 판이 시작하는 x (먼 끝까지)
+HORN_T = 4.5
+BACK_HORN_T = 3.1
+HORN_GAP = 0.3
+# 실측이 없을 때 쓰는 도면 값: 혼 자리 바닥 29 + 틈 0.35 + 혼 4.5, 먼 쪽 35
+DRAWING_BODY = ServoBody(far_thickness_mm=35.0, horn_to_back_mm=33.85)
+# 뒷면 커넥터 두 개가 꽂히는 자리 (사진으로 어림): 축에서 x 범위, 뒷면에서 플러그와 선이 솟는 깊이 [mm]
+CONNECTOR_X = (-16.0, -9.0)
+CONNECTOR_DEPTH = 6.0
+
+
+def sts_shape(model: ServoModel, body: ServoBody) -> ServoShape:
+    front = STS_BACK + STS_BODY
+    horn_top = STS_BACK + body.horn_to_back_mm
+    floor = horn_top - HORN_T - HORN_GAP
+    hw = STS_HALF_WIDTH
+    return ServoShape(
+        model,
+        near=STS_NEAR * MM,
+        far=STS_FAR * MM,
+        half_width=hw * MM,
+        zones=(
+            _zone(-STS_FAR, STS_PAD_X, front - body.far_thickness_mm, front, -hw, hw),
+            _zone(STS_PAD_X, STS_RECESS_X, STS_BACK, front, -hw, hw),
+            _zone(STS_RECESS_X, STS_NEAR, STS_BACK, floor, -hw, hw),
+            _zone(STS_RECESS_X, STS_NEAR, floor, front, STS_WALL_Z, hw),
+            _zone(STS_RECESS_X, STS_NEAR, floor, front, -hw, -STS_WALL_Z),
         ),
-        _span(14.85, 19.35),
-        _span(-17.9, -14.8),
-    ),
-    "step": (
-        (_zone(-15.9, 10.11, -16.55, 16.55), _zone(-35.11, -15.9, -18.65, 18.6)),
-        _span(18.45, 22.95),
-        _span(-19.65, -16.55),
-    ),
-}
+        horn_r=9.975 * MM,
+        horn_out=_span(horn_top - HORN_T, horn_top),
+        horn_back=_span(STS_BACK - HORN_GAP - BACK_HORN_T, STS_BACK - HORN_GAP),
+        horn_mass=0.008,
+    )
 
 
-def shapes(sts: Literal["drawing", "step"]) -> dict[ServoModel, ServoShape]:
-    zones, horn_out, horn_back = STS_SHAPES[sts]
-
-    def sts_shape(model: ServoModel) -> ServoShape:
-        return ServoShape(
-            model,
-            near=10.11 * MM,
-            far=35.11 * MM,
-            half_width=12.36 * MM,
-            zones=zones,
-            horn_r=9.975 * MM,
-            horn_out=horn_out,
-            horn_back=horn_back,
-            horn_mass=0.008,
-        )
-
+@cache
+def shapes() -> dict[ServoModel, ServoShape]:
+    measured = load_measured().servo_body
     return {
-        "STS3215": sts_shape("STS3215"),
-        "STS3250": sts_shape("STS3250"),
+        "STS3215": sts_shape("STS3215", measured.get("STS3215", DRAWING_BODY)),
+        "STS3250": sts_shape("STS3250", measured.get("STS3250", DRAWING_BODY)),
         # 65 × 30 × 48, 축에서 가까운 끝 15.9. 혼(FT110M)은 지름 29.9, 두께 9로 스플라인(7.4 나옴) 위에 끼운다.
         # 뒷면은 돌기(4.4 나옴)를 혼이나 MR106ZZ로 받친다 (0015). 혼 무게는 사양에 없어 어림이다.
         "ST-3120": ServoShape(
@@ -142,7 +164,7 @@ def shapes(sts: Literal["drawing", "step"]) -> dict[ServoModel, ServoShape]:
             near=15.9 * MM,
             far=49.1 * MM,
             half_width=15.0 * MM,
-            zones=(_zone(-49.1, 15.9, -24.0, 24.0),),
+            zones=(_zone(-49.1, 15.9, -24.0, 24.0, -15.0, 15.0),),
             horn_r=14.95 * MM,
             horn_out=_span(24.9, 33.9),
             horn_back=_span(-28.4, -24.4),
@@ -286,13 +308,13 @@ class Module:
         parent, child = j - 1, j
         f = self.frame()
         g_servo, g_house, g_bracket = f"J{j} 서보", f"J{j} 집", f"J{j} 브래킷"
-        volumes = [(x1 - x0) * (y1 - y0) for x0, x1, y0, y1 in s.zones]
-        for k, (x0, x1, y0, y1) in enumerate(s.zones):
+        volumes = [(x1 - x0) * (y1 - y0) * (z1 - z0) for x0, x1, y0, y1, z0, z1 in s.zones]
+        for k, (x0, x1, y0, y1, z0, z1) in enumerate(s.zones):
             b.box(
                 parent,
                 f"J{j}/servo_{k}",
-                (x0, y0, -s.half_width),
-                (x1, y1, s.half_width),
+                (x0, y0, z0),
+                (x1, y1, z1),
                 material="servo",
                 frame=f,
                 group=g_servo,
@@ -390,9 +412,7 @@ class Layout:
     shoulder: float = 0.16  # 설치면 → J2 축
     upper: float = 0.22
     fore: float = 0.18
-    d45: float = (
-        0.063  # J4 → J5 (y). UR식 원통이 두 서보 외형 자료에서 다 들어가는 값 (0019, covers.py)
-    )
+    d45: float = 0.063  # J4 → J5 (y). UR식 원통이 들어가는 값 (0019, covers.py)
     d56: float = 0.063  # J5 → J6 (z)
     d6f: float = 0.05  # J6 → 플랜지 (y)
     camera_tilt: float = 20 * DEG  # D405 광축을 도구 축 쪽으로 기울이는 각
@@ -406,12 +426,11 @@ class Layout:
         10 * DEG
     )  # 대칭이 아닌 도구로도 잡기 자세가 J6 범위 안에 들도록 가운데를 옮긴 값
     mid5: float = 0.0  # J5 서보 축 원점의 z (J5 점 기준)
-    sts: Literal["drawing", "step"] = "drawing"  # STS 서보 외형 자료 (STS_SHAPES)
 
     @property
     def mid6(self) -> float:
         """J6 서보 축 원점의 y. 플랜지 판이 출력 쪽 팔 바깥에 붙도록 정한다."""
-        return self.d6f - shapes(self.sts)["STS3215"].horn_out[1] - ARM_T - FLANGE_T
+        return self.d6f - shapes()["STS3215"].horn_out[1] - ARM_T - FLANGE_T
 
 
 @dataclass(frozen=True)
@@ -420,6 +439,9 @@ class Tool:
 
     symmetric이면 도구를 축 둘레로 180° 돌려도 같은 일을 하므로 J6 ± 180° 해도 쓴다
     (흡착은 어느 각도든, 평행 그리퍼는 180°마다 같다).
+    box_depth는 박스를 잡을 때 TCP가 박스 윗면 아래로 들어가는 깊이다. 평행 그리퍼는 박스 윗면 구멍
+    (어림 지름 16, 깊이 12 mm, 0014)에 손가락 끝을 넣고 바깥으로 벌려 잡는다. 구멍이 둥글어서 도구 축 둘레
+    돌림은 흡착처럼 자유롭다.
     """
 
     name: str
@@ -427,12 +449,13 @@ class Tool:
     mass: float
     payload: float
     symmetric: bool
+    box_depth: float = 0.0
 
 
 TOOLS = {
     "pointer": Tool("포인터", ADAPTER_T + 0.080, 0.025, 0.0, True),
     "suction": Tool("흡착", ADAPTER_T + 0.060, 0.035, 0.10, True),
-    "gripper": Tool("평행 그리퍼", ADAPTER_T + 0.095, 0.140, 0.15, True),
+    "gripper": Tool("평행 그리퍼", ADAPTER_T + 0.095, 0.140, 0.15, True, box_depth=0.006),
     # 기둥 카메라 캘리브레이션(eye-to-hand)용 보드: 100 × 80 × 4 mm 판.
     # "board"는 판 면이 도구 축 방향을 보고, TCP는 판 겉면 가운데다.
     # "board_side"는 판을 어댑터 옆(플랜지 y 쪽 BOARD_SIDE_OFFSET)에 두고 판 면이 플랜지 쪽(-z)을 본다.
@@ -457,7 +480,7 @@ def arm(layout: Layout) -> Robot:
 
 def modules(layout: Layout, robot: Robot) -> list[Module]:
     o = [j.origin for j in robot.joints]
-    sh = shapes(layout.sts)
+    sh = shapes()
     return [
         Module(2, sh["ST-3120"], o[1], Y, Z),
         Module(3, sh["STS3250"], o[2], Y, Z, neutral=layout.neutral3),
@@ -550,10 +573,13 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
     z_plate = layout.mid5 + s5.horn_back[0] - ARM_T - MOVING_GAP
     j4_bridge = j4.child_frame()
     tip = j4_bridge[0] + j4_bridge[1] @ np.array([j4.bridge_in + BRIDGE_T, 0.0, 0.0])
+    s4 = j4.shape
+    arm4_back = s4.horn_back[0] - ARM_T  # J4 뒷면 쪽 브래킷 팔의 바깥 면 (링크 4의 y)
+    arm4_out = s4.horn_out[1] + ARM_T  # J4 출력 쪽 브래킷 팔의 바깥 면
     b.box(
         4,
         "wrist1_plate",
-        (-0.015, -0.0219 - ARM_T, z_plate - 4.0 * MM),
+        (-0.015, arm4_back - ARM_T, z_plate - 4.0 * MM),
         (s5.far + GAP + WALL, layout.d45 + s5.half_width + GAP + WALL, z_plate),
         group="손목 1",
     )
@@ -561,8 +587,8 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
         b.box(
             4,
             "wrist1_web",
-            (-0.015, -0.0219 - ARM_T, z_plate),
-            (0.015, 0.01935 + ARM_T, tip[2]),
+            (-0.015, arm4_back - ARM_T, z_plate),
+            (0.015, arm4_out, tip[2]),
             group="손목 1",
         )
 
@@ -855,10 +881,11 @@ class Pose:
 
 
 def stacking_poses(tool: Tool) -> list[Pose]:
+    """박스 쌓기 (0014): 박스 윗면(과 그 위 접근 높이)에서 도구가 박스를 잡는 깊이만큼 아래가 TCP다."""
     return [
         Pose(
             f"박스 r{r * 100:.0f} h{h * 100:.0f}",
-            tool_pose((r, 0.0, h), 0.0, 0.0, yaw, tool.length),
+            tool_pose((r, 0.0, h - tool.box_depth), 0.0, 0.0, yaw, tool.length),
         )
         for r, h, yaw in stacking_targets()
     ]
@@ -1073,16 +1100,111 @@ def mass_table(prims: list[Prim]) -> dict[str, float]:
     return out
 
 
-POSE_SETS = (("suction", stacking_poses), ("pointer", pointer_poses), ("gripper", grasp_poses))
+# (이름, 도구, 자세): 박스 쌓기는 첫 그리퍼인 평행 그리퍼로 한다 (docs/design.md의 도구 순서)
+POSE_SETS = (
+    ("박스 쌓기", "gripper", stacking_poses),
+    ("포인터", "pointer", pointer_poses),
+    ("잡기", "gripper", grasp_poses),
+)
 
 
 def evaluate(layout: Layout) -> list[SetResult]:
     out = []
-    for key, poses_of in POSE_SETS:
+    for name, key, poses_of in POSE_SETS:
         tool = TOOLS[key]
         robot, prims, _ = build_arm(layout, tool)
         scene = build_scene(robot, prims)
-        out.append(check_set(scene, AnalyticIK(robot), poses_of(tool), tool.name, tool.symmetric))
+        out.append(check_set(scene, AnalyticIK(robot), poses_of(tool), name, tool.symmetric))
+    return out
+
+
+def _segment_overlap(a: tuple[float, float], b: tuple[float, float]) -> float:
+    return min(a[1], b[1]) - max(a[0], b[0])
+
+
+def rect_overlaps(corners: np.ndarray, x: tuple[float, float], z: tuple[float, float]) -> bool:
+    """볼록한 사각형(꼭짓점 4개, x–z 평면)이 축에 맞춘 사각형 x × z와 겹치는지 (분리축 검사)."""
+    box = np.array([[x[0], z[0]], [x[1], z[0]], [x[1], z[1]], [x[0], z[1]]])
+    axes = [np.array([1.0, 0.0]), np.array([0.0, 1.0])]
+    for k in range(4):
+        edge = corners[(k + 1) % 4] - corners[k]
+        axes.append(np.array([-edge[1], edge[0]]))
+    for axis in axes:
+        pa, pb = corners @ axis, box @ axis
+        if _segment_overlap((pa.min(), pa.max()), (pb.min(), pb.max())) <= 0:
+            return False
+    return True
+
+
+@dataclass(frozen=True)
+class ConnectorCheck:
+    joint: int
+    part: str
+    reach_mm: float  # 커넥터 자리 안으로 x 방향으로 들어간 깊이 (둥근 부분) [mm]
+    depth_mm: tuple[float, float]  # 겹치는 곳의 뒷면에서 깊이 범위 [mm]
+    angles: tuple[float, float] | None  # 겹치는 관절 각 범위 [°] (둥근 부분은 None: 늘 겹침)
+
+
+def connector_checks(layout: Layout) -> list[ConnectorCheck]:
+    """STS 관절마다 뒷면 커넥터 자리(플러그와 꺾인 선, CONNECTOR_X × CONNECTOR_DEPTH)에 자식 링크의 뒷면 쪽
+    부품(뒷면 혼, 브래킷 팔, 다리)이 관절 범위 안에서 들어오는지 본다. 커넥터 자리는 충돌 검사에 넣지 않고 따로 본다.
+    """
+    robot = arm(layout)
+    out = []
+    for m in modules(layout, robot):
+        s = m.shape
+        if s.model == "ST-3120":
+            continue
+        back = STS_BACK * MM
+        keep_y = (back - CONNECTOR_DEPTH * MM, back)
+        keep_x = (CONNECTOR_X[0] * MM, CONNECTOR_X[1] * MM)
+        keep_z = (-s.half_width, s.half_width)
+        arm_back = (s.horn_back[0] - ARM_T, s.horn_back[0])
+        arm_out_face = s.horn_out[1] + ARM_T
+        discs = (("뒷면 혼", s.horn_r, s.horn_back), ("뒷면 쪽 팔의 둥근 판", m.arm_r, arm_back))
+        for part, r, ys in discs:
+            dy = (max(ys[0], keep_y[0]), min(ys[1], keep_y[1]))
+            if dy[1] > dy[0] and -r < keep_x[1]:
+                out.append(
+                    ConnectorCheck(
+                        m.joint,
+                        part,
+                        (keep_x[1] + r) / MM,
+                        ((back - dy[1]) / MM, (back - dy[0]) / MM),
+                        None,
+                    )
+                )
+        boxes = (
+            ("뒷면 쪽 팔의 판", (0.0, m.bridge_in), arm_back),
+            ("다리", (m.bridge_in, m.bridge_in + BRIDGE_T), (arm_back[0], arm_out_face)),
+        )
+        joint = robot.joints[m.joint - 1]
+        for part, (x0, x1), ys in boxes:
+            dy = (max(ys[0], keep_y[0]), min(ys[1], keep_y[1]))
+            if dy[1] <= dy[0]:
+                continue
+            hit = []
+            for deg in range(round(joint.lower / DEG), round(joint.upper / DEG) + 1):
+                # 자식 링크가 관절 각 q에서 서보 좌표계 y 둘레로 (q - neutral)만큼 돈 자리 (child_frame 기준)
+                turn = (deg * DEG - m.neutral) * m.out
+                c, sn = math.cos(turn), math.sin(turn)
+                local = np.array([[x0, -m.arm_r], [x1, -m.arm_r], [x1, m.arm_r], [x0, m.arm_r]])
+                # y축 둘레 회전: x' = x cos + z sin, z' = -x sin + z cos
+                corners = np.column_stack(
+                    [local[:, 0] * c + local[:, 1] * sn, -local[:, 0] * sn + local[:, 1] * c]
+                )
+                if rect_overlaps(corners, keep_x, keep_z):
+                    hit.append(deg)
+            if hit:
+                out.append(
+                    ConnectorCheck(
+                        m.joint,
+                        part,
+                        0.0,
+                        ((back - dy[1]) / MM, (back - dy[0]) / MM),
+                        (float(min(hit)), float(max(hit))),
+                    )
+                )
     return out
 
 
@@ -1114,24 +1236,45 @@ def outward_tilt_table(layout: Layout) -> None:
 
 
 def main() -> None:
-    for sts in ("drawing", "step"):
-        report(Layout(sts=sts))
+    report(Layout())
+
+
+def connector_report(layout: Layout) -> None:
+    print(
+        f"\n### 뒷면 커넥터 자리 (축에서 {-CONNECTOR_X[1]:.0f}~{-CONNECTOR_X[0]:.0f} mm, 뒷면에서 "
+        f"{CONNECTOR_DEPTH:.0f} mm까지)와 자식 링크의 뒷면 쪽 부품"
+    )
+    found = connector_checks(layout)
+    if not found:
+        print("- 관절 범위 안에서 들어오는 부품 없음")
+    for c in found:
+        where = (
+            f"관절 각과 상관없이 {c.reach_mm:.1f} mm 들어옴"
+            if c.angles is None
+            else f"관절 각 {c.angles[0]:.0f}°~{c.angles[1]:.0f}°에서 들어옴"
+        )
+        print(
+            f"- J{c.joint} {c.part}: {where} (뒷면에서 깊이 {c.depth_mm[0]:.1f}~{c.depth_mm[1]:.1f} mm)"
+        )
 
 
 def report(layout: Layout) -> None:
-    source = {"drawing": "2D 도면(축 근처 29, 먼 쪽 35)", "step": "STEP(몸통 33.1, 먼 쪽 37.25)"}[
-        layout.sts
-    ]
-    print(f"\n# STS 서보 외형: {source}")
+    sh = shapes()
+    print(
+        "\n# STS 서보 외형: 도면과 실측 (몸통 32, 먼 쪽 뒷면 판까지 "
+        f"{(sh['STS3215'].far_half[1] - sh['STS3215'].far_half[0]) / MM:.2f} mm, 출력 혼 윗면 ~ 뒷면 "
+        f"STS3215 {(sh['STS3215'].horn_out[1] / MM - STS_BACK):.2f} · "
+        f"STS3250 {(sh['STS3250'].horn_out[1] / MM - STS_BACK):.2f} mm)"
+    )
     print(
         f"## 골격 후보: 위팔 {layout.upper * 1000:.0f}, 아래팔 {layout.fore * 1000:.0f}, 손목 오프셋 {layout.d45 * 1000:.0f} · {layout.d56 * 1000:.0f} · {layout.d6f * 1000:.0f} mm"
     )
     results = evaluate(layout)
-    for (key, poses_of), res in zip(POSE_SETS, results, strict=True):
+    for (name, key, poses_of), res in zip(POSE_SETS, results, strict=True):
         tool = TOOLS[key]
         robot, prims, _ = build_arm(layout, tool)
         ratio = torque_ratios(robot, prims, tool, res.qs) if res.qs else np.zeros(6)
-        print(f"\n### {tool.name} ({len(poses_of(tool))}개 자세)")
+        print(f"\n### {name}: {tool.name} ({len(poses_of(tool))}개 자세)")
         print(f"- 닿음 {res.reached}/{res.total}, 부딪힘 없음 {res.clear}/{res.reached}")
         if res.worst:
             print(
@@ -1203,9 +1346,10 @@ def report(layout: Layout) -> None:
             )
     gap, part = adapter_clearance(scene, home)
     print(f"- 교체 어댑터에서 가장 가까운 다른 부품: {part} {gap * 1000:.1f} mm")
+    connector_report(layout)
     outward_tilt_table(layout)
-    print("\n### 손목 오프셋 비교: 부딪힘 없는 자세 수 (흡착 / 포인터 / 평행 그리퍼)")
-    print("| J4→J5 | J5→J6 | J6→플랜지 | 흡착 | 포인터 | 평행 그리퍼 |")
+    print("\n### 손목 오프셋 비교: 부딪힘 없는 자세 수 (박스 쌓기 / 포인터 / 잡기)")
+    print("| J4→J5 | J5→J6 | J6→플랜지 | 박스 쌓기 | 포인터 | 잡기 |")
     print("|---|---|---|---|---|---|")
     for d45, d56, d6f in (
         (0.05, 0.05, 0.05),
@@ -1218,7 +1362,7 @@ def report(layout: Layout) -> None:
         (0.05, 0.05, 0.04),
         (0.045, 0.045, 0.04),
     ):
-        variant = Layout(d45=d45, d56=d56, d6f=d6f, sts=layout.sts)
+        variant = Layout(d45=d45, d56=d56, d6f=d6f)
         cells = [f"{r.clear}/{r.total}" for r in evaluate(variant)]
         print(
             f"| {d45 * 1000:.0f} | {d56 * 1000:.0f} | {d6f * 1000:.0f} | "

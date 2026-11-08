@@ -23,7 +23,7 @@ from horilab_design.studies.common import (
     tool_down,
     ur_arm,
 )
-from horilab_design.values import load_arm
+from horilab_design.values import load_arm, load_measured
 
 
 def test_task_poses_point_the_tool_down() -> None:
@@ -58,17 +58,41 @@ def test_far_target_is_not_reached_by_flipping_the_wrist() -> None:
     assert pick_solution(robot, ik, T, point_masses(robot, MASS_CASES[0], 0.05)) is None
 
 
-@pytest.mark.parametrize("sts", ["drawing", "step"])
-def test_packaging_layout_stacks_boxes_without_collisions(sts: str) -> None:
-    # 지금 손목 오프셋(63 · 63 · 50 mm)은 STS 외형 자료 두 가지에서 다 박스 쌓기 자세가 부딪히지 않는다
-    layout = packaging.Layout(sts=sts)  # type: ignore[arg-type]
-    tool = packaging.TOOLS["suction"]
-    robot, prims, _ = packaging.build_arm(layout, tool)
+def test_packaging_layout_stacks_boxes_without_collisions() -> None:
+    # 지금 손목 오프셋(63 · 63 · 50 mm)에서 평행 그리퍼로 박스를 쌓는 자세가 부딪히지 않는다
+    tool = packaging.TOOLS["gripper"]
+    robot, prims, _ = packaging.build_arm(packaging.Layout(), tool)
     scene = packaging.build_scene(robot, prims)
     poses = packaging.stacking_poses(tool)
-    result = packaging.check_set(scene, AnalyticIK(robot), poses, tool.name, tool.symmetric)
+    result = packaging.check_set(scene, AnalyticIK(robot), poses, "박스 쌓기", tool.symmetric)
     assert result.reached == result.total == len(poses)
     assert result.clear == result.total, result.failures
+
+
+def test_sts_shape_follows_the_measured_body() -> None:
+    # 실측(data/measured.toml): 혼 윗면 ~ 뒷면, 먼 쪽 두께. 혼은 앉는 자리 바닥과 옆에 겹치지 않는다
+    body = load_measured().servo_body
+    for model in ("STS3215", "STS3250"):
+        s = packaging.shapes()[model]
+        mm = packaging.MM
+        assert (s.horn_out[1] / mm - packaging.STS_BACK) == pytest.approx(
+            body[model].horn_to_back_mm
+        )
+        assert (s.far_half[1] - s.far_half[0]) / mm == pytest.approx(body[model].far_thickness_mm)
+        recess = [z for z in s.zones if z[0] >= packaging.STS_RECESS_X * mm - 1e-9]
+        floor = max(z[3] for z in recess if z[4] < 0 < z[5])
+        assert s.horn_out[0] > floor
+        walls = [z for z in s.zones if z[4] > 0]
+        assert walls and all(z[4] >= s.horn_r for z in walls)
+
+
+def test_rect_overlaps_uses_separating_axes() -> None:
+    square = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
+    assert packaging.rect_overlaps(square, (0.5, 2.0), (0.5, 2.0))
+    assert not packaging.rect_overlaps(square, (1.5, 2.0), (0.0, 1.0))
+    diamond = np.array([[1.0, 0.0], [2.0, 1.0], [1.0, 2.0], [0.0, 1.0]])
+    assert not packaging.rect_overlaps(diamond, (1.8, 2.5), (1.8, 2.5))  # 모서리끼리 비켜 감
+    assert packaging.rect_overlaps(diamond, (1.4, 2.5), (1.4, 2.5))
 
 
 def test_packaging_layout_matches_the_value_file() -> None:
@@ -117,7 +141,7 @@ def test_desk_share_counts_the_part_of_the_work_zone_on_the_desk() -> None:
 
 def test_symmetric_tool_flip_stays_inside_the_j6_range() -> None:
     # 대칭 도구는 J6를 180° 돌린 해도 쓰지만, 그 각도 J6 범위 안이어야 한다
-    tool = packaging.TOOLS["suction"]
+    tool = packaging.TOOLS["gripper"]
     robot = packaging.arm(packaging.Layout())
     ik = AnalyticIK(robot)
     T = packaging.tool_pose((0.22, 0.0, 0.06), 0.0, 0.0, 0.0, tool.length)
@@ -139,15 +163,16 @@ def test_packaging_reports_designed_gaps_but_not_as_collisions() -> None:
 
 
 def test_placed_stacking_poses_keep_the_skeleton_targets() -> None:
-    # 기둥 검토는 박스 쌓기 자세를 실제 방위에 둔다. 반지름과 높이는 골격 검토의 목표와 같아야 한다.
-    tool = packaging.TOOLS["suction"]
+    # 기둥 검토는 박스 쌓기 자세를 실제 방위에 둔다. 반지름과 높이는 골격 검토의 목표와 같아야 한다
+    # (TCP는 그리퍼가 박스 윗면 구멍 안을 잡는 깊이만큼 아래).
+    tool = packaging.TOOLS["gripper"]
     placed = cameras.placed_stacking_poses(tool)
     expected = skeleton.targets()
     assert len(placed) == len(expected)
     for pose, (radius, height, _) in zip(placed, expected, strict=True):
         tcp = pose.T[:3, 3] + pose.T[:3, 2] * tool.length
         assert np.hypot(tcp[0], tcp[1]) == pytest.approx(radius)
-        assert tcp[2] == pytest.approx(height)
+        assert tcp[2] == pytest.approx(height - tool.box_depth)
 
 
 def test_overhead_post_camera_sees_the_work_spots_and_stays_out_of_the_way() -> None:
@@ -156,7 +181,7 @@ def test_overhead_post_camera_sees_the_work_spots_and_stays_out_of_the_way() -> 
     for pts in cameras.work_targets().values():
         assert cameras.in_view(R, eye, pts).all()
     fixed = cameras.post_prims(cam)
-    tool = packaging.TOOLS["suction"]
+    tool = packaging.TOOLS["gripper"]
     robot, prims, _ = cameras.arm_shapes(packaging.Layout(), tool)
     scene = packaging.build_scene(robot, prims, fixed)
     poses = cameras.placed_stacking_poses(tool) + cameras.transit_poses(tool)
@@ -190,18 +215,17 @@ def test_rings_become_box_segments_mapped_to_one_shape() -> None:
         assert len(pieces) == packaging.RING_SEGMENTS
 
 
-@pytest.mark.parametrize("sts", ["drawing", "step"])
-def test_ur_covers_fit_whole_at_the_chosen_wrist_offsets(sts: str) -> None:
-    # 손목 오프셋 63 mm(0019)면 서보 외형 자료 두 가지에서 다 뚜껑을 줄이지 않고 박스 쌓기 자세가 부딪히지 않는다
-    layout = packaging.Layout(sts=sts)  # type: ignore[arg-type]
-    tool = packaging.TOOLS["suction"]
+def test_ur_covers_fit_whole_at_the_chosen_wrist_offsets() -> None:
+    # 손목 오프셋 63 mm(0019)면 뚜껑을 줄이지 않고 평행 그리퍼로 박스를 쌓는 자세가 부딪히지 않는다
+    layout = packaging.Layout()
+    tool = packaging.TOOLS["gripper"]
     robot, prims, mods, _ = covers.build_ur_arm(layout, tool)
     for drum in covers.drums(layout, mods, covers.Look()).values():
         assert drum.cap_out_r == pytest.approx(drum.r_out)
         assert drum.cap_back_r == pytest.approx(drum.r_out)
     scene = packaging.build_scene(robot, prims)
     poses = packaging.stacking_poses(tool)
-    result = packaging.check_set(scene, AnalyticIK(robot), poses, tool.name, tool.symmetric)
+    result = packaging.check_set(scene, AnalyticIK(robot), poses, "박스 쌓기", tool.symmetric)
     assert result.clear == result.total, result.failures
 
 

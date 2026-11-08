@@ -198,18 +198,20 @@ def build_ur_arm(
 
     # J1 몸통(1): 돌림판 위에서 J2 원통 아래까지. 속이 빈 원통이고 J2 서보의 먼 쪽이 그 안에 들어간다.
     # 이름에 "기둥"을 쓰지 않는다. 카메라 검토(cameras.py)가 그 이름으로 책상의 카메라 기둥을 찾는다.
+    # 어깨가 낮은 비교용 골격(0017의 처음 길이)은 J2 원통이 돌림판까지 내려와 몸통이 없다.
     sh = robot.joints[1].origin[2]
     col0, col1 = pk.TURNTABLE_TOP, sh - ds[2].r_out - MOVING_GAP
-    b.cyl(
-        1,
-        "column",
-        (0.0, 0.0, (col0 + col1) / 2),
-        Z,
-        look.column_r,
-        col1 - col0,
-        inner=look.column_r - WALL,
-        group="J1 몸통",
-    )
+    if col1 > col0:
+        b.cyl(
+            1,
+            "column",
+            (0.0, 0.0, (col0 + col1) / 2),
+            Z,
+            look.column_r,
+            col1 - col0,
+            inner=look.column_r - WALL,
+            group="J1 몸통",
+        )
 
     # 위팔(2): J2 브래킷 팔을 늘인 판 두 장이 J2 원통 위의 가로판에서 만나고, 그 위로 관이 J3 집까지 간다.
     j2, d2 = by_joint[2], ds[2]
@@ -266,7 +268,7 @@ def build_ur_arm(
     )
 
     # 손목 1(4): J4 출력 쪽 브래킷 팔 바깥에서 J5 고리까지 가는 목.
-    # 서보가 두꺼우면(STEP 외형) J5 고리가 J4 브래킷 팔 바로 옆이라 목이 없다.
+    # J5 고리가 J4 브래킷 팔 바로 옆이면 목이 없다.
     d5 = ds[5]
     n0, n1 = _arms(by_joint[4].shape)[0][1], layout.d45 - d5.r_in
     if n1 > n0:
@@ -560,23 +562,23 @@ def flange_margin(robot: Robot, prims: list[Prim], tool: Tool, qs: list[np.ndarr
 def compare(layout: Layout, look: Look) -> None:
     """상자 링크(지금 배치 검토)와 UR식을 같은 자세로 비교한다."""
     print("\n### 작업 자세: 부딪힘 없이 되는 자세 수와 버팀 토크 / 정격 (상자 링크 → UR식)")
-    print("| 도구 | 자세 | 상자 링크 | UR식 | 버팀 토크 상자 링크 | 버팀 토크 UR식 |")
+    print("| 작업 (도구) | 자세 | 상자 링크 | UR식 | 버팀 토크 상자 링크 | 버팀 토크 UR식 |")
     print("|---|---|---|---|---|---|")
     margins = []
-    for key, poses_of in pk.POSE_SETS:
+    for name, key, poses_of in pk.POSE_SETS:
         tool = TOOLS[key]
         rows = []
         for build in (_box, _ur):
             robot, prims = build(layout, tool, look)
             scene = pk.build_scene(robot, prims)
-            res = pk.check_set(scene, AnalyticIK(robot), poses_of(tool), tool.name, tool.symmetric)
+            res = pk.check_set(scene, AnalyticIK(robot), poses_of(tool), name, tool.symmetric)
             ratio = pk.torque_ratios(robot, prims, tool, res.qs) if res.qs else np.zeros(6)
             rows.append((res, ratio))
             if res.clear_qs:
                 margins.append((build is _ur, flange_margin(robot, prims, tool, res.clear_qs)))
         (rb, tb), (ru, tu) = rows
         print(
-            f"| {tool.name} | {rb.total} | {rb.clear} | {ru.clear} | "
+            f"| {name} ({tool.name}) | {rb.total} | {rb.clear} | {ru.clear} | "
             f"J2 {tb[1]:.2f} · J3 {tb[2]:.2f} · J4 {tb[3]:.2f} | J2 {tu[1]:.2f} · J3 {tu[2]:.2f} · J4 {tu[3]:.2f} |"
         )
         extra = [f for f in ru.failures if f not in rb.failures]
@@ -714,12 +716,18 @@ def deflection_report(layout: Layout, look: Look) -> None:
         print(f"| {label} | {cells[0]} | {cells[1]} | {best} |")
 
 
-def offset_table(look: Look, sts: str) -> None:
-    print("\n### 손목 오프셋별: 손목 원통 뚜껑과 부딪힘 없는 자세 수 (흡착 / 포인터 / 평행 그리퍼)")
-    print("| J4→J5 | J5→J6 | J4 출력 쪽 | J5 출력 쪽 | 흡착 | 포인터 | 평행 그리퍼 |")
+def offset_table(look: Look) -> None:
+    print("\n### 손목 오프셋별: 손목 원통 뚜껑과 부딪힘 없는 자세 수 (박스 쌓기 / 포인터 / 잡기)")
+    print("| J4→J5 | J5→J6 | J4 출력 쪽 | J5 출력 쪽 | 박스 쌓기 | 포인터 | 잡기 |")
     print("|---|---|---|---|---|---|---|")
-    for d45, d56 in ((0.055, 0.055), (0.058, 0.058), (0.060, 0.060), (0.062, 0.062)):
-        layout = Layout(d45=d45, d56=d56, sts=sts)  # type: ignore[arg-type]
+    for d45, d56 in (
+        (0.055, 0.055),
+        (0.058, 0.058),
+        (0.060, 0.060),
+        (0.062, 0.062),
+        (0.063, 0.063),
+    ):
+        layout = Layout(d45=d45, d56=d56)
         _, _, mods = pk.build_arm(layout, TOOLS["gripper"])
         ds = drums(layout, mods, look)
 
@@ -729,14 +737,14 @@ def offset_table(look: Look, sts: str) -> None:
             return "뚜껑" if math.isclose(d.cap_out_r, d.r_out) else "작은 뚜껑"
 
         cells = []
-        for key, poses_of in pk.POSE_SETS:
+        for name, key, poses_of in pk.POSE_SETS:
             tool = TOOLS[key]
             robot, prims, _, _ = build_ur_arm(layout, tool, look)
             res = pk.check_set(
                 pk.build_scene(robot, prims),
                 AnalyticIK(robot),
                 poses_of(tool),
-                tool.name,
+                name,
                 tool.symmetric,
             )
             cells.append(f"{res.clear}/{res.total}")
@@ -785,22 +793,18 @@ def lettering_report(look: Look) -> None:
 
 
 def report(layout: Layout, look: Look) -> None:
-    source = {"drawing": "2D 도면(축 근처 29, 먼 쪽 35)", "step": "STEP(몸통 33.1, 먼 쪽 37.25)"}[
-        layout.sts
-    ]
-    print(f"\n# STS 서보 외형: {source}")
+    print("\n# UR식 외형 검토 (STS 서보 외형은 도면과 실측, packaging.shapes)")
     drum_table(layout, look)
     mass_report(layout, look)
     compare(layout, look)
     ranges_and_view(layout, look)
     deflection_report(layout, look)
     lettering_report(look)
-    offset_table(look, layout.sts)
+    offset_table(look)
 
 
 def main() -> None:
-    for sts in ("drawing", "step"):
-        report(Layout(sts=sts), Look())  # type: ignore[arg-type]
+    report(Layout(), Look())
 
 
 if __name__ == "__main__":
