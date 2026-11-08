@@ -102,6 +102,14 @@ def test_tool_down_line_across_the_work_zone_is_continuous() -> None:
     assert np.degrees(t.step) < 10
 
 
+def test_each_servo_port_stays_under_the_connector_rating() -> None:
+    # 0016: 서보 줄을 두 단자로 나누면 단자마다 버팀 전류가 커넥터 정격 2 A(26 AWG) 안이다
+    worst, at_sum, _ = reach.holding_currents(packaging.Layout())
+    assert worst[0] == pytest.approx(0.0, abs=1e-6)  # J1은 중력을 버티지 않는다
+    for joints in reach.PORTS:
+        assert at_sum[list(joints)].sum() < 2.0, joints
+
+
 def test_desk_share_counts_the_part_of_the_work_zone_on_the_desk() -> None:
     assert reach.desk_share(0.60, 0.36, 0.06) == pytest.approx(1.0)
     assert 0.9 < reach.desk_share(0.55, 0.34, 0.06) < 1.0

@@ -199,7 +199,7 @@ def build_ur_arm(
     # J1 몸통(1): 돌림판 위에서 J2 원통 아래까지. 속이 빈 원통이고 J2 서보의 먼 쪽이 그 안에 들어간다.
     # 이름에 "기둥"을 쓰지 않는다. 카메라 검토(cameras.py)가 그 이름으로 책상의 카메라 기둥을 찾는다.
     sh = robot.joints[1].origin[2]
-    col0, col1 = 0.062, sh - ds[2].r_out - MOVING_GAP
+    col0, col1 = pk.TURNTABLE_TOP, sh - ds[2].r_out - MOVING_GAP
     b.cyl(
         1,
         "column",

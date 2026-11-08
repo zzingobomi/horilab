@@ -50,6 +50,13 @@ def test_received_items_stay_in_the_budget() -> None:
     assert "| 서보 | 1 | 2026-11-14 |" in text
 
 
+def test_an_empty_buy_now_list_says_so() -> None:
+    sent = bom.Item(name="서보", qty=1, stage=2, why="어깨", ordered=dt.date(2026, 11, 7))
+    head = bom.render(bom.Purchases(item=[sent])).partition("## 배송 중")[0]
+    assert "지금 주문할 것이 없다." in head
+    assert "사는 곳별" not in head
+
+
 def test_ordered_items_leave_the_buy_now_list() -> None:
     now = bom.Item(
         name="저울",

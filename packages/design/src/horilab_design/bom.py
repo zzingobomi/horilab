@@ -171,25 +171,30 @@ def render(purchases: Purchases) -> str:
         "",
         "## 지금 주문할 것",
         "",
-        "아직 주문하지 않았다.",
-        "",
-        "| 품목 | 수량 | 값 | 사는 곳 | 배송 | 왜 지금 | 정한 날 |",
-        "|---|---|---|---|---|---|---|",
     ]
-    for i in now:
-        assert i.since is not None
-        lines.append(
-            f"| {_cell(i.name)} | {i.qty} | {i.price()} | {_where(i)} | {_lead(i)} | {_cell(i.why)} | "
-            f"{i.since.isoformat()} |"
-        )
-    shops: dict[str, list[Item]] = {}
-    for i in now:
-        shops.setdefault(i.vendor or "사는 곳 찾는 중", []).append(i)
-    lines += [
-        "",
-        "사는 곳별: "
-        + " · ".join(f"{_cell(v)} {len(rows)}개 {_total(rows)}" for v, rows in shops.items()),
-    ]
+    if now:
+        lines += [
+            "아직 주문하지 않았다.",
+            "",
+            "| 품목 | 수량 | 값 | 사는 곳 | 배송 | 왜 지금 | 정한 날 |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for i in now:
+            assert i.since is not None
+            lines.append(
+                f"| {_cell(i.name)} | {i.qty} | {i.price()} | {_where(i)} | {_lead(i)} | {_cell(i.why)} | "
+                f"{i.since.isoformat()} |"
+            )
+        shops: dict[str, list[Item]] = {}
+        for i in now:
+            shops.setdefault(i.vendor or "사는 곳 찾는 중", []).append(i)
+        lines += [
+            "",
+            "사는 곳별: "
+            + " · ".join(f"{_cell(v)} {len(rows)}개 {_total(rows)}" for v, rows in shops.items()),
+        ]
+    else:
+        lines.append("지금 주문할 것이 없다.")
     if shipping:
         lines += [
             "",

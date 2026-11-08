@@ -23,6 +23,13 @@ def test_heights_follow_the_layer_height() -> None:
         coupons.FRAME_HEIGHT,
         coupons.HORN_RECESS_DEPTH,
         *(h for _, h in coupons.NUT_SLOTS),
+        coupons.PIN_DEPTH,
+        coupons.SEAT_DEPTH,
+        coupons.LIP_HEIGHT,
+        coupons.SHOULDER_H,
+        coupons.STUB_BASE,
+        coupons.STUB_HEIGHT,
+        coupons.GAUGE_PLATE,
     ]
     for height in heights:
         layers = height / coupons.LAYER

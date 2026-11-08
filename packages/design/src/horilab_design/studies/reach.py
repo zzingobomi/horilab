@@ -40,6 +40,7 @@ from horilab_design.studies import covers as cv
 from horilab_design.studies import packaging as pk
 from horilab_design.studies.common import RATED_MARGIN
 from horilab_design.studies.packaging import DEG, TOOLS, Layout, Tool
+from horilab_design.values import KGCM, load_servos
 
 RADII = tuple(round(0.10 + 0.02 * i, 2) for i in range(16))  # 10~40 cm
 HEIGHTS = (0.02, 0.06, 0.10, 0.14, 0.18, 0.22)
@@ -450,6 +451,57 @@ def torque_report(layouts: tuple[Layout, ...]) -> None:
             )
 
 
+SERVO_OF_JOINT = ("STS3215", "ST-3120", "STS3250", "STS3215", "STS3215", "STS3215")
+# 서보 줄을 어댑터의 두 단자로 나눈다 (0016): 단자 1은 J1→J2, 단자 2는 J3→J4→J5→J6→그리퍼
+PORTS = ((0, 1), (2, 3, 4, 5))
+
+
+def holding_currents(layout: Layout) -> tuple[np.ndarray, np.ndarray, tuple[str, float, float]]:
+    """주 작업 영역에서 두 도구가 아래일 때 버팀 전류 [A]: (관절마다 가장 큰 값, 합이 가장 큰 자세의 관절별 값, 그 자세).
+
+    전류는 토크에 비례한다고 보고 스톨 토크와 스톨 전류로 센다. 서보의 대기 전류는 뺀다.
+    """
+    servos = load_servos()
+    stall_t = np.array([servos[n].stall_torque_kgcm * KGCM for n in SERVO_OF_JOINT])
+    stall_i = np.array([servos[n].stall_current_a for n in SERVO_OF_JOINT])
+    s = scenes(layout)
+    worst, at_sum, where = np.zeros(6), np.zeros(6), ("", 0.0, 0.0)
+    for key in ("suction", "gripper"):
+        tool = TOOLS[key]
+        _, prims = s.by_tool[key]
+        masses = _masses(prims, tool)
+        for r, z in itertools.product(RADII, HEIGHTS):
+            if not in_main(r, z):
+                continue
+            q = free_solution(s, key, down_pose(r, z, tool), tool)
+            if q is None:
+                continue
+            amps = stall_i * np.abs(holding_torques(s.robot, q, masses)) / stall_t
+            worst = np.maximum(worst, amps)
+            if amps.sum() > at_sum.sum():
+                at_sum, where = amps, (key, r, z)
+    return worst, at_sum, where
+
+
+def current_report(layout: Layout) -> None:
+    worst, at_sum, (key, r, z) = holding_currents(layout)
+    print("\n## 버팀 전류 (주 작업 영역, 도구 아래. 토크에 비례로 셈, 대기 전류와 그리퍼 서보 뺌)")
+    print("| | J1 | J2 | J3 | J4 | J5 | J6 | 합 |")
+    print("|---|---|---|---|---|---|---|---|")
+    print("| 관절마다 가장 큰 값 [A] | " + " | ".join(f"{a:.2f}" for a in worst) + " | - |")
+    print(
+        f"| 합이 가장 큰 자세 ({'평행 그리퍼' if key == 'gripper' else '흡착'}, r {r * 100:.0f}, "
+        f"z {z * 100:.0f} cm) [A] | "
+        + " | ".join(f"{a:.2f}" for a in at_sum)
+        + f" | {at_sum.sum():.2f} |"
+    )
+    ports = ", ".join(
+        f"단자 {k + 1}(J{'·J'.join(str(j + 1) for j in joints)}) {at_sum[list(joints)].sum():.2f} A"
+        for k, joints in enumerate(PORTS)
+    )
+    print(f"- 한 줄이면 첫 구간에 {at_sum.sum():.2f} A가 흐른다. 두 단자로 나누면 {ports}다.")
+
+
 def _free_solutions(s: Scenes, key: str, T: Mat, tool: Tool) -> list[np.ndarray]:
     scene, _ = s.by_tool[key]
     return [q for q in pk.solve(s.ik, T, tool.symmetric) if not pk.collisions(pk.hits(scene, q))]
@@ -599,6 +651,7 @@ def checks() -> None:
     base = Layout()
     print("# 고른 골격의 추가 확인")
     torque_report((BEFORE, base))
+    current_report(base)
     singularity_report(base)
     continuity_report(base)
 

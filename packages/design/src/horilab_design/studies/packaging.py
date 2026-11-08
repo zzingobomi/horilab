@@ -47,6 +47,11 @@ D405_MASS = 0.060  # [kg] 홈페이지 값 (사양서는 58 g, docs/hardware.md)
 CONTACT_MARGIN = 2.0 * MM  # 이 거리 안이면 "빠듯함"으로 본다
 PENETRATION = 0.2 * MM  # 이보다 깊이 겹치면 부딪힘으로 본다
 MOVING_GAP = 2.0 * MM  # 서로 움직이는 다른 링크 형상 사이에 두는 틈
+# 돌림판 윗면 높이. 베이스 안에 J1 서보와 J1 베어링이 들어간다 (0015). 아래부터 바닥판 4, J1 서보와 혼 36,
+# 안쪽 링 받침 4, 6806 두 개(30 mm 띄움, 바깥 면 사이 37), 바깥 링 누름판 2, 틈 0.5, 돌림판 9.5 [mm].
+# RU42(두께 12)일 때는 62 mm였다.
+TURNTABLE_TOP = 0.093
+TURNTABLE_T = 9.5 * MM
 
 
 @dataclass(frozen=True)
@@ -493,9 +498,18 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
         m.build(b, servos[m.shape.model].mass_g * 1e-3)
     sh = robot.joints[1].origin[2]  # 설치면 → J2 축
 
-    # 베이스(0)와 돌림판(1). J1 서보와 RU42는 베이스 안이라 충돌 검사에서 뺀다.
-    b.cyl(0, "base", (0.0, 0.0, 0.026), Z, 0.046, 0.052, mass=0.0, group="베이스")
-    b.cyl(1, "turntable", (0.0, 0.0, 0.05725), Z, 0.044, 0.0095, group="돌림판")
+    # 베이스(0)와 돌림판(1). J1 서보와 베어링은 베이스 안이라 충돌 검사에서 뺀다.
+    base_h = TURNTABLE_TOP - TURNTABLE_T - 0.5 * MM
+    b.cyl(0, "base", (0.0, 0.0, base_h / 2), Z, 0.046, base_h, mass=0.0, group="베이스")
+    b.cyl(
+        1,
+        "turntable",
+        (0.0, 0.0, TURNTABLE_TOP - TURNTABLE_T / 2),
+        Z,
+        0.044,
+        TURNTABLE_T,
+        group="돌림판",
+    )
     j2 = by_joint[2]
     s2 = j2.shape
     house_bottom = sh - s2.far - GAP - WALL
@@ -503,7 +517,7 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
     b.box(
         1,
         "shoulder_post",
-        (-(s2.half_width + GAP + WALL), fy0 - GAP - WALL, 0.062),
+        (-(s2.half_width + GAP + WALL), fy0 - GAP - WALL, TURNTABLE_TOP),
         (s2.half_width + GAP + WALL, fy1 + GAP + WALL, house_bottom),
         group="J2 집",
     )

@@ -5,6 +5,8 @@
 
 - 1차: M3 볼트 구멍과 너트 홈
 - 2차: 서보 몸체 자리와 혼 자리. 도면 치수(params/servos.toml)에 여유를 더해 간다
+- 3차: 영점 핀 구멍(MISUMI MSH3, 0015), J1 베어링 6806의 바깥 링 자리와 안쪽 링 축(0015),
+  다이얼 게이지(Mitutoyo 2046A) 줄기 구멍(0012)
 
     uv run python -m horilab_design.coupons    # build/coupons/에 STL을 만든다
 
@@ -66,6 +68,24 @@ LABEL_TAB = 7.0  # 틀의 한쪽 벽을 넓혀 글자를 새긴다
 CORNER_RELIEF = 2.0  # 안쪽 모서리를 둥글게 더 파서 각진 서보 모서리가 걸리지 않게 한다 (지름)
 HORN_RECESS_DEPTH = 2.0
 HORN_SCREW_RELIEF = 7.0  # 혼 가운데 나사 머리가 들어갈 구멍
+
+# 3차: 손으로 꽂았다 빼는 영점 핀(지름 3, h7: 2.990~3.000). 핀 20 mm 중 절반이 들어가는 두께로 본다
+PIN_HOLES = (3.00, 3.05, 3.10, 3.15, 3.20, 3.25)
+PIN_DEPTH = 10.0
+# 3차: 6806 (30 × 42 × 7). 바깥 링 공차 0/-0.011, 안쪽 링 0/-0.010. 손으로 밀어 넣어 놀지 않는 칸을 고른다
+BEARING_BORES = (42.0, 42.1, 42.2, 42.3, 42.4)  # 바깥 링이 들어갈 구멍
+BEARING_SHAFTS = (29.8, 29.9, 30.0, 30.1, 30.2)  # 안쪽 링이 끼워질 축
+SEAT_DEPTH = 7.2  # 베어링 폭 7 mm + 층 하나
+LIP_HEIGHT = 1.6  # 바깥 링이 얹히는 바닥 턱
+LIP_BORE = 37.0  # 턱 안지름. 바깥 링 면에만 닿고 안쪽 링(바깥지름 약 34)은 비킨다
+RING_WALL = 5.0
+SHOULDER_D = 33.0  # 안쪽 링이 얹히는 턱 지름. 안쪽 링 면에만 닿고 바깥 링(안지름 약 38)은 비킨다
+SHOULDER_H = 0.8
+STUB_BASE = 2.0  # 축 받침판 두께
+STUB_HEIGHT = 8.0  # 베어링 폭보다 1 mm 길게
+# 3차: 다이얼 게이지 줄기 지름 8 mm(h6). 받침은 볼트로 조이는 갈라진 고리라서, 걸리지 않고 들어가는 구멍을 고른다
+GAUGE_STEM_HOLES = (8.0, 8.1, 8.2, 8.3)
+GAUGE_PLATE = 10.0
 
 PITCH = 11.0  # 칸 간격
 MARGIN = 2.0
@@ -213,6 +233,78 @@ def horn_recesses(spec: ServoSpec) -> Compound:
     return plate
 
 
+def pin_holes_vertical() -> Compound:
+    """영점 핀이 세로로 지나가는 구멍판. 핀을 손으로 꽂았다 빼 본다."""
+    plate: Compound = Box(_length(len(PIN_HOLES)), 16.0, PIN_DEPTH, align=CORNER)
+    for i, d in enumerate(PIN_HOLES):
+        plate -= _vertical_hole(d, _x(i), 5.5, PIN_DEPTH)
+        plate -= _label(f"{d:.2f}", _x(i), 12.0, PIN_DEPTH)
+    return plate
+
+
+def pin_holes_horizontal() -> Compound:
+    """영점 핀이 가로로 지나가는 막대. 구멍은 y 방향이고 물방울 모양이다."""
+    height, z = 10.0, 4.5
+    block: Compound = Box(_length(len(PIN_HOLES)), PIN_DEPTH, height, align=CORNER)
+    for i, d in enumerate(PIN_HOLES):
+        block -= _teardrop_hole(d, _x(i), z, PIN_DEPTH)
+        block -= _label(f"{d:.2f}", _x(i), PIN_DEPTH / 2, height)
+    return block
+
+
+def bearing_bores() -> Compound:
+    """6806 바깥 링이 들어갈 고리. 고리 하나에 지름 하나이고, 바닥 턱에 바깥 링이 얹힌다.
+
+    베어링을 위에서 손으로 밀어 넣어 본다. 고리 옆 혀에 지름을 새긴다.
+    """
+    columns, height = 3, LIP_HEIGHT + SEAT_DEPTH
+    rings: list[Compound] = []
+    for i, d in enumerate(BEARING_BORES):
+        outer = BEARING_BORES[-1] + 2 * RING_WALL
+        x = (i % columns) * (outer + 4.0) + outer / 2
+        y = (i // columns) * (outer + LABEL_TAB + 4.0) + outer / 2
+        up = (Align.CENTER, Align.CENTER, Align.MIN)
+        ring: Compound = Pos(x, y, 0) * Cylinder(outer / 2, height, align=up)
+        ring += Pos(x - 7.0, y + outer / 2 - 2.0, 0) * Box(
+            14.0, LABEL_TAB + 2.0, height, align=CORNER
+        )
+        ring -= Pos(x, y, LIP_HEIGHT) * Cylinder(d / 2, SEAT_DEPTH + 1.0, align=up)
+        ring -= _vertical_hole(LIP_BORE, x, y, height)
+        ring -= _label(f"{d:.1f}", x, y + outer / 2 + LABEL_TAB / 2 - 1.0, height)
+        rings.append(ring)
+    return Compound(rings)
+
+
+def bearing_shafts() -> Compound:
+    """6806 안쪽 링이 끼워질 축. 받침판 위 턱에 안쪽 링이 얹힌다. 베어링을 위에서 끼워 본다."""
+    columns, size = 3, 40.0
+    stubs: list[Compound] = []
+    up = (Align.CENTER, Align.CENTER, Align.MIN)
+    for i, d in enumerate(BEARING_SHAFTS):
+        x0 = (i % columns) * (size + 4.0)
+        y0 = (i // columns) * (size + LABEL_TAB + 4.0)
+        cx, cy = x0 + size / 2, y0 + size / 2
+        stub: Compound = Pos(x0, y0, 0) * Box(size, size + LABEL_TAB, STUB_BASE, align=CORNER)
+        stub += Pos(cx, cy, STUB_BASE) * Cylinder(SHOULDER_D / 2, SHOULDER_H, align=up)
+        stub += Pos(cx, cy, STUB_BASE + SHOULDER_H) * Cylinder(d / 2, STUB_HEIGHT, align=up)
+        stub -= _label(f"{d:.1f}", cx, y0 + size + LABEL_TAB / 2, STUB_BASE)
+        stubs.append(stub)
+    return Compound(stubs)
+
+
+def gauge_stem_holes() -> Compound:
+    """다이얼 게이지 줄기가 들어갈 구멍판. 게이지 받침의 조임 구멍 크기를 정한다."""
+    pitch = 14.0
+    plate: Compound = Box(
+        2 * MARGIN + pitch * len(GAUGE_STEM_HOLES), 22.0, GAUGE_PLATE, align=CORNER
+    )
+    for i, d in enumerate(GAUGE_STEM_HOLES):
+        x = MARGIN + pitch * (i + 0.5)
+        plate -= _vertical_hole(d, x, 8.0, GAUGE_PLATE)
+        plate -= _label(f"{d:.1f}", x, 17.5, GAUGE_PLATE)
+    return plate
+
+
 COUPONS: dict[str, Callable[[], Compound]] = {
     "fit1_vertical_holes": vertical_holes,
     "fit1_horizontal_holes": horizontal_holes,
@@ -221,6 +313,14 @@ COUPONS: dict[str, Callable[[], Compound]] = {
     # STS3215와 STS3250은 도면이 같아서 같은 시험편으로 본다
     "fit2_sts_frames": lambda: servo_frames(load_servos()["STS3215"]),
     "fit2_sts_horn": lambda: horn_recesses(load_servos()["STS3215"]),
+    # ST-3120은 도면 치수로 미리 만들어 두고, 서보가 오면 뽑아 끼워 본다
+    "fit2_st3120_frames": lambda: servo_frames(load_servos()["ST-3120"]),
+    "fit2_st3120_horn": lambda: horn_recesses(load_servos()["ST-3120"]),
+    "fit3_pin_vertical": pin_holes_vertical,
+    "fit3_pin_horizontal": pin_holes_horizontal,
+    "fit3_6806_bores": bearing_bores,
+    "fit3_6806_shafts": bearing_shafts,
+    "fit3_gauge_stem": gauge_stem_holes,
 }
 
 
