@@ -102,7 +102,7 @@ class PrintFit(_Values):
     """공차 시험편으로 고른 설계 치수 [mm]. 필라멘트마다 하나다 (docs/manufacturing.md의 "공차")."""
 
     m3_hole_mm: float | None = None  # 세로 구멍: M3 볼트가 걸리지 않고 지나가는 가장 작은 지름
-    m3_hole_horizontal_mm: float | None = None  # 가로 구멍(물방울 모양)의 원 지름
+    m3_hole_horizontal_mm: float | None = None  # 가로 구멍(둥근 구멍)의 지름
     m3_tap_hole_mm: float | None = None  # M3 볼트를 플라스틱에 바로 조여 넣는 구멍
     m3_nut_pocket_mm: float | None = None  # 위에서 눌러 끼우는 육각 홈의 맞변 거리
     m3_nut_slot_width_mm: float | None = None  # 옆에서 밀어 넣는 홈의 폭
@@ -110,6 +110,13 @@ class PrintFit(_Values):
     # 서보 몸체 자리와 혼 자리: 도면 치수(params/servos.toml)에 더하는 여유. 길이·폭·지름에 그대로 더한다
     seat_clearance_mm: dict[ServoModel, float] = {}
     horn_clearance_mm: dict[ServoModel, float] = {}
+    # 3차 시험편: 영점 핀(MSH3-20), 6806 자리와 축 (설계 지름)
+    pin_hole_mm: float | None = (
+        None  # 세로 구멍: 핀이 손으로 들어가고 빠지며 흔들어도 놀지 않는 가장 작은 지름
+    )
+    pin_hole_horizontal_mm: float | None = None  # 가로 구멍(둥근 구멍)의 지름
+    bearing_6806_bore_mm: float | None = None  # 바깥 링을 손으로 밀어 넣을 수 있고 놀지 않는 구멍
+    bearing_6806_shaft_mm: float | None = None  # 안쪽 링을 손으로 끼울 수 있고 놀지 않는 축
 
 
 class ServoBody(_Values):

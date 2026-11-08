@@ -5,8 +5,7 @@
 
 - 1차: M3 볼트 구멍과 너트 홈
 - 2차: 서보 몸체 자리와 혼 자리. 도면 치수(params/servos.toml)에 여유를 더해 간다
-- 3차: 영점 핀 구멍(MISUMI MSH3, 0015), J1 베어링 6806의 바깥 링 자리와 안쪽 링 축(0015),
-  다이얼 게이지(Mitutoyo 2046A) 줄기 구멍(0012)
+- 3차: 영점 핀 구멍(MISUMI MSH3, 0015), J1 베어링 6806의 바깥 링 자리와 안쪽 링 축(0015)
 
     uv run python -m horilab_design.coupons    # build/coupons/에 STL을 만든다
 
@@ -24,16 +23,13 @@ from pathlib import Path
 from build123d import (
     Align,
     Box,
-    Circle,
     Compound,
     Cylinder,
     Part,
-    Polygon,
     Pos,
     RegularPolygon,
     Rot,
     Text,
-    Wire,
     export_stl,
     extrude,
 )
@@ -71,6 +67,8 @@ HORN_SCREW_RELIEF = 7.0  # 혼 가운데 나사 머리가 들어갈 구멍
 
 # 3차: 손으로 꽂았다 빼는 영점 핀(지름 3, h7: 2.990~3.000). 핀 20 mm 중 절반이 들어가는 두께로 본다
 PIN_HOLES = (3.00, 3.05, 3.10, 3.15, 3.20, 3.25)
+# 가로 구멍은 세로보다 작게 뽑힌다 (1차: M3 볼트가 세로 3.1, 가로 3.3에서 지나감). 그만큼 올려 잡는다
+PIN_HOLES_HORIZONTAL = (3.20, 3.25, 3.30, 3.35, 3.40, 3.45)
 PIN_DEPTH = 10.0
 # 3차: 6806 (30 × 42 × 7). 바깥 링 공차 0/-0.011, 안쪽 링 0/-0.010. 손으로 밀어 넣어 놀지 않는 칸을 고른다
 BEARING_BORES = (42.0, 42.1, 42.2, 42.3, 42.4)  # 바깥 링이 들어갈 구멍
@@ -83,9 +81,6 @@ SHOULDER_D = 33.0  # 안쪽 링이 얹히는 턱 지름. 안쪽 링 면에만 �
 SHOULDER_H = 0.8
 STUB_BASE = 2.0  # 축 받침판 두께
 STUB_HEIGHT = 8.0  # 베어링 폭보다 1 mm 길게
-# 3차: 다이얼 게이지 줄기 지름 8 mm(h6). 받침은 볼트로 조이는 갈라진 고리라서, 걸리지 않고 들어가는 구멍을 고른다
-GAUGE_STEM_HOLES = (8.0, 8.1, 8.2, 8.3)
-GAUGE_PLATE = 10.0
 
 PITCH = 11.0  # 칸 간격
 MARGIN = 2.0
@@ -112,19 +107,15 @@ def _vertical_hole(diameter: float, x: float, y: float, height: float) -> Part:
     )
 
 
-def _teardrop_hole(diameter: float, x: float, z: float, length: float) -> Compound | Wire:
-    """y 방향 가로 구멍. 위쪽을 45° 지붕으로 막아 서포트 없이 뽑힌다 (manufacturing.md)."""
-    r = diameter / 2
-    roof = Polygon(  # xy 평면, 지붕이 +y
-        (-r * math.cos(math.pi / 4), r * math.sin(math.pi / 4)),
-        (0.0, r * math.sqrt(2)),
-        (r * math.cos(math.pi / 4), r * math.sin(math.pi / 4)),
-        align=None,
+def _horizontal_hole(diameter: float, x: float, z: float, length: float) -> Part:
+    """y 방향 둥근 가로 구멍.
+
+    1차 시험편의 가로 구멍은 이 모양으로 뽑아서 맞춰 봤다 (지름 5 mm 안팎까지는 서포트 없이 뽑힌다).
+    """
+    return Pos(x, length + 1.0, z) * (
+        Rot(90, 0, 0)
+        * Cylinder(diameter / 2, length + 2.0, align=(Align.CENTER, Align.CENTER, Align.MIN))
     )
-    span = length + 2.0
-    solid = extrude(Circle(r), amount=span) + extrude(roof, amount=span)  # +z 쪽으로
-    # x축으로 90° 돌리면 지붕(+y)은 +z로, 뽑은 방향(+z)은 -y로 간다
-    return Pos(x, length + 1.0, z) * (Rot(90, 0, 0) * solid)
 
 
 def vertical_holes() -> Compound:
@@ -140,11 +131,11 @@ def vertical_holes() -> Compound:
 
 
 def horizontal_holes() -> Compound:
-    """가로 구멍 막대. 구멍은 y 방향이고 물방울 모양이다."""
+    """가로 구멍 막대. 구멍은 y 방향 둥근 구멍이다."""
     depth, height, z = 8.0, 10.0, 4.5
     block: Compound = Box(_length(len(CLEARANCE_HOLES)), depth, height, align=CORNER)
     for i, d in enumerate(CLEARANCE_HOLES):
-        block -= _teardrop_hole(d, _x(i), z, depth)
+        block -= _horizontal_hole(d, _x(i), z, depth)
         block -= _label(f"{d:.1f}", _x(i), depth / 2, height)
     return block
 
@@ -243,11 +234,11 @@ def pin_holes_vertical() -> Compound:
 
 
 def pin_holes_horizontal() -> Compound:
-    """영점 핀이 가로로 지나가는 막대. 구멍은 y 방향이고 물방울 모양이다."""
+    """영점 핀이 가로로 지나가는 막대. 구멍은 y 방향 둥근 구멍이다."""
     height, z = 10.0, 4.5
-    block: Compound = Box(_length(len(PIN_HOLES)), PIN_DEPTH, height, align=CORNER)
-    for i, d in enumerate(PIN_HOLES):
-        block -= _teardrop_hole(d, _x(i), z, PIN_DEPTH)
+    block: Compound = Box(_length(len(PIN_HOLES_HORIZONTAL)), PIN_DEPTH, height, align=CORNER)
+    for i, d in enumerate(PIN_HOLES_HORIZONTAL):
+        block -= _horizontal_hole(d, _x(i), z, PIN_DEPTH)
         block -= _label(f"{d:.2f}", _x(i), PIN_DEPTH / 2, height)
     return block
 
@@ -292,19 +283,6 @@ def bearing_shafts() -> Compound:
     return Compound(stubs)
 
 
-def gauge_stem_holes() -> Compound:
-    """다이얼 게이지 줄기가 들어갈 구멍판. 게이지 받침의 조임 구멍 크기를 정한다."""
-    pitch = 14.0
-    plate: Compound = Box(
-        2 * MARGIN + pitch * len(GAUGE_STEM_HOLES), 22.0, GAUGE_PLATE, align=CORNER
-    )
-    for i, d in enumerate(GAUGE_STEM_HOLES):
-        x = MARGIN + pitch * (i + 0.5)
-        plate -= _vertical_hole(d, x, 8.0, GAUGE_PLATE)
-        plate -= _label(f"{d:.1f}", x, 17.5, GAUGE_PLATE)
-    return plate
-
-
 COUPONS: dict[str, Callable[[], Compound]] = {
     "fit1_vertical_holes": vertical_holes,
     "fit1_horizontal_holes": horizontal_holes,
@@ -320,7 +298,6 @@ COUPONS: dict[str, Callable[[], Compound]] = {
     "fit3_pin_horizontal": pin_holes_horizontal,
     "fit3_6806_bores": bearing_bores,
     "fit3_6806_shafts": bearing_shafts,
-    "fit3_gauge_stem": gauge_stem_holes,
 }
 
 
