@@ -16,6 +16,7 @@
 | [hardware.md](docs/hardware.md) | 가진 부품과 장비, 서보 사양, 서보 어댑터, D405, 서보 설정 주의, 전원, 안전, 구매처 |
 | [design.md](docs/design.md) | 기구 설계 원칙과 구조, D405 케이블, 체결, 그리퍼 교체 구조 |
 | [manufacturing.md](docs/manufacturing.md) | 출력 제약, 재료, 색, 공차 |
+| [joint-test.md](docs/joint-test.md) | 관절 하나 시험: 알려는 것, 시험대와 도구, 재는 원리와 순서, 나오는 값과 쓰임 |
 | [software.md](docs/software.md) | 치수 값에서 결과물까지의 흐름, 레포 구조, 도구, 시뮬레이션, 제어 구조, 하드웨어 연결, 개발 환경, 패키지 |
 | [conventions.md](docs/conventions.md) | 문서·코드·테스트·git 규칙 |
 | [setup.md](docs/setup.md) | 새 PC 준비 |
