@@ -8,6 +8,7 @@ from build123d import GeomType
 
 from horilab_design.parts import elbow as e
 from horilab_design.parts import joint_test as jt
+from horilab_design.parts.shapes import box
 from horilab_design.values import load_arm
 
 BED = 256.0  # 출력 범위 [mm]
@@ -47,19 +48,29 @@ def test_horn_screws_end_inside_the_horns() -> None:
     assert 1.5 <= back <= e.BACK_HORN_T - 0.5
 
 
-def test_gauge_clamp_bolt_passes_the_nut() -> None:
-    # 게이지 조임 볼트(M3 × 15)가 너트를 다 지나가고 끝은 부품 안에 있으며, 너트 홈 양쪽에 벽이 남는다.
-    fit = jt.gauge_clamp_fit()
-    assert fit["너트를 지나간 길이"] >= 0.5
-    assert fit["볼트 끝 → -y 면"] >= 0.5
-    assert fit["너트 홈 → -y 면 벽"] >= 2.0
-    assert fit["너트 홈 → 틈 벽"] >= 2.0
+def test_gauge_set_screws_grip_before_the_head_lands() -> None:
+    # 누름 나사(M3 × 10)가 PLA에 5 mm 넘게 물리고, 머리가 면에 닿기 전(1 mm 넘게 남아서) 줄기를 누른다.
+    fit = jt.gauge_set_screws()
+    for name in ("세로 집게", "옆 집게"):
+        assert fit[f"{name}: 물리는 길이"] >= 5.0
+        assert fit[f"{name}: 머리와 면 사이"] >= 1.0
+
+
+def test_gauge_needle_can_follow_the_link() -> None:
+    # 바늘은 10 mm 움직인다. 세로 집게는 바늘을 5 mm 넘게 눌러 둘 수 있어서, 서보가 시험 짐에 2~3 mm 처져도
+    # (다른 사람이 잰 STS3250 값으로 어림, docs/joint-test.md) 바늘이 링크를 따라간다. 옆 집게는 목이 닿을 때
+    # 바늘이 2 mm쯤 눌린다.
+    fit = jt.gauge_preload()
+    for name, need in (("세로 집게", 5.0), ("옆 집게", 2.0)):
+        lo, hi = fit[name]
+        assert lo <= 1.0, name
+        assert need <= hi <= 9.0, name
 
 
 @pytest.mark.slow
 def test_gauge_bracket_has_no_layer_starting_in_the_air() -> None:
-    # 출력 방향에서 바닥이 아닌 곳의 아래를 향한 평평한 면은 기둥 속 빈 곳의 천장 하나뿐이다.
-    # 이 천장은 양쪽이 붙은 다리(폭 8.8 mm)다. 집게 틈이 가로로 누우면 그 위가 공중에서 시작한다.
+    # 출력 방향(관절 쪽 옆면이 바닥)에서 바닥이 아닌 곳에 아래를 향한 평평한 면이 없다. 모든 부분이 바닥에서 곧게
+    # 올라오고, 두 줄기 구멍은 위로 45° 지붕을 낸다.
     spec = next(s for s in jt.PARTS if s.name == "gauge_bracket")
     part = jt.placed_for_print(spec)
     downs = [
@@ -67,9 +78,32 @@ def test_gauge_bracket_has_no_layer_starting_in_the_air() -> None:
         for f in part.faces()
         if f.geom_type == GeomType.PLANE and f.normal_at().Z < -0.99 and f.center().Z > 0.05
     ]
-    assert len(downs) == 1
-    size = downs[0].bounding_box().size
-    assert min(size.X, size.Y) <= 9.0
+    assert not downs, [d.center() for d in downs]
+
+
+@pytest.mark.slow
+def test_rig_parts_do_not_overlap_and_the_load_hangs_free() -> None:
+    # 나사로 고정하는 부품끼리(고리와 서보 집 등)도 겹치지 않고, 매단 물병은 게이지 받침과 받침 기둥에 닿지 않는다.
+    gaps = jt.rig_gaps()
+    for k, v in gaps.items():
+        if k.startswith("짐 아래"):
+            assert v >= 25.0, k
+        else:
+            assert v == pytest.approx(0.0, abs=0.01), (k, v)
+
+
+@pytest.mark.slow
+def test_gauge_foot_leaves_room_for_the_clamp() -> None:
+    # 클램프 패드(지름 20 mm, 가장자리에서 2 cm)와 클램프 위 팔(발 위 30 mm, 폭 16 mm)이 지나는 자리에 받침의 다른
+    # 부분이 없다.
+    y, z = jt.GAUGE_CLAMP_FOOT_PAD
+    x_foot = jt.X_DESK + jt.GAUGE_FOOT_T
+    reach = box(x_foot + 0.01, x_foot + 30.0, jt.EDGE_Y - 15.0, y + 12.0, z - 10.0, z + 10.0)
+    assert (reach & jt.gauge_bracket()).volume == pytest.approx(0.0, abs=0.01)
+
+
+def test_ring_screw_passes_the_nut() -> None:
+    assert jt.ring_screw_past_nut() >= 0.5
 
 
 def test_back_hub_clears_the_connectors() -> None:
@@ -94,6 +128,8 @@ def test_printed_thicknesses_follow_the_layer_height() -> None:
         e.BACK_SCREW_HEAD,
         e.T_OUT,
         e.M2_HEAD_DEPTH,
+        e.OUT_CENTER_DEPTH,
+        e.SPIGOT_CHAMFER,
     ):
         layers = value / 0.2
         assert layers == pytest.approx(round(layers), abs=1e-9), value

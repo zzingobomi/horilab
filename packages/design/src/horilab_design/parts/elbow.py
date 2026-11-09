@@ -141,17 +141,26 @@ FUNNEL_H = 5.8  # 집 바닥 모서리(축에서 약 25.6)까지 45°로 넓히�
 X_SHOULDER = X_BOT - FUNNEL_H
 SPIGOT_R = TUBE_ID / 2 - 0.15
 SPIGOT_BORE, SPIGOT_L = 12.0, 15.0
+# 꽂이 끝(출력 바닥) 바깥 모서리 모따기: 첫 층이 퍼져 생기는 턱을 없애고, 관 고리에 넣을 때 길을 잡아 준다
+SPIGOT_CHAMFER = 0.8
 Y_BACK_EDGE = PAD_Y - 0.3  # 먼 쪽 옆벽이 뒷면 판을 덮는 끝
 PIN_XZ = (22.0, 0.0)  # 영점 핀 (J3 = 0에서 원판 구멍과 맞는다)
 PIN_DEPTH = 8.0
 BAR_X = (X_ROOF - 1.0, R_RING_IN - 0.1)
 BAR_Y = (-10.0, Y_OUT)
 BAR_Z = 5.0
+# 막대 윗면은 고리 안쪽 곡면을 따라 깎는다. 평평하면 모서리(z = ±BAR_Z)가 고리 안쪽 면과 0.35 mm 겹친다.
+BAR_TOP_GAP = 0.2
 RING_SCREWS_Y = (-4.0, 8.0)
+RING_NUT_X = BAR_X[1] - 4.0  # 고리 나사(M3 × 8) 너트 가운데. 나사 끝이 너트를 0.5 mm 넘게 지나간다
+RING_SCREW_LENGTH = 8.0
 CABLE_A_Z = 5.5  # 케이블 A 길의 반폭 (5264 플러그가 약 10 × 5 mm)
 TONGUE_W, TONGUE_R = 26.0, 46.0
 TONGUE_BOLTS = ((39.0, -8.0), (39.0, 8.0))
 OUT_SCREW_HEAD = 1.8  # 출력 원판의 혼 나사 머리 자리 깊이 (M3 × 10이 혼에 3.0 mm 들어간다)
+# 출력 원판 가운데 홈: 혼 가운데 나사(M3 × 6) 머리와 와셔가 어떤 것이든 들어가게 뒷면 원판과 같은 지름(9)으로,
+# 혼 윗면에서 4.4 mm(원통머리 3 + 와셔 0.5에 여유)까지 판다. 원판 판 속으로 0.6 mm 들어간다
+OUT_CENTER_R, OUT_CENTER_DEPTH = 4.5, 4.4
 BACK_SCREW_HEAD = 3.0  # 뒷면 원판의 혼 나사 머리 자리 깊이 (M3 × 10이 혼에 2.4 mm 들어간다)
 
 
@@ -200,10 +209,16 @@ def house() -> Compound:
     outer += box(
         X_BOT, -24.0, Y_BACK_EDGE, BACK, -Z_SIDE, Z_SIDE
     )  # 먼 쪽 옆벽이 뒷면 판까지 덮는다
-    outer += box(*BAR_X, *BAR_Y, -BAR_Z, BAR_Z)  # 영점 핀 막대
+    bar = box(*BAR_X, *BAR_Y, -BAR_Z, BAR_Z) & cyl_y(R_RING_IN - BAR_TOP_GAP, -60.0, 60.0)
+    outer += bar  # 영점 핀 막대 (윗면은 고리 안쪽 곡면을 따른다)
     footprint = box(X_SHOULDER, X_BOT, Y_BACK_EDGE, Y_OUT, -Z_SIDE, Z_SIDE)
     outer += footprint & cone_x(SHOULDER_R, SHOULDER_R + FUNNEL_H, X_SHOULDER, X_BOT)
-    outer += cyl_x(SPIGOT_R, X_SHOULDER - SPIGOT_L, X_SHOULDER)
+    x_tip = X_SHOULDER - SPIGOT_L
+    outer += cyl_x(SPIGOT_R, x_tip, X_SHOULDER)
+    c = SPIGOT_CHAMFER
+    outer -= cyl_x(SPIGOT_R + 1.0, x_tip - 1.0, x_tip + c) - cone_x(
+        SPIGOT_R - c, SPIGOT_R, x_tip, x_tip + c
+    )
     part = outer - box(CX0, CX1, -60.0, FRONT, -CZ, CZ)
     # 꽂이 속: 케이블이 관으로 내려가는 길. 위는 45°로 좁혀 다리 없이 뽑힌다.
     part -= cyl_x(SPIGOT_BORE, X_SHOULDER - SPIGOT_L - 1, X_SHOULDER - 2.0)
@@ -219,7 +234,7 @@ def house() -> Compound:
         part -= box(-27.0, -3.0, BACK + 4.0, FRONT - 4.0, s * Z_SIDE - 4, s * Z_SIDE + 4)
     for y in RING_SCREWS_Y:  # 고리 나사: 막대 위에서 -x로, 너트는 +z 옆에서
         part -= cyl_x(FITS.m3_hole / 2, BAR_X[1] - 9.0, BAR_X[1] + 1, y=y)
-        part -= _nut((BAR_X[1] - 4.5, y, 0.0), (1, 0, 0), (0, 0, 1), BAR_Z + 1)
+        part -= _nut((RING_NUT_X, y, 0.0), (1, 0, 0), (0, 0, 1), BAR_Z + 1)
     # 케이블 A: 서보 먼 끝 뒤에서 깔때기를 비스듬히 지나 꽂이 속으로 (5264 플러그가 지나가는 폭)
     part -= slot(
         (X_BOT + 0.5, Y_BACK_EDGE - 1.5, 0.0),
@@ -264,8 +279,8 @@ def disc(side: str) -> Compound:
     d += box(0.0, TONGUE_R, ya, yb, -TONGUE_W / 2, TONGUE_W / 2)
     d += cyl_y(HUB_R, min(hub), max(hub))
     # 가운데 나사 머리 자리. 나사 종류(냄비머리·원통머리, 와셔)를 아직 보지 못해 넉넉히 판다.
-    if out:  # 출력 혼 가운데 나사 머리 (원통머리 높이 3까지)
-        d -= cyl_y(3.5, HORN_TOP - 1, HORN_TOP + 3.4)
+    if out:  # 출력 혼 가운데 나사 머리와 와셔
+        d -= cyl_y(OUT_CENTER_R, HORN_TOP - 1, HORN_TOP + OUT_CENTER_DEPTH)
     else:  # 돌기 끝(혼 위 0.5), 와셔(지름 8.6까지), 나사 머리
         d -= cyl_y(4.5, BACK_HORN[0] - 4.2, BACK_HORN[0] + 1)
 

@@ -61,10 +61,10 @@ STS3215, STS3250은 Feetech 공식 페이지, ST-3120의 전기 사양은 판매
   - 백래시는 하중 없이 0.62°, 하중을 걸면 1.30°다 ([논문](https://pmc.ncbi.nlm.nih.gov/articles/PMC13087586/)). 다른 시험에서는 0.77°, 약 1°였다.
   - 같은 쪽에서 같은 하중으로 돌아오면 ±0.17°다 ([robonine](https://robonine.com/testing-of-feetech-sts3215-servomotor-backlash-repeatability-and-torque/)). 관절에서 25 cm 떨어진 끝에서 ±0.74 mm다.
   - 약 110분 시험에서 71°C까지 올랐다 (플라스틱 몸체에 열이 갇힌다).
-- STS3250 ([robonine](https://robonine.com/feetech-sts3250-smart-actuator-evaluation-of-accuracy-torque-and-backlash/)):
+- STS3250 ([robonine](https://robonine.com/feetech-sts3250-smart-actuator-evaluation-of-accuracy-torque-and-backlash/)). 서보 한 개를 쟀고, P 게인 같은 설정은 적혀 있지 않다:
   - 백래시는 0.13~0.43°이고, 같은 쪽에서 돌아오면 ±0.012°다.
-  - 20 kg·cm를 계속 걸면 1.23° 처진다.
-  - 하중을 건 채 8분 만에 70°C 보호에 걸렸다. 계속 쓸 때는 25 kg·cm 이하로 쓰고, 1분마다 30초 쉬라고 권한다.
+  - 20 kg·cm(100 mm에 2 kg)를 계속 걸면 1.23° 처진다. 같은 글의 다른 절에는 1.7~1.9°(19~22칸)로 적혀 있다.
+  - 20 kg·cm로 계속 움직이게 하니, 앞 시험으로 40°C였던 서보가 8분 만에 70°C 보호에 걸려 힘을 끊었다. 계속 쓸 때는 25 kg·cm 이하로 쓰고, 1분마다 30초 쉬라고 권한다.
 - ST-3120: 측정 자료를 찾지 못했다.
 
 ### 기구 치수

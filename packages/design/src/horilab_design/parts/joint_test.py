@@ -17,10 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from build123d import Box, Compound, Location, Plane, Polygon, Pos, Rot, export_stl, extrude
+from build123d import Compound, Location, Plane, Polygon, Pos, Rot, export_stl, extrude
 
 from horilab_design.parts import elbow as e
-from horilab_design.parts.shapes import box, cyl_x, cyl_y, nut_trap, solid
+from horilab_design.parts.shapes import box, cyl_x, cyl_y, nut_trap, solid, teardrop
 from horilab_design.values import REPO_ROOT, load_servos
 
 OUT_DIR = REPO_ROOT / "build" / "joint_test"
@@ -42,17 +42,41 @@ LINK_DEPTH, LINK_WIDTH = 30.0, 24.0
 HOOK_R = LINK_LENGTH - 5.0  # 짐을 거는 구멍 (J3 축에서)
 RING_HEAD_H = 3.0  # 고리 나사 머리가 고리 위로 솟는 높이 (원통머리 3.0과 둥근머리 1.65 중 큰 것)
 LINK_TOP = LINK_DEPTH / 2  # 시험 자세에서 링크 윗면의 x
-GAUGE_ABOVE = 22.0  # 링크 윗면 → 게이지 줄기 잡는 고리 가운데 (줄기를 고리에서 밀어 맞춘다)
-GAUGE_T = 16.0  # 게이지 받침 두께 (z)
-# 게이지 줄기(지름 8, h6)를 무는 갈라진 고리의 구멍. 가로 구멍이라 작게 뽑히는 몫(0.2)과 여유를 두고 넉넉히 낸다.
-# 틈(1.6 mm)을 다 죄면 지름이 약 0.5 mm 줄어 줄기를 문다. 그래서 공차 시험편이 필요 없다.
-GAUGE_STEM_HOLE = 8.4
-GAUGE_CLAMP_HW = 8.0  # 집게 몸통 반폭 (y)
-GAUGE_SLIT = 1.6  # 집게 틈
-GAUGE_EAR_H = 10.0  # 조임 귀가 받침 윗면(+z) 위로 솟는 높이
-GAUGE_BOLT_Z = GAUGE_T / 2 + GAUGE_EAR_H / 2  # 조임 볼트(y 방향) 높이
-GAUGE_NUT_Y = -4.4  # 너트 가운데 (-y 쪽 귀 안, 바깥 면과 틈에서 각각 약 2.3 mm)
-GAUGE_BOLT_LENGTH = 15.0  # M3 × 15
+# --- 게이지 받침 ---------------------------------------------------------------------------------
+# 다이얼 게이지 Mitutoyo 2046A (미츠토요 자료): 줄기 지름 8 mm(h6), 길이 16.9 mm, 바늘을 누르지 않았을 때 줄기 끝에서
+# 접촉점까지 19.8 mm, 바늘 움직임 10 mm, 미는 힘 0.4~1.4 N, 눈금판 지름 57 mm, 무게 144 g.
+# 받침은 서보 좌표로 그리고 세로 줄기 축이 z = 0에 온다 (시험대에서는 z = -GAUGE_R로 옮긴다).
+# - 기둥은 링크 뒤(책상 안쪽, +y)에 선다. 발은 링크 밑을 지나 책상 가장자리까지 나와서, 클램프가 발 앞쪽을 막힘
+#   없이 문다. 기둥이 발 앞쪽을 막으면 가진 클램프(나사가 등에서 약 2 cm)로 물 자리가 없다.
+# - 기둥과 발은 짐(물병) 쪽(-z)이 아니라 관절 쪽(+z)으로 비켜서 매단 물병과 떨어진다. 위 팔이 링크 위로 와서
+#   세로 집게가 링크 윗면 가운데(축에서 GAUGE_R)를 잰다. 옆 집게는 기둥에서 게이지를 가로로 잡아 링크 뒷면을
+#   잰다 (흔들림).
+# - 집게는 줄기 구멍에 M3 × 10 나사를 바로 돌려 넣어(자가탭) 나사 끝으로 줄기를 누른다. 갈라진 고리는 PLA가 틈만큼
+#   휘어야 해서 금이 갈 수 있고, 너트를 넣는 일도 는다.
+# - 출력은 관절 쪽 옆면(z = GAUGE_BED_Z)을 바닥에 두고 눕힌다. 모든 부분이 그 면에서 -z로 곧게 올라오는 기둥꼴이라
+#   공중에서 시작하는 층이 없다. 두 줄기 구멍은 출력할 때 옆으로 누우므로 위(-z)로 45° 지붕을 낸다.
+GAUGE_STEM_D, GAUGE_STEM_L, GAUGE_TIP = 8.0, 16.9, 19.8
+GAUGE_STEM_HOLE = 8.4  # 가로 구멍이라 작게 뽑히는 몫(0.2)과 미끄러질 여유
+GAUGE_ABOVE = 22.0  # 링크 윗면 → 세로 집게 가운데. 줄기를 위아래로 밀어 바늘이 5 mm쯤 눌리게 맞춘다
+GAUGE_CLAMP_H = 16.0  # 세로 집게 높이 (x)
+GAUGE_CLAMP_FRONT = -12.5  # 세로 집게 앞면 (y). 누름 나사가 들어오는 면
+GAUGE_CLAMP_BACK = 9.0  # 세로 집게 뒷면 (y). 줄기 구멍 뒤 벽 4.8 mm
+GAUGE_BED_Z = 38.0  # 출력 바닥면 = 받침의 관절 쪽 옆면
+GAUGE_ARM_Z0 = -9.0  # 위 팔(세로 집게 몸통)의 짐 쪽 면
+GAUGE_COL_Z = (22.0, GAUGE_BED_Z)  # 기둥과 옆 집게 (z). 가운데가 옆 줄기 축
+GAUGE_COL_Y = (20.0, 34.0)  # 기둥 (y). 링크 뒷면(y = 12)에서 8 mm
+GAUGE_SIDE_HX = 11.0  # 옆 집게 반높이 (x). 누름 나사는 윗면(+x)에서 들어온다
+# 옆 집게 뒷면. 게이지 목(줄기 위 굵은 부분)이 여기 닿을 때까지 줄기를 넣으면 바늘이 링크 뒷면을 약 2 mm 누른다
+GAUGE_SIDE_Y1 = 46.5
+GAUGE_FOOT_T = 8.0
+GAUGE_FOOT_Y = (EDGE_Y, 44.0)  # 발: 책상 가장자리에서 기둥 뒤까지
+GAUGE_FOOT_Z = (-5.0, GAUGE_BED_Z)  # 발 폭 43 mm
+GAUGE_SET_SCREW = 10.0  # 누름 나사 M3 × 10 (두 집게)
+GAUGE_SET_TAP = 3.0  # 누름 나사 자가탭 구멍. 출력할 때 가로 구멍이라 세로 값(2.8)에 0.2를 더한다
+GAUGE_CLAMP_FOOT_PAD = (
+    EDGE_Y + 20.0,
+    (GAUGE_FOOT_Z[0] + GAUGE_FOOT_Z[1]) / 2,
+)  # 클램프 패드 (y, z)
 
 
 def _nut(
@@ -143,42 +167,38 @@ def wedge_below(x_top: float, z0: float, z1: float) -> Compound:
     )
 
 
-def _stem_hole(x0: float, x1: float) -> Compound:
-    """게이지 줄기 구멍 (x 방향 가로 구멍). 출력할 때 위(+z)로 45° 지붕을 내서 서포트 없이 뽑힌다."""
-    r = GAUGE_STEM_HOLE / 2
-    c = r / math.sqrt(2)
-    diamond = Pos((x0 + x1) / 2, 0, 0) * (Rot(45, 0, 0) * Box(x1 - x0, 2 * r, 2 * r))
-    roof = solid(diamond & box(x0, x1, -2 * r, 2 * r, c, 2 * r))
-    return solid(cyl_x(r, x0, x1) + roof)
+GAUGE_CLAMP_X = LINK_TOP + GAUGE_ABOVE  # 세로 집게 가운데 (x)
+GAUGE_SIDE_Z = (
+    GAUGE_COL_Z[0] + GAUGE_COL_Z[1]
+) / 2  # 옆 줄기 축 (z). 시험대에서 축으로부터 GAUGE_R - 이 값
+GAUGE_SIDE_SCREW_Y = (GAUGE_COL_Y[1] + GAUGE_SIDE_Y1) / 2  # 옆 집게 누름 나사 자리 (y)
 
 
 def gauge_bracket() -> Compound:
-    """다이얼 게이지 받침: 책상 가장자리에 무는 발, 기둥, 링크 위로 뻗은 팔, 줄기(지름 8)를 잡는 갈라진 집게.
+    """다이얼 게이지 받침 (위 '게이지 받침' 설명). 세로 줄기 축이 z = 0으로 링크 윗면 가운데 위에 온다.
 
-    어느 반지름에 두든 같은 모양이다 (C 클램프로 가장자리를 따라 옮긴다). z를 위로 납작하게 뽑는다.
-    집게의 틈은 줄기 구멍에서 +z로 갈라져 출력할 때 세로로 서고, 조이는 귀는 +z로 솟는다. 그래서 공중에서
-    시작하는 층이 없어 서포트 없이 뽑힌다.
+    발, 링크 뒤 기둥, 링크 위로 오는 팔과 세로 집게, 기둥 뒤로 이어진 옆 집게. 모두 z = GAUGE_BED_Z 면에서 -z로
+    곧게 이어지는 기둥꼴이다.
     """
-    t = GAUGE_T / 2
-    x_base = X_DESK + BASE_T
-    x_clamp = LINK_TOP + GAUGE_ABOVE
-    yc = EDGE_Y + 14.0
-    g = box(X_DESK, x_base, EDGE_Y, EDGE_Y + 40, -t, t)
-    col = box(x_base, x_clamp + 8, yc - 7, yc + 7, -t, t)
-    col -= box(x_base + 3, x_clamp + 5, yc - 4.4, yc + 4.4, -t + 2.4, t - 2.4)
-    g += col + box(x_clamp - 8, x_clamp + 8, yc, -6.0, -t, t)
-    hw = GAUGE_CLAMP_HW
-    g += box(x_clamp - 8, x_clamp + 8, -hw, hw, -t, t + GAUGE_EAR_H)  # 집게 몸통과 조임 귀
-    g -= _stem_hole(x_clamp - 10, x_clamp + 10)
-    g -= box(x_clamp - 9, x_clamp + 9, -GAUGE_SLIT / 2, GAUGE_SLIT / 2, 0.0, t + GAUGE_EAR_H + 1)
-    g -= cyl_y(e.FITS.m3_hole_horizontal / 2, -hw - 1, hw + 1, x_clamp, GAUGE_BOLT_Z)
-    # 볼트는 +y 면에서 넣고, 너트는 -y 쪽 귀에 위(+z)에서 떨어뜨려 넣는다. M3 × 15가 너트를 지나간다.
-    g -= _nut(
-        (x_clamp, GAUGE_NUT_Y, GAUGE_BOLT_Z),
-        (0, 1, 0),
-        (0, 0, 1),
-        t + GAUGE_EAR_H - GAUGE_BOLT_Z + 1,
+    roof = (0.0, 0.0, -1.0)  # 출력할 때 위
+    x_foot = X_DESK + GAUGE_FOOT_T
+    x0, x1 = GAUGE_CLAMP_X - GAUGE_CLAMP_H / 2, GAUGE_CLAMP_X + GAUGE_CLAMP_H / 2
+    hx = GAUGE_SIDE_HX
+    g = box(X_DESK, x_foot, *GAUGE_FOOT_Y, *GAUGE_FOOT_Z)  # 발 (책상 가장자리까지)
+    g += box(x_foot, x1, *GAUGE_COL_Y, *GAUGE_COL_Z)  # 기둥 (링크 뒤)
+    # 세로 집게는 바닥면(z = GAUGE_BED_Z)까지 이어지고, 위 팔은 기둥 높이(z)로만 집게와 기둥을 잇는다
+    g += box(x0, x1, GAUGE_CLAMP_FRONT, GAUGE_CLAMP_BACK, GAUGE_ARM_Z0, GAUGE_BED_Z)
+    g += box(x0, x1, GAUGE_CLAMP_BACK, GAUGE_COL_Y[1], *GAUGE_COL_Z)
+    g += box(-hx, hx, GAUGE_COL_Y[0], GAUGE_SIDE_Y1, *GAUGE_COL_Z)  # 옆 집게 (기둥 뒤로 이어진다)
+    # 세로 줄기 구멍과 누름 나사 (앞면에서 +y로)
+    g -= teardrop((x0 - 1.0, 0.0, 0.0), (1.0, 0.0, 0.0), GAUGE_CLAMP_H + 2.0, GAUGE_STEM_HOLE, roof)
+    g -= cyl_y(GAUGE_SET_TAP / 2, GAUGE_CLAMP_FRONT - 1.0, 0.0, GAUGE_CLAMP_X, 0.0)
+    # 옆 줄기 구멍 (y, 기둥을 지나 링크 뒷면 쪽으로)과 누름 나사 (윗면에서 -x로)
+    side_len = GAUGE_SIDE_Y1 - GAUGE_COL_Y[0] + 2.0
+    g -= teardrop(
+        (0.0, GAUGE_COL_Y[0] - 1.0, GAUGE_SIDE_Z), (0.0, 1.0, 0.0), side_len, GAUGE_STEM_HOLE, roof
     )
+    g -= cyl_x(GAUGE_SET_TAP / 2, 0.0, hx + 1.0, y=GAUGE_SIDE_SCREW_Y, z=GAUGE_SIDE_Z)
     return solid(g)
 
 
@@ -284,7 +304,8 @@ PARTS: tuple[PartSpec, ...] = (
         gauge_bracket,
         "any",
         False,
-        _plane((0, 0, -GAUGE_T / 2), (0, 0, 1), (1, 0, 0)),
+        _plane((0, 0, GAUGE_BED_Z), (0, 0, -1), (1, 0, 0)),
+        note="관절 쪽 옆면이 바닥",
     ),
     PartSpec(
         "servo_dummy",
@@ -322,15 +343,14 @@ FASTENERS: tuple[Fastener, ...] = (
     Fastener(
         "M2 × 5 둥근머리 십자볼트 (서보 나사 구멍 바닥에 닿으면 M2 × 4)", 4, "서보 출력 면 → 집"
     ),
-    Fastener("M3 × 10 둥근머리 렌치볼트", 8, "원판 → 혼 (한 원판에 넷)"),
+    Fastener("M3 × 10 둥근머리 렌치볼트", 10, "원판 → 혼 (한 원판에 넷), 게이지 누름 나사 둘"),
     Fastener(
         "M3 × 12 둥근머리 렌치볼트",
         9,
         "원판 혀 → 시험 링크 넷, 서보 모형 뒷면 넷, 받침 기둥 고리 조임",
     ),
     Fastener("M3 × 8 둥근머리 렌치볼트", 2, "고리 → 집"),
-    Fastener("M3 × 15 둥근머리 렌치볼트 (16 mm는 팔지 않는다)", 1, "게이지 고리 조임"),
-    Fastener("M3 육각너트", 8, "너트 홈 (가진 것)"),
+    Fastener("M3 육각너트", 7, "너트 홈 (가진 것)"),
     Fastener("영점 핀 MSH3-20", 1, "J3 = 0에서 원판 → 집 (주문한 것)"),
 )
 
@@ -396,18 +416,84 @@ def screw_depths() -> dict[str, float]:
     }
 
 
-def gauge_clamp_fit() -> dict[str, float]:
-    """게이지 조임 볼트(+y 면에서 넣는다)와 너트 자리 [mm]: 너트를 지나간 길이, 볼트 끝에서 -y 면까지,
-    너트 홈과 바깥 면·틈 사이 벽."""
-    tip = GAUGE_CLAMP_HW - GAUGE_BOLT_LENGTH
-    nut_lo = GAUGE_NUT_Y - e.FITS.nut_height / 2
-    nut_hi = GAUGE_NUT_Y + e.FITS.nut_height / 2
-    return {
-        "너트를 지나간 길이": nut_lo - tip,
-        "볼트 끝 → -y 면": tip + GAUGE_CLAMP_HW,
-        "너트 홈 → -y 면 벽": nut_lo + GAUGE_CLAMP_HW,
-        "너트 홈 → 틈 벽": -GAUGE_SLIT / 2 - nut_hi,
+def ring_screw_past_nut() -> float:
+    """고리 나사(M3 × 8)의 끝이 서보 집 막대 속 너트를 지나간 길이 [mm]. 둥근머리(지름 5.7)는 고리의 둥근 바깥 면에
+    가운데가 떠서 앉는다."""
+    head_r = 5.7 / 2
+    seat = e.R_CYL + (e.R_CYL - math.sqrt(e.R_CYL**2 - head_r**2))
+    tip = seat - e.RING_SCREW_LENGTH
+    return (e.RING_NUT_X - e.FITS.nut_height / 2) - tip
+
+
+def gauge_set_screws() -> dict[str, float]:
+    """게이지 누름 나사(M3 × 10)가 줄기를 누를 때 [mm]: 나사가 PLA에 물리는 길이와, 나사 머리가 면에서 떨어진 거리.
+
+    줄기는 나사에 밀려 구멍의 먼 벽에 붙는다. 머리가 면에 닿기 전에 나사 끝이 줄기에 닿아야 조인다.
+    """
+    near = GAUGE_STEM_D - GAUGE_STEM_HOLE / 2  # 줄기가 먼 벽에 붙었을 때 가까운 면 (구멍 축에서)
+    out: dict[str, float] = {}
+    for name, face in (("세로 집게", -GAUGE_CLAMP_FRONT), ("옆 집게", GAUGE_SIDE_HX)):
+        out[f"{name}: 물리는 길이"] = face - GAUGE_STEM_HOLE / 2
+        out[f"{name}: 머리와 면 사이"] = GAUGE_SET_SCREW - (face - near)
+    return out
+
+
+def gauge_preload() -> dict[str, tuple[float, float]]:
+    """게이지 바늘이 링크를 누르는 깊이 [mm]의 범위 (줄기를 집게 안에서 밀어 맞출 수 있는 범위).
+
+    세로 집게: 게이지 목이 집게 윗면에 닿을 때(가장 깊이)부터 줄기가 집게에 8 mm만 남을 때까지.
+    옆 집게: 목이 옆 집게 뒷면에 닿을 때(가장 깊이)부터 줄기가 8 mm만 남을 때까지. 링크 뒷면은 y = LINK_WIDTH / 2.
+    """
+    top = GAUGE_CLAMP_X + GAUGE_CLAMP_H / 2
+    v_deep = LINK_TOP - (top - GAUGE_STEM_L - GAUGE_TIP)
+    v_shallow = LINK_TOP - (top - 8.0 - GAUGE_TIP)
+    back = LINK_WIDTH / 2
+    s_deep = (GAUGE_SIDE_Y1 - GAUGE_STEM_L - GAUGE_TIP) * -1 + back
+    s_shallow = back - (GAUGE_SIDE_Y1 - 8.0 - GAUGE_TIP)
+    return {"세로 집게": (v_shallow, v_deep), "옆 집게": (s_shallow, s_deep)}
+
+
+# --- 짐 -----------------------------------------------------------------------------------------
+# 500 ml 생수병을 링크와 직각(y)으로 눕혀 링크 아래에 단다. 링크 끝 구멍(지름 5 mm)에 꿴 끈의 앞 끝은 병목에, 뒤 끝은
+# 병 바닥 쪽 몸통에 묶는다. 두 곳에 묶어서 병이 링크 방향으로 돌지 않는다. 저울(500 g까지)로 끈까지 재며 물을
+# 따라 내서 무게를 맞춘다. 짐을 뺄 때는 병 밑에 받침(책)을 넣어 끈을 느슨하게 한다 (링크를 손으로 건드리지 않는다).
+LOAD_BOTTLE_D, LOAD_BOTTLE_L = (
+    65.0,
+    210.0,
+)  # 500 ml 생수병 어림 (지름, 길이). 다른 물건도 이 안에 들면 된다
+LOAD_GAP = 35.0  # 병 아래 → 책상
+
+
+def load_envelope() -> Compound:
+    """매단 물병이 차지하는 자리 (시험 자세, 서보 좌표). 링크 방향으로 ±10 mm 흔들리는 몫을 더한다."""
+    r = LOAD_BOTTLE_D / 2
+    xc = X_DESK + LOAD_GAP + r
+    swing = 10.0
+    body = cyl_y(r, -LOAD_BOTTLE_L / 2, LOAD_BOTTLE_L / 2, xc, -HOOK_R)
+    return solid(body + body.moved(Location((0, 0, swing))) + body.moved(Location((0, 0, -swing))))
+
+
+def rig_gaps() -> dict[str, float]:
+    """시험대에서 서로 움직이지 않는 부품 사이의 겹침 부피 [mm³] (0이어야 한다)와 짐까지 거리 [mm].
+
+    고리와 서보 집처럼 나사로 고정하는 부품끼리도 본다. 게이지 받침은 시험 자리(z = -GAUGE_R)에 둔다.
+    """
+    house, ring, link = e.house(), e.ring(), rot_y(TEST_ANGLE) * test_link()
+    gauge = gauge_bracket().moved(Location((0, 0, -GAUGE_R)))
+    load = load_envelope()
+    pairs = {
+        "고리 / 서보 집": (ring, house),
+        "서보 / 서보 집": (e.servo(), house),
+        "서보 모형 / 서보 집": (dummy(), house),
+        "받침 기둥 / 서보 집": (stand(), house),
+        "게이지 받침 / 시험 링크": (gauge, link),
+        "게이지 받침 / 받침 기둥": (gauge, stand()),
+        "짐 / 게이지 받침": (load, gauge),
+        "짐 / 받침 기둥": (load, stand()),
     }
+    out = {k: (a & b).volume for k, (a, b) in pairs.items()}
+    out["짐 아래 → 책상"] = LOAD_GAP
+    return out
 
 
 def estimated_mass_g(part: Compound, preset: str = "0.20mm Strength", full: bool = False) -> float:
@@ -488,6 +574,15 @@ def report() -> None:
         f"정격의 {ratio:.2f}배"
     )
     print(f"  링크 자체 휨 (게이지 자리 {GAUGE_R:.0f} mm): {link_bending_mm():.2f} mm")
+    print("\n시험대 (움직이지 않는 부품끼리 겹침 mm³, 짐까지)")
+    for k, v in rig_gaps().items():
+        print(f"  {k}: {v:.2f}")
+    print(f"  고리 나사(M3 × 8)가 너트를 지나간 길이: {ring_screw_past_nut():.2f} mm")
+    print("\n게이지")
+    for k, v in gauge_set_screws().items():
+        print(f"  누름 나사 {k}: {v:.1f} mm")
+    for k, (lo, hi) in gauge_preload().items():
+        print(f"  바늘이 눌리는 깊이 {k}: {lo:.1f} ~ {hi:.1f} mm")
     print("\n볼트와 나사")
     for f in FASTENERS:
         print(f"  {f.item} × {f.count}  ({f.where})")
