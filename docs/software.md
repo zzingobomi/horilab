@@ -1,6 +1,6 @@
 # 소프트웨어
 
-결정 기록: 하드웨어 연결 [0005](decisions/0005-connection-architecture.md), 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md), 시험 기록과 데이터 넘기기 [0022](decisions/0022-records-and-sync.md).
+결정 기록: 하드웨어 연결 [0005](decisions/0005-connection-architecture.md), 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md), 시험 기록과 데이터 넘기기 [0022](decisions/0022-records-and-sync.md), 서보 연결 프로그램의 맨 아래층 [0024](decisions/0024-servo-bus.md), 컨트롤러 자리와 모터 프로세스 언어 [0025](decisions/0025-controller-on-pi.md).
 
 ## 하나의 치수 값에서 모든 결과물을
 
@@ -28,16 +28,21 @@
 ```
 horilab/
 ├── pyproject.toml, uv.lock, .python-version   PC 워크스페이스 루트
+├── Cargo.toml     Rust 워크스페이스 루트
+├── crates/motor/  모터 프로세스 (Rust): 서보 버스, 실행 루프, 안전 검사, 서보 준비·관절 시험 명령
 ├── packages/
 │   ├── design/    치수 값 → 부품·조립 → 출력 파일·URDF·MJCF·부품표 → 검사
-│   ├── motor/     모터 프로세스: 실행 루프, 안전 검사, 서보 드라이버, 로봇 설정, 명령·상태 메시지
-│   ├── control/   상위 제어: IK, 궤적, 시뮬레이션 백엔드, 작업 코드
+│   ├── motor/     모터 프로세스와 이야기하는 Python 쪽 (메시지). 지금은 서보 버스의 Python 기준 구현
+│   ├── control/   상위 제어: IK, 궤적, 작업 코드
 │   └── camera/    영상 메시지 형식, PC 쪽 수신
 ├── pi/camera-service/   파이 카메라 프로그램 (별도 uv 프로젝트)
 ├── params/        설계 값 (TOML)
 ├── data/          실측 값, 로봇 설정·캘리브레이션, 구매 데이터 (TOML)
+├── tools/         레포 도구 (시험 기록 올리고 받기)
 └── build/         생성물 (git 제외)
 ```
+
+- Rust 워크스페이스와 `crates/motor`는 모터 코어를 시작할 때 만든다 ([0025](decisions/0025-controller-on-pi.md)).
 
 - 의존 방향: design, motor, camera는 다른 패키지를 불러오지 않는다. control은 motor만 불러온다. 테스트로 확인한다.
 
@@ -62,28 +67,31 @@ horilab/
 [상위 제어: 작업, IK, 궤적]              시뮬레이션이든 실물이든 같은 코드
      │  명령: 궤적, 정지, 토크 켜기·끄기
      │  상태: 관절 위치, 부하, 온도, 전압, 오류
-     ▼  (pyzmq. PC 안에서도, 파이로도)
-[모터 프로세스: 실행 루프 + 안전 검사]
-     ├─ 실물 백엔드: Feetech 서보
+     ▼  (전송 방식은 0023에서 정한다. PC 안에서도, 파이로도)
+[모터 프로세스 (Rust): 실행 루프 + 안전 검사]
+     ├─ 실물 백엔드: Feetech 서보 (로봇 옆 컨트롤러 파이)
      └─ 시뮬레이션 백엔드: MuJoCo (PC에서만)
 ```
 
 - 상위 제어는 시간이 붙은 관절 궤적을 보내고, 모터 프로세스가 일정한 주기로 실행한다. 상위 제어는 상대가 시뮬레이션인지 실물인지 모른다.
 - 관절은 이름으로 부르고, 단위는 rad와 s다. 서보 값과 rad 사이 변환은 실물 백엔드 안에서만 한다.
-- 모터 프로세스는 data/의 로봇 설정만 읽는다. 그래서 파이로 옮겨도 그대로 돈다.
+- 모터 프로세스는 Rust로 짜고(`crates/motor`) 로봇 옆 컨트롤러 파이에서 늘 돈다. 개발과 시뮬레이션은 PC에서 같은 프로그램으로 한다 ([0025](decisions/0025-controller-on-pi.md)). 로봇 설정은 data/에서만 읽는다.
 - 안전 검사(시작 절차, 한계, 통신 오류, 과부하, 정지)는 모터 프로세스에 있다. 실물을 처음 움직이기 전에 통과할 시험은 [0009](decisions/0009-control-architecture.md)에 있다.
+- 실물 백엔드의 맨 아래층(서보 버스)은 메모리 표, 서보마다 확인하는 동기 읽기, EEPROM 쓰기 절차를 둔다. 실물이 없는 PC에서는 가짜 서보 버스로 시험한다 ([0024](decisions/0024-servo-bus.md)). 공식 SDK 위에 Python으로 먼저 짠 것(`horilab_motor.feetech`)은 기준 구현이다.
 - 프로그램은 기본으로 시뮬레이션만 움직이고, 실물은 명시적으로 켰을 때만 움직인다.
 
 ## 하드웨어 연결
 
 ```
-[PC (Windows)]
- ├─ USB 2 (5 m) ── [Waveshare 버스 서보 어댑터] ── 서보 7개
- └─ 유선 랜 ────── [라즈베리파이 4, 로봇 옆] ── USB 3 ── [D405]
+[PC (Windows)]  개발, 경로 계획, 시뮬레이션, 영상 처리, 응용
+ └─ 유선 랜 ─┬─ [컨트롤러 파이, 로봇 옆] ── USB ── [Waveshare 버스 서보 어댑터] ── 서보 7개
+             └─ [카메라 파이, 로봇 옆] ── USB 3 ── [D405]
 ```
 
-- 모터 제어, IK, 경로 계산, 영상 처리는 PC에서 한다. 파이는 D405 영상을 PC로 보내는 일만 하고, 파이가 켜지면 자동으로 실행된다.
-- 모터 프로세스는 영상 처리와 다른 프로세스다. PC 부하 때문에 모터 명령 간격이 크게 흔들리면 모터 프로세스를 파이로 옮긴다.
+- 모터 프로세스는 컨트롤러 파이에서 늘 돈다. 그래서 PC가 꺼져 있어도 폰·게임패드로 로봇을 쓸 수 있고, PC 부하가 모터 루프에 닿지 않는다 ([0025](decisions/0025-controller-on-pi.md)). 서보와 카메라는 USB 컨트롤러를 나누려고 다른 파이에 꽂는다. 파이는 라즈베리파이 4B다.
+- 개발할 때는 어댑터를 PC에 꽂고(5 m USB 2) 같은 모터 프로세스를 PC에서 돌려도 된다. 관절 하나 시험이 그렇다.
+- 카메라 파이는 D405 영상을 PC로 보내는 일만 하고, 켜지면 자동으로 실행된다.
+- 경로 계획(IK)은 지금은 PC에 있다. PC 없이 쓰는 단계에서 파이로 옮긴다 (0025의 3단계).
 
 ## 시험 기록과 데이터
 

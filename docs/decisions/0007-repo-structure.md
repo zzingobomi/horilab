@@ -27,9 +27,12 @@ B로 한다.
 horilab/
 ├── README.md, CLAUDE.md, .gitignore
 ├── pyproject.toml, uv.lock, .python-version   PC 워크스페이스 루트
+├── Cargo.toml     Rust 워크스페이스 루트 (모터 프로세스, 0025)
+├── crates/
+│   └── motor/     모터 프로세스 (Rust): 서보 버스, 실행 루프, 안전 검사, 서보 준비·관절 시험 명령
 ├── packages/
 │   ├── design/    치수 값 → 부품·조립 → 출력 파일·URDF·MJCF·부품표 → 검사
-│   ├── motor/     모터 프로세스: 실행 루프, 안전 검사, 서보 드라이버, 로봇 설정, 명령·상태 메시지
+│   ├── motor/     모터 프로세스와 이야기하는 Python 쪽 (메시지). 지금은 서보 버스의 Python 기준 구현 (0024)
 │   ├── control/   상위 제어: IK, 궤적, 시뮬레이션 백엔드, 작업 코드
 │   └── camera/    영상 메시지 형식, PC 쪽 수신. 의존성이 가벼워 파이에서도 쓴다
 ├── pi/
@@ -45,7 +48,7 @@ horilab/
 - 의존 방향은 아래와 같고, 테스트로 확인한다.
   - design, motor, camera는 다른 패키지를 불러오지 않는다.
   - control은 motor를 불러온다 (메시지 형식, 실행 루프). design은 불러오지 않고, 생성된 MJCF와 data/의 로봇 설정만 읽는다.
-- motor 패키지는 pyserial, 서보 SDK, pyzmq, pydantic처럼 가벼운 의존성만 쓴다. 모터 프로세스를 파이로 옮기면 같은 워크스페이스에서 motor만 설치한다.
+- 모터 프로세스는 Rust 크레이트(`crates/motor`)이고 로봇 옆 컨트롤러 파이에서 돈다 ([0025](0025-controller-on-pi.md)). 파이에는 실행 파일 하나를 올린다. Python의 motor 패키지는 가벼운 의존성만 쓴다.
 - 파이 카메라 프로그램의 Python 버전과 pyrealsense2 설치 방법은 파이 준비 단계에서 실제로 시험해 정한다. 후보는 이전 소스 빌드 재사용, conda-forge의 librealsense, 서드파티 휠(dreamscale-pyrealsense2), 공식 ARM 휠이다. camera 패키지는 그 Python 버전에서도 돌아야 한다.
 - 다른 프로젝트가 들어오면 packages/ 아래에 그 프로젝트의 패키지를 더하고, params/와 data/에 프로젝트별 폴더를 만든다.
 - 테스트 폴더 위치와 실행 방법은 기반 결정 7번에서 정한다.
@@ -62,8 +65,9 @@ horilab/
 
 - pyproject 파일이 여섯 개다 (루트, design, motor, control, camera, 파이 카메라 프로젝트).
 - .gitignore에 `build/`를 더한다.
-- 모터 프로세스를 파이로 옮기게 되면, 파이에 uv로 Python 3.12를 설치해 motor가 도는지 그때 확인한다.
+- 모터 프로세스는 Rust 실행 파일로 컨트롤러 파이에 올린다. 교차 컴파일할지 파이에서 빌드할지는 0025의 2단계 전에 정한다.
 
 ## 바뀐 점
 
 - 2026-11-10: 패키지 밖의 레포 도구를 두는 `tools/`를 더했다. 첫 도구는 시험 기록 올리고 받기다 ([0022](0022-records-and-sync.md)).
+- 2026-11-10: 모터 프로세스를 Rust로 짜고 컨트롤러 파이에서 돌리기로 해서([0025](0025-controller-on-pi.md)) Rust 워크스페이스와 `crates/motor`를 더했다. Python motor 패키지는 메시지 쪽과 서보 버스 기준 구현을 맡는다.

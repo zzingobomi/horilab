@@ -1,7 +1,7 @@
 [project]
 name = "horilab-motor"
 version = "0.1.0"
-description = "모터 프로세스: 실행 루프, 안전 검사, 서보 드라이버, 로봇 설정, 명령·상태 메시지"
+description = "모터 프로세스와 이야기하는 Python 쪽 (메시지), 서보 버스 기준 구현"
 requires-python = ">=3.12,<3.15"
 dependencies = [
     "ftservo-python-sdk>=2.0.1,<3",

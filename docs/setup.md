@@ -113,3 +113,11 @@ uv run tools/sync.py login --client <앱 파일>
 5. 클라이언트에서 데스크톱 앱 유형으로 만들고, 만들 때 나오는 창에서 JSON을 받는다.
 6. 브랜딩에 홈페이지와 개인정보처리방침 주소를 넣고, 그 도메인을 승인된 도메인에 넣는다. 게시하려면 둘 다 있어야 한다. GitHub Pages 같은 무료 페이지면 된다.
 7. 대상에서 앱을 게시한다. 테스트 상태로 두면 로그인이 7일마다 풀린다.
+
+## 8. Rust
+
+모터 프로세스는 Rust다 ([0025](decisions/0025-controller-on-pi.md)).
+
+- Windows용 Rust를 rustup(https://rustup.rs)으로 설치하고 `cargo --version`으로 확인한다. WSL 안의 Rust는 쓰지 않는다. 서보 어댑터가 Windows의 COM 포트로 잡히기 때문이다 ([0008](decisions/0008-environment-and-packages.md)).
+- Windows의 기본 도구 모음(MSVC)은 Visual Studio C++ 빌드 도구의 링커가 있어야 한다. 없으면 rustup 설치 때 안내가 나온다.
+- 도구 모음 버전은 Rust 크레이트를 만들 때 레포에 고정한다.
