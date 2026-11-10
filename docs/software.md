@@ -1,6 +1,6 @@
 # 소프트웨어
 
-결정 기록: 하드웨어 연결 [0005](decisions/0005-connection-architecture.md), 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md).
+결정 기록: 하드웨어 연결 [0005](decisions/0005-connection-architecture.md), 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md), 시험 기록과 데이터 넘기기 [0022](decisions/0022-records-and-sync.md).
 
 ## 하나의 치수 값에서 모든 결과물을
 
@@ -84,6 +84,14 @@ horilab/
 
 - 모터 제어, IK, 경로 계산, 영상 처리는 PC에서 한다. 파이는 D405 영상을 PC로 보내는 일만 하고, 파이가 켜지면 자동으로 실행된다.
 - 모터 프로세스는 영상 처리와 다른 프로세스다. PC 부하 때문에 모터 명령 간격이 크게 흔들리면 모터 프로세스를 파이로 옮긴다.
+
+## 시험 기록과 데이터
+
+[0022](decisions/0022-records-and-sync.md)에서 정했다.
+
+- 실물 실행의 기록은 그것만 보고 실물이 없는 다른 PC에서 분석할 수 있게 남긴다. 분석은 레포 안 스크립트로 한다.
+- 데이터는 종류마다 표준 경로에 둔다. git에서 뺀 데이터 폴더는 rclone으로 구글 드라이브에 레포와 같은 경로로 비춘다. 명령 한 번으로 올리고 받는다.
+- 표준 경로와 동기화 목록은 서보 연결 프로그램을 만들 때 정한다.
 
 ## 개발 환경
 

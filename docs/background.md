@@ -1,5 +1,7 @@
 # 배경
 
+이전 프로젝트에 대해 여기 적힌 원인과 교훈은 그때 그렇게 판단한 기록이고, 검증된 것이 아니다. 사실만 참고하고 결론은 이 프로젝트에서 다시 따진다 ([CLAUDE.md](../CLAUDE.md)).
+
 ## 이전 프로젝트 (horibot)
 
 - 저장소: https://github.com/zzingobomi/horibot. 이어가지 않는다. 하드웨어와 캘리브레이션 기록은 참고한다 (`docs/hardware.md`, `docs/calibration.md`).
