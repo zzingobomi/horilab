@@ -36,6 +36,7 @@ EDGE_Y = -40.0  # 책상 가장자리. 책상은 +y 쪽이고, 시험 링크는 
 BASE_T = 6.0
 BASE_Z = (-60.0, 60.0)
 COLLAR_OD, COLLAR_L = e.TUBE_OD, 22.0  # 받침 기둥 위끝은 위팔 관과 같은 바깥지름의 갈라진 고리
+COLLAR_SLIT = 1.6  # 고리를 가르는 틈. 죄면 둘레가 이만큼까지 줄어든다
 POST_W = 50.0
 LINK_LENGTH = 215.0  # J3 축에서 시험 링크 끝까지
 LINK_DEPTH, LINK_WIDTH = 30.0, 24.0
@@ -150,7 +151,8 @@ def stand() -> Compound:
         ear_x0, ear_z0, ear_z1
     )
     s -= cyl_x(e.TUBE_ID / 2, x_top - e.SPIGOT_L - 1, x_top + 1)  # 꽂이 자리
-    s -= box(x_top - e.SPIGOT_L - 4, x_top + 1, -0.8, 0.8, 0.0, ear_z1 + 1)  # 가르는 틈
+    slit = COLLAR_SLIT / 2  # 가르는 틈
+    s -= box(x_top - e.SPIGOT_L - 4, x_top + 1, -slit, slit, 0.0, ear_z1 + 1)
     s -= cyl_y(e.FITS.m3_hole_horizontal / 2, -7.0, 7.0, x_top - 7, COLLAR_OD / 2 + 3.5)
     s -= _nut((x_top - 7, -3.6, COLLAR_OD / 2 + 3.5), (0, 1, 0), (0, 0, 1), 6.0)
     s -= cyl_x(10.0, X_DESK - 1, x_top - e.SPIGOT_L)  # 케이블 길

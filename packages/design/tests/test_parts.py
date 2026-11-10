@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 from build123d import GeomType
@@ -100,6 +102,14 @@ def test_gauge_foot_leaves_room_for_the_clamp() -> None:
     x_foot = jt.X_DESK + jt.GAUGE_FOOT_T
     reach = box(x_foot + 0.01, x_foot + 30.0, jt.EDGE_Y - 15.0, y + 12.0, z - 10.0, z + 10.0)
     assert (reach & jt.gauge_bracket()).volume == pytest.approx(0.0, abs=0.01)
+
+
+def test_spigot_slides_into_the_measured_collar() -> None:
+    # 서보 집 꽂이는 실제로 뽑힌 받침 기둥 고리(실측 안지름)에 손으로 들어가고, 고리를 죄면 틈이 닫힌다.
+    # 고리를 가르는 틈만큼 둘레가 줄어들 수 있으므로 지름은 그 1/π까지 줄어든다.
+    gap = e.FITS.tube_bore - 2 * e.SPIGOT_R
+    assert 0.15 <= gap <= 0.4
+    assert gap < jt.COLLAR_SLIT / math.pi
 
 
 def test_ring_screw_passes_the_nut() -> None:

@@ -40,13 +40,16 @@ class Fits:
     nut_height: float
     pin_hole: float  # 세로 구멍 (원판)
     pin_hole_horizontal: float  # 가로 구멍 (집: 세워 뽑는다)
+    tube_bore: float  # 관 끝 고리(설계 지름 TUBE_ID)의 실제 안지름
     provisional: tuple[str, ...]
 
 
-# 3차 시험편(영점 핀)을 재기 전의 임시 값. 가로 구멍은 1차 시험편처럼 세로보다 0.2 크게 잡는다.
-# 핀 구멍이 들어간 부품(집, 출력 원판)은 시험편 결과를 넣은 뒤에 뽑는다.
-PROVISIONAL_PIN_HOLE = 3.10
+# 3차 시험편(영점 핀)을 그 색으로 재기 전의 임시 값. 흰색에서 세로 구멍은 3.25에도 핀이 들어가지 않았고
+# 가로 구멍은 3.30이 맞았다. 핀 구멍이 들어간 부품(집, 출력 원판)은 시험편 결과를 넣은 뒤에 뽑는다.
+PROVISIONAL_PIN_HOLE = 3.40
 PROVISIONAL_PIN_HOLE_HORIZONTAL = 3.30
+# 관 끝 고리 안지름을 그 색으로 재기 전의 임시 값: 흰색 실측(설계 34.8 → 34.45)과 같다고 본다
+PROVISIONAL_TUBE_BORE = 34.45
 M2_HOLE = 2.6  # M2 나사 구멍. 시험하지 않아서 도면 위치 오차까지 넉넉히 둔다
 M2_HEAD_D, M2_HEAD_DEPTH = 4.4, 1.6  # M2 둥근머리 십자볼트(머리 지름 약 3.5~4, 높이 1.3~1.6) 자리
 BUTTON_D = 6.0  # M3 둥근머리 렌치볼트(ISO 7380, 머리 지름 5.7, 높이 1.65) 자리
@@ -80,6 +83,7 @@ def load_fits(filament: Filament = FILAMENT) -> Fits:
         nut_height=need(fit.m3_nut_slot_height_mm, "m3_nut_slot_height_mm"),
         pin_hole=pin,
         pin_hole_horizontal=pin_h,
+        tube_bore=third(fit.tube_bore_mm, "tube_bore_mm", PROVISIONAL_TUBE_BORE),
         provisional=tuple(provisional),
     )
 
@@ -135,11 +139,14 @@ X_ROOF = CX1 + WALL
 Z_SIDE = CZ + WALL
 # 집 아래: 45° 깔때기가 집 바닥을 관 바깥지름(어깨)까지 줄이고, 그 아래 꽂이가 관 속으로 들어간다.
 # 관 끝은 어깨에 닿고, 관 끝의 갈라진 고리를 나사로 죄어 꽂이를 문다 (시험에서는 받침 기둥 위끝).
-TUBE_OD, TUBE_ID = 40.0, 34.8  # 위팔 관 (0019: 지름 40, 벽 2.6)
+# 위팔 관 (0019: 지름 40, 벽 2.6). 세로로 뽑으면 구멍은 설계보다 작은 FITS.tube_bore로 나온다
+TUBE_OD, TUBE_ID = 40.0, 34.8
 SHOULDER_R = TUBE_OD / 2
 FUNNEL_H = 5.8  # 집 바닥 모서리(축에서 약 25.6)까지 45°로 넓히는 높이
 X_SHOULDER = X_BOT - FUNNEL_H
-SPIGOT_R = TUBE_ID / 2 - 0.15
+# 꽂이는 관 고리의 실제 안지름보다 지름으로 0.25 작게 해서 손으로 넣고, 갈라진 고리를 죄어 틈을 닫는다
+SPIGOT_CLEARANCE = 0.25
+SPIGOT_R = (FITS.tube_bore - SPIGOT_CLEARANCE) / 2
 SPIGOT_BORE, SPIGOT_L = 12.0, 15.0
 # 꽂이 끝(출력 바닥) 바깥 모서리 모따기: 첫 층이 퍼져 생기는 턱을 없애고, 관 고리에 넣을 때 길을 잡아 준다
 SPIGOT_CHAMFER = 0.8

@@ -1,6 +1,6 @@
 # 로봇 컨트롤러 리서치
 
-[0023](decisions/0023-robot-controller.md)의 리서치 계획 가운데 어디서 해도 결과가 같은 네 주제를 2026-11-10에 조사했다: 산업용 컨트롤러, 데스크톱·오픈소스 팔, 전송 방식, 시뮬레이션 연결과 파이용 계획 라이브러리. 파이 실행 환경(실시간, 배포, 자동 시작)과 NAS는 집에서 실제 장비 정보를 확인한 뒤 조사한다 ([0025](decisions/0025-controller-on-pi.md)).
+[0023](decisions/0023-robot-controller.md)의 리서치 계획을 2026-11-10에 조사했다. 1~4절은 어디서 해도 결과가 같은 네 주제다: 산업용 컨트롤러, 데스크톱·오픈소스 팔, 전송 방식, 시뮬레이션 연결과 파이용 계획 라이브러리. 5~6절(파이 컨트롤러의 실행 환경·빌드·배포·기록, NAS 쓸 자리)은 실물이 있는 PC에서 파이, NAS, PC, 집 네트워크를 확인한 뒤에 조사했다 ([hardware.md](hardware.md#가진-것)). 추천은 검토를 거쳐 [0026](decisions/0026-pi-runtime-deploy-records.md)으로 정했다.
 
 - 이 문서는 조사한 사실이다. 정하는 것은 0023과 0025에 있다.
 - 사실마다 출처를 붙였다. 출처를 직접 확인하지 못한 것은 "(확인 안 됨)", 프로젝트나 업체가 스스로 밝힌 것은 "(주장)"으로 적었다.
@@ -187,3 +187,87 @@
 | [copp](https://github.com/TOPP-THU/copp) | 0.2.3, 2026-09 | MIT (유료 PRO판 따로) | 순수 Rust | 속도, 가속, 토크, 저크 한계. 아직 젊다 |
 
 - 모서리를 둥글게 잇는(블렌드) Rust 크레이트는 찾지 못했다.
+
+## 5. 파이 컨트롤러: 실행 환경, 빌드, 배포, 기록
+
+장비는 [hardware.md](hardware.md#가진-것)에 있다: 파이 4B 4GB 세 대(Ubuntu 22.04, 유선), 개발 PC(Windows, Docker Desktop), NAS(DS220+). 서보 어댑터는 CH343P를 쓴다.
+
+### 파이 4 하나로 버티는지
+
+- 공개된 사례: Reachy Mini 무선판은 CM4(파이 4와 같은 칩)에서 Python 데몬, Rust 모터 라이브러리, IK, 웹·WebRTC 서버를 50 Hz로 돌린다 (주장, 2절). 파이에서 Feetech 서보를 읽고 쓰는 시간을 잰 공개 값은 찾지 못했다.
+- 박자를 정하는 것은 CPU보다 서보 버스와 USB다. 1 Mbps에서 바이트당 10 µs, 서보 7개로 계산하면 (추정):
+
+| 하는 일 | 바이트 | 시간 |
+|---|---|---|
+| 목표 쓰기 (동기 쓰기, 서보마다 6바이트) | 57 | 0.57 ms |
+| 상태 묶음 읽기 (레지스터 56~70) | 162 | 1.6 ms |
+| 위치만 읽기 | 71 | 0.7 ms |
+
+- 응답 지연이 공장값 500 µs면(LeRobot 코드의 값) 읽기마다 서보 수만큼 더해져 3.5 ms가 는다. 한 박자는 응답 지연 0이면 2.2 ms, 공장값이면 5.7 ms에 USB 시간을 더한 값이다. 그래서 100 Hz는 여유가 있고, 200 Hz는 위치만 매 박자 읽고 응답 지연을 0으로 둘 때 된다 (추정).
+- CH343P는 CDC 표준 장치라 리눅스 기본 드라이버(cdc-acm)로 잡히고, FTDI의 지연 타이머 같은 조절 값이 없다 ([WCH 드라이버](https://github.com/WCHSoftGroup/ch343ser_linux)). USB 시간은 실측한다.
+- 실행 루프 스레드에 코어 하나(3번)를 떼어 주고 웹 서버와 경로 계획은 0~2번에서 돌리면 한 대로 된다 (추정). 경로 계획을 Python으로 두면 파이에 Python 환경을 배포해야 하고, 직교 조그는 매 박자 IK가 필요해 프로세스 사이 왕복이 생긴다. Rust로 옮기면(4절의 IK-Geo, rsruckig) 파이에는 실행 파일 하나만 있다.
+
+### 실시간과 OS
+
+- 지연 실측: 파이 4, 부하 없음에서 표준 커널 5.10은 최악 557 µs, PREEMPT_RT는 32 µs였다 ([2021-08](https://github.com/kdoren/linux/discussions/11)). stress-ng 부하를 건 측정에서는 실시간 우선순위가 없으면 PREEMPT_RT도 최악이 수~13 ms였고, 우선순위 99를 주면 30 µs 안팎, 코어를 떼어 내면 PREEMPT 커널도 85 µs였다 ([측정](https://hackmd.io/@oscarshiang/ryeFLP9_F), 보드 모델은 적혀 있지 않다).
+- 우분투 실시간 커널 ([릴리스 표](https://ubuntu.com/real-time/docs/latest/reference/releases/), 2026-11 확인): 22.04에는 파이(raspi)판이 없다. 24.04는 raspi판이 있고 Ubuntu Pro(개인 5대까지 무료)로 켠다. 26.04는 raspi판(커널 7.0)이 있고 `linux-raspi-realtime`을 apt로 무료로 깐다. generic 실시간 커널을 파이에 깔면 시스템을 못 쓰게 된다 ([경고](https://canonical-ubuntu-pro-client.readthedocs-hosted.com/en/v36/howtoguides/enable_realtime_kernel/)).
+- 표준 지원 ([릴리스 주기](https://ubuntu.com/about/release-cycle)): 22.04는 2027-05(Pro ESM으로 2032-05), 24.04는 2029-05, 26.04는 2031-05까지다. 26.04는 파이 4B 인증을 받았고, 부트로더 EEPROM이 2022-11-25 이후여야 한다 ([파이 지원](https://ubuntu.com/hardware/docs/boards/how-to/ubuntu_supported/raspberry-pi/)). 가진 파이 세 대는 그보다 옛날이다 ([hardware.md](hardware.md#가진-것)).
+- Raspberry Pi OS 저장소에 `rpi-v8-rt` 커널 패키지가 있다 (Bookworm 6.12, Trixie 6.18, 제3자 색인으로 봄). 설치 이름과 파이 4 동작은 확인 안 됨.
+- 파이 4는 80°C부터 클럭을 낮추고, 기본 클럭 정책은 600 MHz~1.5 GHz를 오르내린다 ([파이 문서](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html)).
+- 조정은 되돌리기 쉬운 것부터 한다: (1) 실행 루프 스레드만 프로그램이 직접 SCHED_FIFO와 코어 고정을 건다 (systemd 유닛의 정책은 프로세스 전체에 걸리므로 유닛에는 `LimitRTPRIO`, `LimitMEMLOCK` 한도만 둔다), (2) 부팅 인자 `isolcpus=3 irqaffinity=0-2`, (3) 클럭 정책 performance와 방열 확인, (4) mlockall, 루프 안에서 메모리를 새로 잡지 않기, (5) 웹 서버와 업로드와 부하를 건 채 몇 시간 동안 최악값을 잰다. 모자라면 실시간 커널로 바꾼다.
+
+### Rust 빌드
+
+- [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild): `pip install cargo-zigbuild`로 zig까지 깔린다 (PyPI 0.24.1, Windows 휠 있음). glibc 판을 대상에 붙일 수 있고(`aarch64-unknown-linux-gnu.2.35`), 완전한 정적 실행 파일은 musl 대상으로 만든다. C 의존성은 헤더나 라이브러리를 못 찾을 수 있다.
+- C 라이브러리가 끼는 크레이트: serialport 4.x(rustypot이 쓴다)는 기본으로 libudev를 쓰지만 musl 대상에서는 빠진다. 게임패드의 gilrs-core는 리눅스에서 libudev가 늘 필요하고, evdev는 순수 Rust다. musl로 빌드하면 0023 8번 추천(gilrs)과 부딪힌다.
+- [cross](https://github.com/cross-rs/cross)는 Docker 안에서 빌드하고 라이브러리를 넣을 수 있지만, aarch64 gnu 이미지의 glibc가 2.39로 적혀 있어 22.04(2.35)에서 안 돌 수 있고, Rust 1.85 이상이 필요하다. buildx 에뮬레이션은 네이티브보다 훨씬 느리다 ([Docker](https://docs.docker.com/build/building/multi-platform/)).
+- GitHub의 arm64 리눅스 러너(`ubuntu-22.04-arm`, `ubuntu-24.04-arm`, 4 vCPU)는 공개 레포에서 2025-08-07부터 정식이고 무료다 ([발표](https://github.blog/changelog/2025-08-07-arm64-hosted-runners-for-public-repositories-are-now-generally-available/)).
+- 파이에서 직접 빌드하면 교차 빌드 문제는 없지만 느리고, 4 GB 메모리와 SD에 빌드 파일과 툴체인을 둬야 한다. 이전 프로젝트에서 번거로웠던 방식이다.
+
+### 배포
+
+| 대안 | 좋은 점 | 나쁜 점 |
+|---|---|---|
+| 파이마다 git pull하고 빌드 (이전 방식) | 도구가 필요 없다 | 파이마다 툴체인과 의존성을 깔고, 빌드가 느리다 |
+| 스크립트: 실행 파일 복사 → 판 폴더 → 링크 전환 → systemd 재시작 → 확인·되돌리기 | 가장 단순하다. 되돌리기는 링크 하나다. Windows 내장 OpenSSH(ssh, scp)로 된다 | 처음 설정과 스크립트를 우리가 짜고 시험한다 |
+| .deb 패키지 (cargo-deb) | dpkg가 파일과 유닛을 관리한다 | cargo-deb는 유닉스 호스트용이라 WSL이나 CI가 필요하다 |
+| Ansible | 여러 파이를 선언해서 맞춘다 | Windows는 제어 노드가 못 된다. 파이 2~3대에는 과하다 |
+| 컨테이너 (Docker, Podman) | 환경을 통째로 담는다 | 실시간 권한과 장치 설정이 필요하다. 실행 파일 하나에는 과하다 |
+
+- 스크립트 방식의 세부: 판마다 `/opt/horilab/releases/<날짜시각>-<커밋>/`에 실행 파일과 그 판의 로봇 설정을 두고 `current` 링크가 지금 판을 가리킨다. 설정이 판과 같이 묶여 되돌리기가 설정까지 된다. 컨트롤러가 쉬는 상태일 때만 바꾸고(0024처럼 할 일을 보여 준 뒤 `--yes`), 새 판이 몇 초 안에 판 번호와 자가 점검(실행 루프의 실시간 우선순위, 포트)을 답하지 않으면 이전 판으로 되돌린다. systemd `Restart=on-failure`, 장치 이름은 `/dev/serial/by-id/…`로 고정한다.
+
+### 파이의 기록과 로그
+
+- 경로: systemd `StateDirectory`로 `/var/lib/horilab/`를 데이터 뿌리로 두고 그 아래 레포와 같은 상대 경로(`records/…`)에 쓰면 0022의 "레포와 같은 경로"가 지켜진다. 파이 4에는 RTC가 없어 네트워크 없이 켜면 시각이 틀릴 수 있으니, 기록에 시각 동기 여부를 남긴다 ([파이 문서](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html)).
+- 양 (추정): 관절 시험(20 Hz)은 30분에 수 MB(0024)지만, 팔 전체 100 Hz 전체 기록을 늘 켜 두면 시간당 수백 MB라 드라이브 무료 15 GB가 몇 주 만에 찬다. 늘 켜 두는 기록은 메모리 링 버퍼에만 두고 보호 정지·오류 때만 파일로 남기는 방법이 있다.
+- SD: 쓰기는 버퍼에 모아 1초쯤마다 한다. 프로그램 로그는 journald에 두고 상한(`SystemMaxUse`)을 둔다 (기본은 파일시스템의 10%, 최대 4 GB, [journald.conf](https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html)). SD에 스왑을 두지 않는다. tmpfs에 먼저 쓰면 전원이 나갈 때 0024의 "중간에 꺼져도 앞부분이 남는다"를 잃는다.
+- 드라이브로 넘기기:
+
+| 대안 | 좋은 점 | 나쁜 점 |
+|---|---|---|
+| 파이가 직접 rclone `copy --update`로 올린다 (타이머, 시험 끝) | PC와 NAS가 꺼져 있어도 간다. 0022와 같은 도구와 플래그다 | 파이에 드라이브 전체 권한 토큰이 놓인다 |
+| 파이 → NAS → 드라이브 (NAS가 끌어간다) | 파이에 비밀이 없다. 긴 기록을 NAS에 둔다 | 단계와 설정이 둘이다. NAS가 켜져 있어야 한다 |
+| PC가 가져간다 | 파이에 비밀이 없다 | PC가 켜져 있고 집 안이어야 한다. 실물이 없는 PC는 이중 NAT 때문에 못 가져간다 |
+
+- 토큰 위험: 지금 앱의 `drive` 범위로 받은 토큰을 읽은 사람은 드라이브 전체를 읽고 지울 수 있다. 무인 기기라 설정 암호화는 큰 도움이 안 된다. 리프레시 토큰은 6개월 안 쓰거나 권한을 끊으면 멈추고, 계정·앱당 100개가 한도다 ([구글](https://developers.google.com/identity/protocols/oauth2#expiration)). 줄이는 법: 업로드를 별도 시스템 사용자로 돌리고 그 사용자만 설정을 읽게 한다, SSH는 키로만, 파이마다 `rclone authorize`로 따로 로그인한다, 파이만 `drive.file` 범위로 로그인한다 (PC가 만든 `horilab` 폴더가 보이는지는 확인 안 됨), 데이터 전용 구글 계정을 쓴다.
+
+## 6. NAS 쓸 자리
+
+DS220+, DSM 7.2.2, Container Manager 24.0.2 ([hardware.md](hardware.md#가진-것)).
+
+- Container Manager: 24.0.2-1535(2025-02)에서 엔진이 20.10에서 24.0.2가 됐고, 24.0.2-1543(2025-06)부터 명령줄 `docker compose`가 된다. DSM 7.4용 24.0.2-1706(2026-08)도 엔진은 24.0.2다 ([릴리스 노트](https://www.synology.com/en-uk/releaseNote/ContainerManager)). Docker 24.0은 2024-06에 원래 개발처의 지원이 끝났다 (주장). 화면에서 만든 컨테이너는 포트·볼륨을 고칠 수 없고, compose 프로젝트로 만들면 파일만 고치면 된다.
+- 성능: J4025(2코어 2스레드)는 PassMark 1,458로, 20스레드 데스크톱의 약 1/20, 코어 하나로는 약 1/3.5다 ([PassMark](https://www.cpubenchmark.net/cpu.php?id=3668)). Rust 빌드는 PC나 GitHub 러너가 낫다.
+- arm64: NAS 커널은 4.4.302+이고 binfmt_misc가 없다 (2026-11-10 확인). 그래서 arm64 컨테이너를 돌릴 수 없고, 이미지와 파일은 보관만 된다.
+- 자동 배포: NAS에 자체 호스팅 CI 러너를 두는 것은 GitHub가 공개 레포에는 쓰지 말라고 권한다. PR로 러너 환경을 오염시킬 수 있고, 러너가 로봇 SSH 키를 쥐게 된다 ([보안](https://docs.github.com/en/actions/reference/security/secure-use)). NAS에 배포 파일을 두거나 파이가 NAS에서 당기는 방식은 GitHub Releases(무료)에서 당기는 것과 구조가 같고 관리만 는다. 사설 레지스트리는 TLS나 파이마다 예외 설정이 필요하다.
+- 기록: Cloud Sync는 한 방향(올리기만 또는 내려받기만)과 "원본에서 지워도 대상에서 지우지 않기"를 지원하고, 드라이브의 수정 시각을 지원한다고 적혀 있다 ([Cloud Sync](https://www.synology.com/dsm/7.4/software_spec/cloud_sync)). "받는 쪽이 더 새것이면 덮지 않기"는 문서에 없다. 그래서 드라이브 `horilab/`을 "내려받기만, 지우지 않기"로 NAS에 보관하는 데 맞다. NAS를 기록의 허브로 쓸 때는 NAS 안 rclone이 파이에서 끌어와 `copy --update`로 올리는 쪽이 0022와 같다.
+- 파이 SD 백업: 전원을 끄고 PC에서 통째 이미지로 떠서(PiShrink로 줄이고 xz로 묶어) NAS에 두면 그대로 되살린다. 이미 깔린 Active Backup for Business의 리눅스 에이전트는 x86-64만 되고, 파일 서버 백업(rsync)은 통째로 되살리지 못한다. 길게는 파이 설치를 레포의 스크립트로 다시 만들 수 있게 하는 것이 주된 복구 방법이다.
+- 밖에서 집으로: NAS의 Tailscale은 패키지 센터판이 오래돼 Tailscale 서버의 SPK를 손으로 깐다. DSM 7에서 서브넷 라우터가 되고 `--accept-routes`와 Tailscale SSH는 안 된다 ([Tailscale](https://tailscale.com/kb/1131/synology)). NAS가 집 랜을 알리면 컨트롤러 파이에는 데몬을 더하지 않아도 된다. 원격 PC가 실물을 움직이는 것은 0023의 조종권 규칙이 막는다.
+- 보안 기본: DSM 최신판과 자동 보안 업데이트, 공유기의 포트 포워딩·DMZ·UPnP 확인, 기본 admin 끄기, 2단계 인증과 자동 차단, 방화벽은 랜과 Tailscale 대역만, SSH는 키로만, 옛 컨테이너와 안 쓰는 패키지 정리. QuickConnect가 켜져 있으면 이중 NAT여도 Synology 중계로 밖에서 DSM에 닿는다 ([QuickConnect](https://kb.synology.com/sv-se/DSM/help/DSM/AdminCenter/connection_quickconnect)).
+- 펜던트 HTTPS: DSM 내장 Let's Encrypt는 사용자 도메인에 HTTP-01만 지원해 80 포트가 밖에서 열려야 하므로 이중 NAT에서는 안 된다 ([Synology](https://synology.com/en-us/knowledgebase/tutorials/611)). 인증서는 Route 53으로 DNS-01을 따로 받는다.
+- 두 조사의 판단: NAS를 배포나 기록의 길목에 끼우면 단계만 는다. NAS는 옆에서 크고 오래 둘 것(드라이브 보관본, SD 이미지, 나중의 연속 기록)과 늘 켜진 집 안 출입구(Tailscale)를 맡는다.
+
+### 확인하지 못한 것과 실물로 확인할 것
+
+- 확인하지 못한 것: 26.04 `linux-raspi-realtime`이 파이 4 Rev 1.5에서 부팅되는지, Raspberry Pi OS 실시간 커널 패키지, `drive.file` 범위 토큰이 PC가 만든 폴더를 보는지, Cloud Sync가 수정 시각을 보존하는지, PiShrink 자동 늘리기가 Ubuntu에서 되는지, 파이에서 Feetech 버스 왕복 시간, 파이 4의 Rust 빌드 시간.
+- 컨트롤러 파이에서 잴 것: 커널 선점 방식(`uname -v`), 클럭 정책, 스왑, 방열판·팬과 부하 때 온도, SD 카드 상표, 시각 동기, 어댑터가 `by-id` 경로로 잡히는지, 응답 지연 0과 500 µs에서 동기 읽기·쓰기 왕복(PC와 파이, 0024의 6단계), 통신이 끊겼을 때 서보가 마지막 목표에서 버티는지, Windows에서 zigbuild로 musl 빌드한 rustypot이 파이에서 도는지.
+- NAS와 공유기에서 볼 것: 평소 CPU 부하, 공유기 포트 포워딩·DMZ·UPnP, 파이들의 고정 IP 할당. PC에 SD 카드 리더가 있는지 (통째 이미지에 필요).

@@ -112,11 +112,13 @@ class PrintFit(_Values):
     horn_clearance_mm: dict[ServoModel, float] = {}
     # 3차 시험편: 영점 핀(MSH3-20), 6806 자리와 축 (설계 지름)
     pin_hole_mm: float | None = (
-        None  # 세로 구멍: 핀이 손으로 들어가고 빠지며 흔들어도 놀지 않는 가장 작은 지름
+        None  # 세로 구멍: 핀이 손으로 부드럽게 들어가고 빠지며 흔들어도 놀지 않는 가장 작은 지름
     )
     pin_hole_horizontal_mm: float | None = None  # 가로 구멍(둥근 구멍)의 지름
     bearing_6806_bore_mm: float | None = None  # 바깥 링을 손으로 밀어 넣을 수 있고 놀지 않는 구멍
     bearing_6806_shaft_mm: float | None = None  # 안쪽 링을 손으로 끼울 수 있고 놀지 않는 축
+    # 큰 세로 구멍: 위팔 관 끝 고리(설계 지름 34.8)를 세로로 뽑았을 때의 실제 안지름 (받침 기둥 위끝 고리로 잰다)
+    tube_bore_mm: float | None = None
 
 
 class ServoBody(_Values):
