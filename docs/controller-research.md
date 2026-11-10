@@ -270,4 +270,4 @@ DS220+, DSM 7.2.2, Container Manager 24.0.2 ([hardware.md](hardware.md#가진-�
 
 - 확인하지 못한 것: 26.04 `linux-raspi-realtime`이 파이 4 Rev 1.5에서 부팅되는지, Raspberry Pi OS 실시간 커널 패키지, `drive.file` 범위 토큰이 PC가 만든 폴더를 보는지, Cloud Sync가 수정 시각을 보존하는지, PiShrink 자동 늘리기가 Ubuntu에서 되는지, 파이에서 Feetech 버스 왕복 시간, 파이 4의 Rust 빌드 시간.
 - 컨트롤러 파이에서 잴 것: 커널 선점 방식(`uname -v`), 클럭 정책, 스왑, 방열판·팬과 부하 때 온도, SD 카드 상표, 시각 동기, 어댑터가 `by-id` 경로로 잡히는지, 응답 지연 0과 500 µs에서 동기 읽기·쓰기 왕복(PC와 파이, 0024의 6단계), 통신이 끊겼을 때 서보가 마지막 목표에서 버티는지, Windows에서 zigbuild로 musl 빌드한 rustypot이 파이에서 도는지.
-- NAS와 공유기에서 볼 것: 평소 CPU 부하, 공유기 포트 포워딩·DMZ·UPnP, 파이들의 고정 IP 할당. PC에 SD 카드 리더가 있는지 (통째 이미지에 필요).
+- NAS와 공유기에서 볼 것: 평소 CPU 부하, 공유기 포트 포워딩·DMZ·UPnP, 파이들의 고정 IP 할당.
