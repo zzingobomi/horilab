@@ -37,6 +37,7 @@ horilab/
 ├── params/        설계 값 (TOML)
 ├── data/          실측 값, 로봇 설정·캘리브레이션, 구매 데이터 (TOML)
 ├── docs/          (docs-local/은 git 제외)
+├── tools/         레포 도구 (시험 기록 올리고 받기). tools/local/은 PC마다 받는 실행 파일과 로그인 설정 (git 제외)
 └── build/         생성물 (git 제외)
 ```
 
@@ -62,3 +63,7 @@ horilab/
 - pyproject 파일이 여섯 개다 (루트, design, motor, control, camera, 파이 카메라 프로젝트).
 - .gitignore에 `build/`를 더한다.
 - 모터 프로세스를 파이로 옮기게 되면, 파이에 uv로 Python 3.12를 설치해 motor가 도는지 그때 확인한다.
+
+## 바뀐 점
+
+- 2026-11-10: 패키지 밖의 레포 도구를 두는 `tools/`를 더했다. 첫 도구는 시험 기록 올리고 받기다 ([0022](0022-records-and-sync.md)).

@@ -40,6 +40,9 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
   - `uv run pyright`
   - `uv run pytest`
 - 실물 서보·카메라 테스트는 `uv run pytest --hardware`다. 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
+- 시험 기록 올리고 받기 ([0022](docs/decisions/0022-records-and-sync.md)). 실물 시험이 끝나면 올리고, 분석을 시작할 때 받는다:
+  - `uv run tools/sync.py push`
+  - `uv run tools/sync.py pull` (경로를 주거나 `--max-age 3d`로 골라 받는다)
 
 ## 문서 쓰는 법
 

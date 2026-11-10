@@ -7,6 +7,9 @@ docs-local/
 # 생성물
 build/
 
+# PC마다 받는 도구와 구글 로그인 설정 (tools/sync.py)
+tools/local/
+
 # Python
 .venv/
 __pycache__/

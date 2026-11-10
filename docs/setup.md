@@ -90,3 +90,26 @@ uv sync
 ## 6. 개인 자료
 
 `docs-local/`은 git에 없다. 있으면 다른 PC에서 손으로 옮긴다. 없어도 작업은 이어진다.
+
+## 7. 시험 기록 올리고 받기
+
+git에서 뺀 시험 기록은 구글 드라이브로 넘긴다 ([0022](decisions/0022-records-and-sync.md)). PC마다 한 번 로그인한다.
+
+```powershell
+uv run tools/sync.py login --client <앱 파일>
+```
+
+- 앱 파일은 구글 클라우드에서 만든 OAuth 클라이언트(데스크톱 앱)의 JSON이다. 다른 PC에서 쓴 파일을 옮겨 오거나, 같은 프로젝트에서 클라이언트를 하나 더 만들어 받는다.
+- 처음 쓸 때 rclone을 `tools/local/`에 받는다. PC에 설치하지 않는다.
+- 브라우저가 열리면 데이터를 둘 구글 계정으로 로그인하고 허용한다. 직접 만든 앱이라 "확인되지 않은 앱" 경고가 나오면 고급 → 이동을 누른다.
+- 로그인이 풀리면(권한을 끊었거나 오래 쓰지 않았을 때) `--client` 없이 `login`만 다시 한다.
+
+구글 앱이 아직 없으면 데이터를 둘 계정으로 구글 클라우드 콘솔에서 한 번 만든다 ([rclone 문서](https://rclone.org/drive/#making-your-own-client-id)).
+
+1. 새 프로젝트를 만들고 Google Drive API를 사용 설정한다.
+2. Google 인증 플랫폼을 시작한다. 대상은 외부다.
+3. 데이터 액세스에 범위 세 개를 넣는다: `https://www.googleapis.com/auth/docs`, `https://www.googleapis.com/auth/drive`, `https://www.googleapis.com/auth/drive.metadata.readonly`.
+4. 대상에서 자기 계정을 테스트 사용자로 넣는다.
+5. 클라이언트에서 데스크톱 앱 유형으로 만들고, 만들 때 나오는 창에서 JSON을 받는다.
+6. 브랜딩에 홈페이지와 개인정보처리방침 주소를 넣고, 그 도메인을 승인된 도메인에 넣는다. 게시하려면 둘 다 있어야 한다. GitHub Pages 같은 무료 페이지면 된다.
+7. 대상에서 앱을 게시한다. 테스트 상태로 두면 로그인이 7일마다 풀린다.
