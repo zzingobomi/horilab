@@ -18,6 +18,7 @@
 | [manufacturing.md](docs/manufacturing.md) | 출력 제약, 재료, 색, 공차 |
 | [joint-test.md](docs/joint-test.md) | 관절 하나 시험: 알려는 것, 시험대와 도구, 재는 원리와 순서, 나오는 값과 쓰임 |
 | [software.md](docs/software.md) | 치수 값에서 결과물까지의 흐름, 레포 구조, 도구, 시뮬레이션, 제어 구조, 하드웨어 연결, 개발 환경, 패키지 |
+| [controller-research.md](docs/controller-research.md) | 로봇 컨트롤러 리서치: 산업용 컨트롤러, 데스크톱 팔, 전송 방식, 시뮬레이션 연결과 계획 라이브러리 |
 | [conventions.md](docs/conventions.md) | 문서·코드·테스트·git 규칙 |
 | [setup.md](docs/setup.md) | 새 PC 준비 |
 | [decisions/](docs/decisions/) | 결정 기록 |

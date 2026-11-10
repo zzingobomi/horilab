@@ -22,6 +22,7 @@
 - 시험 기록과 PC 사이 데이터 넘기기를 정했다 ([0022](decisions/0022-records-and-sync.md)). 실물 실행의 기록은 실물이 없는 PC에서도 분석할 수 있게 남기고, git에서 뺀 데이터 폴더는 rclone으로 구글 드라이브에 레포와 같은 경로로 비춘다. 올리고 받는 명령(`tools/sync.py`)을 만들고, 로그인에 쓸 구글 앱을 만들어 실물이 없는 PC에서 로그인했다.
 - 서보 연결 프로그램의 맨 아래층을 정했다 ([0024](decisions/0024-servo-bus.md)): 메모리 표, 서보마다 확인하는 동기 읽기, EEPROM 쓰기 절차, 소프트웨어 영점, 기록 형식. 1단계(메모리 표, 서보 버스, 가짜 서보, 테스트)를 공식 SDK 위에 Python으로 먼저 만들었다 (`packages/motor/src/horilab_motor/feetech/`). 이것은 기준 구현으로 남는다.
 - PC 없이도 로봇을 쓰기로 했다 ([0025](decisions/0025-controller-on-pi.md)). 컨트롤러(모터 프로세스)는 로봇 옆 컨트롤러 파이에서 늘 돌고 Rust로 짠다. 카메라는 다른 파이, PC는 켜져 있을 때 붙는 손님(개발, 경로 계획, 시뮬레이션, 비전)이다. 단계는 관절 하나 시험(PC에서 돌림) → 팔 움직이기(파이 배포, PC 시뮬레이션 컨트롤러) → PC 없이 쓰기(경로 계획과 펜던트를 파이로)다.
+- 로봇 컨트롤러 리서치 네 주제(산업용 컨트롤러, 데스크톱·오픈소스 팔, 전송 방식, 시뮬레이션 연결과 파이용 계획 라이브러리)를 마쳤다 ([controller-research.md](controller-research.md)). 0023의 정할 것마다 추천을 적었고, 0025에 시뮬레이션 연결과 경로 계획 추천을 적었다. Rust 서보 라이브러리(rustypot)가 이미 있어서, 프로토콜을 직접 짤지는 그것을 평가한 뒤 정한다.
 
 ## 다음 할 일
 
@@ -42,10 +43,11 @@
   - 짐으로 쓸 것: 500 ml 생수병, 끈 60 cm, 테이프, 짐을 뺄 때 받칠 책.
 - Claude (실물이 있는 PC에서 이어서): Rust 모터 코어를 시작한다 ([0025](decisions/0025-controller-on-pi.md)의 1단계, [0024](decisions/0024-servo-bus.md)의 순서).
   1. Windows용 Rust가 있는지 확인한다 (`cargo --version`, [setup.md](setup.md#8-rust)). 레포 루트에 Cargo 워크스페이스와 `crates/motor`를 만들고, 도구 모음 버전 고정, `.gitignore`의 `target/`, CLAUDE.md의 커밋 전 검사(`cargo fmt --check`, `cargo clippy`, `cargo test`), conventions.md의 Rust 규칙을 더한다 (0025의 영향).
-  2. 0024의 1단계(메모리 표, 서보 버스, 가짜 서보, 테스트)를 Rust로 짠다. 시험 항목은 Python 기준 구현의 테스트(`packages/motor/tests/`)와 같게 한다.
+  2. Rust 서보 라이브러리 rustypot을 0024의 확인 항목으로 평가해서, 그대로 쓸지 참고만 하고 직접 짤지 정한다 ([0025](decisions/0025-controller-on-pi.md)의 영향). 그 결과로 0024의 1단계(메모리 표, 서보 버스, 가짜 서보, 테스트)를 Rust로 한다. 시험 항목은 Python 기준 구현의 테스트(`packages/motor/tests/`)와 같게 한다.
   3. 이어서 0024의 2~7단계를 Rust로 한다. 다음은 로봇 설정 파일(J3부터)이다.
 - 직접 + Claude: 어댑터와 서보 전원이 준비되면 Python 기준 구현으로 서보를 찾고 덤프를 뜬다 (찾기·덤프 명령을 하나 더한다). 첫 덤프가 기준이고, 0024의 "실물로 확인할 것"을 함께 본다.
-- Claude: 로봇 컨트롤러 리서치를 하고 ([0023](decisions/0023-robot-controller.md)의 리서치 계획, 0025에서 더한 파이 컨트롤러 항목 포함), 사용자와 경계, API, 조종권, 전송 방식을 정한다. 모터 프로세스의 메시지 형식은 이 결정 뒤에 정한다.
+- Claude (실물이 있는 PC에서): 파이 세 대의 모델·OS·커널 버전, NAS 모델·OS·Docker 지원, 그 PC의 WSL·Docker, 집 네트워크(공유기, 스위치)를 확인한다. 그다음 남은 리서치(파이 실행 환경과 배포, NAS)를 한다 ([0023](decisions/0023-robot-controller.md)의 리서치 계획). 에이전트를 띄우기 전에 무엇을 몇 개 맡길지 허락을 받는다.
+- 사용자 + Claude: 0023의 정할 것을 리서치 추천([controller-research.md](controller-research.md))을 보며 정한다. 경계, API, 조종권, 전송 방식, 브레이크 없는 팔의 정지, 게임패드 자리다. 사용자가 정할 것은 폰 펜던트의 HTTPS 방식(사설 인증 기관, 또는 도메인 비용이 드는 Let's Encrypt)과 쓰는 폰의 OS다. 모터 프로세스의 메시지 형식은 이 결정 뒤에 정한다.
 - Claude: 2단계 서보 연결 프로그램은 위의 Rust 모터 코어다. 바나나 플러그와 USB 케이블이 오기 전에 준비하고, 관절 시험에서 서보를 켜는 것은 이것이 된 뒤에 한다 ([0021](decisions/0021-elbow-joint-test.md)의 재는 것). 서보 줄은 받침 기둥 속으로 넣지 않고 관절 아래로 바로 빼서 20 cm 케이블로 어댑터에 잇는다 ([0021](decisions/0021-elbow-joint-test.md)의 영향). 기록의 형식과 표준 경로(`records/`, `videos/`)는 0024에서 정했고, 기록을 만들 때 동기화 목록(`tools/sync.py`)과 `.gitignore`에 넣는다.
 - 직접: 실물이 있는 PC에서 시험 기록 올리고 받기 로그인을 한 번 한다 ([setup.md](setup.md#7-시험-기록-올리고-받기)). 구글 앱 파일(JSON)을 옮겨 오거나, 같은 프로젝트에서 클라이언트를 하나 더 만든다.
 - 직접: 파이 세 대가 모두 4B 4GB인지 확인한다 (기록은 카메라용 하나만 있다). 컨트롤러 파이와 카메라 파이의 자리, 집 네트워크(공유기 포트, 스위치)를 정할 때 랜 케이블 수를 다시 센다 ([0025](decisions/0025-controller-on-pi.md)의 영향).

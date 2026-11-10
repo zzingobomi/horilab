@@ -23,7 +23,7 @@
 
 | 정할 것 | 대안 | 판단 |
 |---|---|---|
-| 서보 프로토콜 | 공식 Python SDK를 보완해 쓰기 / Rust로 직접 짜기 | Rust로 직접 짠다. 모터 프로세스가 Rust라서다 (0025). 프로토콜은 작고(패킷마다 머리, ID, 길이, 명령, 값, 체크섬) 세부를 다 파악했다. 위 결함은 처음부터 생기지 않게 짠다 |
+| 서보 프로토콜 | 공식 Python SDK를 보완해 쓰기 / Rust 서보 라이브러리(rustypot) 쓰기 / Rust로 직접 짜기 | Rust로 한다. 모터 프로세스가 Rust라서다 (0025). rustypot을 쓸지 직접 짤지는 Rust 모터 코어를 시작할 때 아래 버스 요구로 rustypot을 평가해 정한다 ([controller-research.md](../controller-research.md#feetech-서보를-다루는-코드)). 직접 짜도 프로토콜은 작고(패킷마다 머리, ID, 길이, 명령, 값, 체크섬) 세부를 다 파악했다. 위 결함은 어느 쪽이든 생기지 않게 한다 |
 | 동기 읽기 | 받은 바이트를 한 덩어리로 보기 / 서보마다 나눠 확인하기 | 서보마다 나눈다. 지난 값을 새 값처럼 받으면 응답 없는 서보가 멀쩡해 보이고, 0009의 통신 오류 처리(연속 실패를 세어 멈춤)가 듣지 않는다 |
 | 영점 | 서보의 위치 오프셋(EEPROM, 또는 토크 스위치 128) / 조립 자리를 정하고 소프트웨어 영점 | 소프트웨어 영점. EEPROM을 덜 쓰고, 서보를 바꿔 끼워도 설정 파일만 고친다. 0009의 "변환은 실물 백엔드 안에서만"과 같다 |
 | 관절 시험 프로그램 | 모터 프로세스(실행 루프 + 메시지)를 먼저 만들기 / 버티기와 기록을 하는 프로그램 하나 | 프로그램 하나. 시험 내내 한 자세에서 버티기만 해서 궤적과 메시지가 필요 없다. 메시지 형식은 0023을 정한 뒤다 |
@@ -73,7 +73,7 @@ packages/motor/src/horilab_motor/feetech (Python)   같은 설계의 기준 구�
 ## 영향
 
 - 만드는 순서. 단계마다 보여 주고 넘어간다.
-  1. 메모리 표, 서보 버스, 가짜 서보, 테스트. Python 기준 구현은 끝났다 (`packages/motor/src/horilab_motor/feetech/`, 테스트 `packages/motor/tests/`, SDK 형식 정보 `typings/scservo_sdk/`). Rust로 같은 시험 항목을 통과하게 다시 짠다 (`crates/motor`).
+  1. 메모리 표, 서보 버스, 가짜 서보, 테스트. Python 기준 구현은 끝났다 (`packages/motor/src/horilab_motor/feetech/`, 테스트 `packages/motor/tests/`, SDK 형식 정보 `typings/scservo_sdk/`). Rust에서는 먼저 rustypot을 평가해 쓸지 정하고, 어느 쪽이든 같은 시험 항목을 통과하게 한다 (`crates/motor`).
   2. 로봇 설정 파일과 읽는 코드 (J3부터)
   3. 서보 준비 명령: 찾기, 덤프, ID 바꾸기, 값 적용
   4. joints와 안전 검사
@@ -82,6 +82,7 @@ packages/motor/src/horilab_motor/feetech (Python)   같은 설계의 기준 구�
   7. [joint-test.md](../joint-test.md)에 실제 순서와 명령을 적는다
 - 실물이 처음 연결되면 Python 기준 구현으로 서보를 찾고 덤프를 뜬다 (작은 명령을 하나 더한다). 첫 덤프가 기준이다.
 - 실물로 확인할 것: 지금 서보들의 ID, 모델 번호, 펌웨어, EEPROM 전체, 잠금 동작, 0/4095 경계를 넘어 움직이는지, 현재 전류(69)에 부호가 있는지, 통신이 끊기면 서보가 어떻게 하는지 (0009), ST-3120이 같은 표를 쓰는지.
+- LeRobot 코드에 적힌 것도 실물로 확인한다 ([controller-research.md](../controller-research.md#feetech-서보를-다루는-코드)): 7번 레지스터가 응답 지연 시간인지(메모리 표에는 "예약", LeRobot은 공장값 500 µs를 0으로 바꾼다), Phase(18) 비트 4의 뜻, 어댑터의 USB 지연 타이머(FTDI는 16 ms, 이 어댑터의 칩은 모른다).
 - J1은 범위가 350°라 혼 톱니 한 칸만 어긋나도 경계를 넘을 수 있다. J1을 설계하거나 조립할 때 영점 방식을 다시 본다.
 - Python 기준 구현은 Rust 버스가 실물에서 확인되면 지운다. 그전에 SDK를 올리면 `typings/scservo_sdk`와 테스트로 다시 확인한다.
 
