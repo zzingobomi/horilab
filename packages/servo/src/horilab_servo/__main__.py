@@ -4,6 +4,7 @@
     uv run python -m horilab_servo scan [--ids 1-7]            서보 찾기
     uv run python -m horilab_servo dump [--ids 1-7]            설정 덤프를 뜨고 기록한다
     uv run python -m horilab_servo timing [--ids 1-7] [--yes]  통신 시간을 재고 기록한다
+    uv run python -m horilab_servo set-id --to 3 [--yes]       버스에 하나만 꽂은 서보의 ID를 바꾼다
 
 포트는 서보 어댑터(USB 칩이 WCH 것)가 하나만 보이면 저절로 고른다. 아니면 --port로 준다.
 --ids를 주지 않으면 ID 0~252를 모두 찾는다 (없는 ID마다 응답을 기다려 15초쯤 걸린다).
@@ -21,9 +22,13 @@ from serial.tools.list_ports_common import ListPortInfo
 
 from horilab_servo import first_connection as fc
 from horilab_servo.feetech import registers as reg
-from horilab_servo.feetech.bus import Bus, BusError, Refused
+from horilab_servo.feetech.bus import Bus, BusError, Refused, ScanResult
 
 ALL_IDS = range(reg.MAX_ID + 1)
+
+
+def _now() -> datetime:
+    return datetime.now().astimezone()
 
 
 def main(
@@ -31,6 +36,7 @@ def main(
     *,
     open_bus: Callable[[str], Bus] = Bus.open,
     ports: Callable[[], list[ListPortInfo]] = fc.serial_ports,
+    now: Callable[[], datetime] = _now,
 ) -> int:
     args = _parser().parse_args(argv)
     # 진행 안내가 바로 보이게 하고, 콘솔이 못 쓰는 글자(µ 등) 때문에 멈추지 않게 한다.
@@ -45,19 +51,21 @@ def main(
     port: str | None = args.port or _find_adapter(ports())
     if port is None:
         return 1
-    ids: list[int] | None = args.ids
     try:
         with open_bus(port) as bus:
+            if args.command == "set-id":
+                return _set_id(bus, port, args.to, args.records, yes=args.yes, now=now)
+            ids: list[int] | None = args.ids
             if args.command == "scan" or ids is None:
                 if ids is None:
                     print(f"{port}에서 서보를 찾는다 (ID 0~{reg.MAX_ID}, 15초쯤 걸린다)")
-                ids = _scan(bus, ALL_IDS if ids is None else ids)
+                ids = sorted(_scan(bus, ALL_IDS if ids is None else ids).models)
                 if args.command == "scan" or not ids:
                     return 0 if ids else 1
                 print()
             if args.command == "dump":
-                return _dump(bus, port, ids, args.records)
-            return _timing(bus, port, ids, args)
+                return _dump(bus, port, ids, args.records, now=now)
+            return _timing(bus, port, ids, args, now=now)
     except (BusError, Refused) as error:
         print(f"멈췄다: {error}")
         return 1
@@ -66,7 +74,7 @@ def main(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="uv run python -m horilab_servo",
-        description="첫 연결: 서보 찾기, 덤프, 통신 시간 (docs/servo-setup.md). 서보를 움직이지 않는다.",
+        description="첫 연결: 서보 찾기, 덤프, 통신 시간, ID 바꾸기 (docs/servo-setup.md). 서보를 움직이지 않는다.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("ports", help="시리얼 포트와 서보 어댑터를 보여 준다")
@@ -76,12 +84,19 @@ def _parser() -> argparse.ArgumentParser:
         "timing",
         help="통신 시간을 재고 기록한다. 토크 제한에 읽은 값을 그대로 쓰고 응답 지연을 잠근 채 바꾼다",
     )
-    for command in (scan, dump, timing):
+    set_id = commands.add_parser(
+        "set-id",
+        help="버스에 하나만 꽂은 서보의 ID를 바꾼다 (EEPROM에 남는다). 바꾸기 전후 덤프를 기록한다",
+    )
+    for command in (scan, dump, timing, set_id):
         command.add_argument("--port", help="시리얼 포트 (예: COM5, /dev/ttyACM0)")
+    for command in (scan, dump, timing):
         command.add_argument(
             "--ids", type=_ids, metavar="ID", help="이 ID만 본다 (예: 1-7, 1,3,5). 없으면 다 찾는다"
         )
-    for command in (dump, timing):
+    set_id.add_argument("--to", type=_one_id, required=True, metavar="ID", help="새 ID")
+    set_id.add_argument("--yes", action="store_true", help="실제로 바꾼다")
+    for command in (dump, timing, set_id):
         command.add_argument(
             "--records",
             type=Path,
@@ -106,6 +121,16 @@ def _positive(text: str) -> int:
     value = int(text)
     if value < 1:
         raise argparse.ArgumentTypeError("1 이상이다")
+    return value
+
+
+def _one_id(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"ID는 숫자다: {text}") from None
+    if not 0 <= value <= reg.MAX_ID:
+        raise argparse.ArgumentTypeError(f"서보 ID는 0~{reg.MAX_ID}다: {value}")
     return value
 
 
@@ -157,7 +182,7 @@ def _find_adapter(found: Sequence[ListPortInfo]) -> str | None:
 # 찾기
 
 
-def _scan(bus: Bus, ids: Sequence[int]) -> list[int]:
+def _scan(bus: Bus, ids: Sequence[int]) -> ScanResult:
     result = bus.scan(ids)
     found = sorted(result.models)
     if found:
@@ -185,14 +210,16 @@ def _scan(bus: Bus, ids: Sequence[int]) -> list[int]:
         print("서보 전원(가변 전원 화면의 12.0 V), 서보 선, 어댑터 점퍼(B)를 본다.")
     else:
         print("꽂은 서보 수와 다르면 선이 빠졌거나 같은 ID의 서보가 있는 것이다.")
-    return found
+    return result
 
 
 # 덤프
 
 
-def _dump(bus: Bus, port: str, ids: Sequence[int], records: Path) -> int:
-    started = datetime.now().astimezone()
+def _dump(
+    bus: Bus, port: str, ids: Sequence[int], records: Path, *, now: Callable[[], datetime]
+) -> int:
+    started = now()
     dumps = [fc.dump_servo(bus, servo_id) for servo_id in ids]
     folder = fc.new_record_dir(records, "dump", started)
     meta: dict[str, object] = {
@@ -205,8 +232,10 @@ def _dump(bus: Bus, port: str, ids: Sequence[int], records: Path) -> int:
         },
     }
     previous = fc.previous_dump(records, folder)
+    # ID를 바꾼 뒤에는 같은 ID라도 다른 서보일 수 있어서 견주지 않는다. 이 덤프가 새 기준이 된다.
+    moved = [] if previous is None else fc.id_changes_between(records, previous, folder)
     changed: dict[int, dict[str, tuple[int, int]]] = {}
-    if previous is not None:
+    if previous is not None and not moved:
         before = fc.load_dumps(previous)
         changed = {
             d.servo_id: fc.changes(before[d.servo_id], d) for d in dumps if d.servo_id in before
@@ -215,10 +244,17 @@ def _dump(bus: Bus, port: str, ids: Sequence[int], records: Path) -> int:
             "record": previous.relative_to(records).as_posix(),
             "changes": {str(i): c for i, c in changed.items() if c},
         }
+    elif previous is not None:
+        meta["previous"] = {
+            "record": previous.relative_to(records).as_posix(),
+            "skipped": "ID를 바꾼 뒤라 견주지 않았다",
+        }
     fc.write_json(folder / "meta.json", meta)
     _print_dump_table(dumps)
-    if previous is not None:
+    if previous is not None and not moved:
         _print_changes(previous.name, changed)
+    elif previous is not None:
+        print(f"지난 덤프({previous.name}) 뒤에 ID를 바꿔서 견주지 않는다. 이 덤프가 새 기준이다.")
     print(f"기록: {folder}")
     return 0
 
@@ -285,8 +321,15 @@ def _print_timing_plan(args: argparse.Namespace) -> None:
     print("재려면 --yes를 붙인다.")
 
 
-def _timing(bus: Bus, port: str, ids: Sequence[int], args: argparse.Namespace) -> int:
-    started = datetime.now().astimezone()
+def _timing(
+    bus: Bus,
+    port: str,
+    ids: Sequence[int],
+    args: argparse.Namespace,
+    *,
+    now: Callable[[], datetime],
+) -> int:
+    started = now()
     seconds = 2 * len(fc.OPS) * args.count * args.period_ms / 1000
     print(f"통신 시간을 잰다: 서보 {len(ids)}개, 동작마다 {args.count}번 ({seconds:.0f}초쯤)")
     run = fc.measure_timing(bus, ids, count=args.count, period_s=args.period_ms / 1000)
@@ -295,7 +338,7 @@ def _timing(bus: Bus, port: str, ids: Sequence[int], args: argparse.Namespace) -
     meta: dict[str, object] = {
         "kind": "servo-timing",
         "started": started.isoformat(timespec="seconds"),
-        "ended": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "ended": now().isoformat(timespec="seconds"),
         "run": fc.run_info(port),
         **fc.timing_meta(run),
         "link_stats": {str(i): asdict(s) for i, s in bus.stats.items()},
@@ -352,6 +395,65 @@ def _print_timing(run: fc.TimingRun) -> None:
         )
     else:
         print("모든 서보의 응답 지연이 이미 0이라 한 번만 쟀다.")
+
+
+# ID 바꾸기
+
+
+def _set_id(
+    bus: Bus,
+    port: str,
+    new_id: int,
+    records: Path,
+    *,
+    yes: bool,
+    now: Callable[[], datetime],
+) -> int:
+    """버스에 서보가 하나만 있을 때 그 서보의 ID를 바꾼다. 바꾸기 전후의 덤프를 기록한다 (0024).
+
+    하나뿐인지는 ID 전체를 찾아서 본다. 같은 ID의 서보 둘은 응답이 깨져서 드러난다.
+    """
+    print(f"{port}에서 서보를 찾는다 (ID 0~{reg.MAX_ID}, 15초쯤 걸린다)")
+    result = _scan(bus, ALL_IDS)
+    found = sorted(result.models)
+    if len(found) != 1 or result.garbled:
+        if found or result.garbled:
+            print(
+                "ID를 바꾸려면 버스에 서보가 하나만 있어야 한다. 바꿀 서보만 남기고 케이블을 뺀다."
+            )
+        return 1
+    old_id = found[0]
+    if old_id == new_id:
+        print(f"이미 ID {new_id}다. 바꿀 것이 없다.")
+        return 0
+    if not yes:
+        print(f"ID {old_id} → {new_id}로 바꾼다. EEPROM에 써서 전원을 꺼도 남는다.")
+        print("바꾸려면 --yes를 붙인다.")
+        return 0
+    started = now()
+    before = fc.dump_servo(bus, old_id)
+    bus.change_id(old_id, new_id)
+    after = fc.dump_servo(bus, new_id)
+    changed = fc.changes(before, after)
+    folder = fc.new_record_dir(records, "set-id", started)
+    meta: dict[str, object] = {
+        "kind": "servo-set-id",
+        "started": started.isoformat(timespec="seconds"),
+        "run": fc.run_info(port),
+        "old_id": old_id,
+        "new_id": new_id,
+        "changes": changed,
+        "before": fc.dump_meta([before])[str(old_id)],
+        "after": fc.dump_meta([after])[str(new_id)],
+    }
+    fc.write_json(folder / "meta.json", meta)
+    print(f"ID {old_id} → {new_id}로 바꿨다. 서보에 {new_id}를 적은 테이프를 붙인다.")
+    others = {name: pair for name, pair in changed.items() if name != reg.ID.name}
+    if others:
+        text = ", ".join(f"{name} {a} → {b}" for name, (a, b) in others.items())
+        print(f"ID 말고도 바뀐 칸이 있다: {text}. Claude에게 알린다.")
+    print(f"기록: {folder}")
+    return 0
 
 
 if __name__ == "__main__":

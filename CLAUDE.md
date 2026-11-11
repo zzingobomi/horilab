@@ -47,7 +47,7 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
   - `cargo test --workspace`
 - 파이용 실행 파일 만들기 ([0026](docs/decisions/0026-pi-runtime-deploy-records.md)): `uv run tools/pi_build.py -p <크레이트> --bin <실행 파일>`
 - 실물 서보·카메라 테스트는 `uv run pytest --hardware`다. 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
-- 서보 첫 연결(찾기, 덤프, 통신 시간): `uv run python -m horilab_servo ports|scan|dump|timing` ([docs/servo-setup.md](docs/servo-setup.md)). `timing`은 서보에 값을 쓰므로(움직이지는 않는다) 확인을 받은 뒤 `--yes`로 돌린다.
+- 서보 첫 연결(찾기, 덤프, 통신 시간, ID 바꾸기): `uv run python -m horilab_servo ports|scan|dump|timing|set-id` ([docs/servo-setup.md](docs/servo-setup.md)). `timing`과 `set-id`는 서보에 값을 쓰므로(움직이지는 않는다) 확인을 받은 뒤 `--yes`로 돌린다.
 - 시험 기록 올리고 받기 ([0022](docs/decisions/0022-records-and-sync.md)). 실물 시험이 끝나면 올리고, 분석을 시작할 때 받는다:
   - `uv run tools/sync.py push`
   - `uv run tools/sync.py pull` (경로를 주거나 `--max-age 3d`로 골라 받는다)

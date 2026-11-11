@@ -296,6 +296,96 @@ def test_timing_command_needs_yes(capsys: pytest.CaptureFixture[str], tmp_path: 
     assert not any(tmp_path.iterdir())
 
 
+def _clock(*minutes: int) -> Callable[[], datetime]:
+    """명령마다 다른 시각을 준다. 기록 폴더 이름이 시간 순으로 놓이게 한다."""
+    times = iter(datetime(2026, 11, 14, 15, m) for m in minutes)
+    return lambda: next(times)
+
+
+# ID 바꾸기
+
+
+def test_set_id_changes_the_only_servo_and_records_both_dumps(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    servo = FakeServo(6, STS3250)
+    args = ["set-id", "--port", "fake", "--to", "3", "--records", str(tmp_path), "--yes"]
+    assert main(args, open_bus=_opener([servo])) == 0
+    servo.power_cycle()
+    assert servo.id == 3  # EEPROM에 남았다
+    [folder] = (tmp_path / "servo").iterdir()
+    assert "_set-id-" in folder.name
+    meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    assert (meta["kind"], meta["old_id"], meta["new_id"]) == ("servo-set-id", 6, 3)
+    assert meta["changes"] == {"id": [6, 3]}
+    assert meta["before"]["values"]["id"] == 6 and meta["after"]["values"]["id"] == 3
+    assert "테이프" in capsys.readouterr().out
+
+
+def test_set_id_without_yes_only_shows_the_plan(tmp_path: Path) -> None:
+    servo = FakeServo(6)
+    args = ["set-id", "--port", "fake", "--to", "3", "--records", str(tmp_path)]
+    assert main(args, open_bus=_opener([servo])) == 0
+    assert servo.id == 6
+    assert not (tmp_path / "servo").exists()
+
+
+def test_set_id_refuses_when_more_than_one_servo(tmp_path: Path) -> None:
+    servos = [FakeServo(6), FakeServo(7)]
+    args = ["set-id", "--port", "fake", "--to", "3", "--records", str(tmp_path), "--yes"]
+    assert main(args, open_bus=_opener(servos)) == 1
+    assert [s.id for s in servos] == [6, 7]
+
+
+def test_set_id_refuses_two_servos_sharing_an_id(tmp_path: Path) -> None:
+    servos = [FakeServo(6), FakeServo(6)]
+    args = ["set-id", "--port", "fake", "--to", "3", "--records", str(tmp_path), "--yes"]
+    assert main(args, open_bus=_opener(servos)) == 1
+    assert [s.id for s in servos] == [6, 6]
+
+
+def test_set_id_refuses_when_torque_is_on(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    servo = FakeServo(6)
+    servo.set(reg.TORQUE_ENABLE, reg.TORQUE_ON)
+    args = ["set-id", "--port", "fake", "--to", "3", "--records", str(tmp_path), "--yes"]
+    assert main(args, open_bus=_opener([servo])) == 1
+    assert servo.id == 6
+    assert "멈췄다" in capsys.readouterr().out
+
+
+def test_dump_after_id_change_starts_a_new_baseline(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    a, b = FakeServo(1), FakeServo(2)
+    records = ["--records", str(tmp_path)]
+    clock = _clock(0, 1, 2)
+    assert (
+        main(
+            ["dump", "--port", "fake", "--ids", "1,2", *records],
+            open_bus=_opener([a, b]),
+            now=clock,
+        )
+        == 0
+    )
+    set_id = ["set-id", "--port", "fake", "--to", "5", "--yes", *records]
+    assert main(set_id, open_bus=_opener([a]), now=clock) == 0
+    capsys.readouterr()
+    assert (
+        main(
+            ["dump", "--port", "fake", "--ids", "2,5", *records],
+            open_bus=_opener([a, b]),
+            now=clock,
+        )
+        == 0
+    )
+    latest = max(p for p in (tmp_path / "servo").iterdir() if "_dump-" in p.name)
+    meta = json.loads((latest / "meta.json").read_text(encoding="utf-8"))
+    assert "changes" not in meta["previous"]
+    assert "견주지 않는다" in capsys.readouterr().out
+
+
 def test_timing_command_records_samples_and_summaries(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

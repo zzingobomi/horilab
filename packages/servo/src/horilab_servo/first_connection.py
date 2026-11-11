@@ -1,11 +1,12 @@
-"""첫 연결: 어댑터와 서보를 찾고, 설정을 덤프하고, 통신 시간을 잰다 (docs/servo-setup.md).
+"""첫 연결: 어댑터와 서보를 찾고, 설정을 덤프하고, 통신 시간을 재고, ID를 바꾼다 (docs/servo-setup.md).
 
 명령줄은 __main__.py에 있다 (uv run python -m horilab_servo …). 여기에는 그 일과 기록이 있다.
 
 - 서보를 움직이지 않는다. 목표 위치도 쓰지 않는다: 각도 한계 밖에 놓인 서보에 목표를 쓰면
   한계까지 움직일 수 있다.
-- 서보에 쓰는 것은 통신 시간을 잴 때뿐이다. 동기 쓰기는 토크 제한(RAM)에 읽은 값을 그대로 쓰고,
-  응답 지연(7번)은 잠근 채 0으로 바꿔 한 번 더 잰다. 서보 전원을 껐다 켜면 처음 값으로 돌아간다.
+- 통신 시간을 잴 때는 동기 쓰기로 토크 제한(RAM)에 읽은 값을 그대로 쓰고, 응답 지연(7번)은 잠근 채
+  0으로 바꿔 한 번 더 잰다. 서보 전원을 껐다 켜면 처음 값으로 돌아간다.
+- 전원을 꺼도 남는 것은 ID 바꾸기뿐이다. 버스에 서보가 하나만 있을 때 한다 (0024의 EEPROM 절차).
 - 기록은 records/servo/<날짜시각>_<명령>-<컴퓨터>/에 남긴다 (docs/decisions/0022, 0024).
 """
 
@@ -224,6 +225,18 @@ def load_dumps(record: Path) -> dict[int, ServoDump]:
             int(key), memory, None if extra is None else bytes.fromhex(extra)
         )
     return dumps
+
+
+def id_changes_between(root: Path, earlier: Path, later: Path) -> list[Path]:
+    """두 기록 사이에 남은 ID 바꾸기 기록. ID를 바꾸면 같은 ID라도 다른 서보일 수 있다."""
+    folder = root / RECORD_KIND
+    if not folder.is_dir():
+        return []
+    return sorted(
+        p
+        for p in folder.glob("*_set-id-*")
+        if earlier.name < p.name < later.name and (p / "meta.json").is_file()
+    )
 
 
 def previous_dump(root: Path, current: Path) -> Path | None:
