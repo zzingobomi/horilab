@@ -107,7 +107,7 @@ horilab/
 
 - 실물 실행의 기록은 그것만 보고 실물이 없는 다른 PC에서 분석할 수 있게 남긴다. 분석은 레포 안 스크립트로 한다.
 - 데이터는 종류마다 표준 경로에 둔다. git에서 뺀 데이터 폴더는 rclone으로 구글 드라이브에 레포와 같은 경로로 비춘다. 명령 한 번으로 올리고 받는다.
-- 올리고 받는 명령은 `tools/sync.py`다 (명령은 [CLAUDE.md](../CLAUDE.md#자주-쓰는-명령), PC 준비는 [setup.md](setup.md#7-시험-기록-올리고-받기)). 동기화 목록은 그 파일의 `SYNC_DIRS`이고 아직 비어 있다. 표준 경로(`records/`, `videos/`)는 [0024](decisions/0024-servo-bus.md)에서 정했고, 기록을 처음 만들 때 목록과 `.gitignore`에 같이 넣는다.
+- 올리고 받는 명령은 `tools/sync.py`다 (명령은 [CLAUDE.md](../CLAUDE.md#자주-쓰는-명령), PC 준비는 [setup.md](setup.md#7-시험-기록-올리고-받기)). 동기화 목록은 그 파일의 `SYNC_DIRS`다: 실물 실행 기록 `records/`와 폰 영상 `videos/` ([0024](decisions/0024-servo-bus.md)). 표준 경로를 더할 때는 목록과 `.gitignore`에 같이 넣는다. 첫 기록은 서보 첫 연결 명령이 `records/servo/`에 남긴다 ([servo-setup.md](servo-setup.md)).
 
 ## 개발 환경
 

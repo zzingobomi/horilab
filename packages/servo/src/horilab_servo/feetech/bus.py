@@ -32,6 +32,9 @@ from horilab_servo.feetech.registers import Area, Fault, Register
 # 잠근 채 바꿔 볼 수 있는 레지스터: P·I·D와 응답 지연(7번) (docs/decisions/0024-servo-bus.md)
 TRIAL_REGISTERS = (reg.P_GAIN, reg.I_GAIN, reg.D_GAIN, reg.RESPONSE_DELAY)
 
+# 한 번에 읽는 최대 바이트. SDK는 응답의 길이 칸(바이트 수 + 2)이 250을 넘으면 버린다.
+MAX_READ = 248
+
 
 class BusError(Exception):
     """서보와 통신하지 못했다."""
@@ -179,6 +182,13 @@ class Bus:
     def dump(self, servo_id: int) -> bytes:
         """주소 0부터 메모리 표 끝까지의 바이트. 서보 설정을 기록할 때 쓴다."""
         data, _ = self._read_bytes(servo_id, 0, reg.MEMORY_SIZE)
+        return bytes(data)
+
+    def read_raw(self, servo_id: int, address: int, length: int) -> bytes:
+        """주소와 길이로 바이트를 읽는다. 메모리 표 밖을 덤프할 때 쓴다. 읽기는 서보를 바꾸지 않는다."""
+        if address < 0 or length < 1 or address + length > 256 or length > MAX_READ:
+            raise ValueError(f"{address}번부터 {length}바이트는 한 번에 읽지 않는다")
+        data, _ = self._read_bytes(servo_id, address, length)
         return bytes(data)
 
     def sync_read(self, ids: Sequence[int], *registers: Register) -> dict[int, Reply | BusError]:

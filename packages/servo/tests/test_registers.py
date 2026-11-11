@@ -132,3 +132,12 @@ def test_encode_rejects_values_that_do_not_fit(register: Register, value: int) -
 
 def test_every_encoding_is_used() -> None:
     assert {r.encoding for r in reg.ALL} == set(Encoding)
+
+
+def test_table_initial_values_fit_their_registers() -> None:
+    for register, value in reg.TABLE_INITIAL.items():
+        assert register in reg.ALL
+        register.encode(value)
+    # 표가 비워 둔 칸은 모델마다 달라서 넣지 않는다 (registers.py)
+    blank = {reg.MAX_VOLTAGE, reg.PHASE, reg.P_GAIN, reg.D_GAIN, reg.RESPONSE_DELAY}
+    assert not blank & reg.TABLE_INITIAL.keys()

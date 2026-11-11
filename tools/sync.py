@@ -34,7 +34,7 @@ CACHE = LOCAL / "cache"
 
 # 동기화할 데이터 폴더 (레포 기준 경로). 표준 경로를 정할 때마다 여기와 .gitignore에 같이 넣는다.
 # 목록이 맞는지는 tests/test_sync.py가 확인한다.
-SYNC_DIRS: tuple[str, ...] = ()
+SYNC_DIRS: tuple[str, ...] = ("records", "videos")
 
 REMOTE = "gdrive"  # rclone 설정 안의 이름
 REMOTE_ROOT = f"{REMOTE}:horilab"  # 드라이브에서 레포 루트에 해당하는 폴더

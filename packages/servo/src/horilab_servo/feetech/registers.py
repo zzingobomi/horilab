@@ -5,7 +5,8 @@
 SDK(scservo_sdk)는 이 표의 일부만 상수로 둬서, 표는 여기 한 곳에 둔다.
 
 - 2바이트 값은 작은 주소가 아래 바이트다.
-- 기본값은 모델마다 달라서 두지 않는다. 실물의 값은 처음 읽은 덤프가 기준이다.
+- 표에 적힌 초기값은 TABLE_INITIAL에 둔다. 표가 비워 둔 칸은 모델마다 달라서 없고, 첫 덤프를
+  같은 모델끼리 견주어 본다.
 - ST-3120은 같은 표를 쓴다고 보고, 받으면 덤프로 확인한다 (docs/hardware.md).
 - 현재 전류(69)에 방향 비트가 있는지는 표에 없다. 부호 없이 읽고 실물로 확인한다.
 """
@@ -215,6 +216,37 @@ ALL: tuple[Register, ...] = (
     PRESENT_CURRENT,
 )
 BY_NAME: dict[str, Register] = {r.name: r for r in ALL}
+
+# 메모리 표에 적힌 초기값 (2026-11-11 확인). 최대 입력 전압(14), Phase(18), 보호·알림 조건(19, 20),
+# P·D(21, 22), 최소 시작 토크(24), 속도 고리 게인(37, 39), 7번은 표가 비워 둬서 없다. RAM은 켰을 때의
+# 값이다. 덤프가 이 값과 다른 칸을 보여 주고, 값 적용(0024 만드는 순서 3번)이 robot.toml에 정하지
+# 않은 칸을 이 값으로 맞춘다. Rust 표에는 값 적용을 만들 때 넣는다.
+TABLE_INITIAL: dict[Register, int] = {
+    ENDIAN: 0,
+    ID: 1,
+    BAUD_RATE: 0,
+    RESPONSE_LEVEL: 1,
+    MIN_ANGLE_LIMIT: 0,
+    MAX_ANGLE_LIMIT: 4095,
+    MAX_TEMPERATURE: 70,
+    MIN_VOLTAGE: 40,
+    MAX_TORQUE: 1000,
+    I_GAIN: 0,
+    INTEGRAL_LIMIT: 0,
+    DEAD_ZONE_POSITIVE: 1,
+    DEAD_ZONE_NEGATIVE: 1,
+    PROTECTION_CURRENT: 511,
+    ANGLE_RESOLUTION: 1,
+    POSITION_OFFSET: 0,
+    MODE: 0,
+    HOLDING_TORQUE: 20,
+    PROTECTION_TIME: 200,
+    OVERLOAD_TORQUE: 80,
+    OVERCURRENT_PROTECTION_TIME: 200,
+    TORQUE_ENABLE: 0,
+    ACCELERATION: 0,
+    LOCK: 1,
+}
 
 # 덤프는 주소 0부터 마지막 레지스터 끝까지 한 번에 읽는다 (응답 최대 길이 안).
 MEMORY_SIZE = max(r.address + r.size for r in ALL)

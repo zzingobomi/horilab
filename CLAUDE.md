@@ -31,6 +31,7 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
 - 도구 설치 같은 환경 작업은 Claude가 직접 한다.
 - 살 것을 놓치지 않게 챙긴다. 설계하다 살 것이 생기면 [0004](docs/decisions/0004-purchasing.md)의 원칙(품질 우선, 국내 배송 우선)대로 조사해 고르고, 고른 까닭(품질, 설계, 값, 배송, 조립)을 사용자에게 보고한다. 승인을 받으면 [부품표](docs/bom.md)에 확정하고 주문했는지 묻는다. 다음 단계로 넘어갈 때도 그 단계에 필요한데 아직 손에 없는 것을 알린다. 주문했다거나 받았다는 말을 들으면 부품표를 고친다.
 - 작업 단위가 끝나면 `docs/status.md`를 고친다.
+- 사용자가 손으로 하는 일(출력, 측정, 배선, 실물 시험)은 Claude가 무엇이 무엇에 기대는지와 급한 정도를 따져 순서를 정하고, 한 번에 한 단계씩 짧게 이끈다: 무엇을, 어떻게, 끝나면 무엇을 알려 줄지. 순서는 [status.md](docs/status.md)의 "사용자 순서"에 두고, 단계가 끝나거나 사정이 바뀌면 고친다.
 - 커밋은 바로 하지 않는다. 무엇을 왜 바꿨는지 사용자에게 보고하고, 최종 승인을 받으면 커밋하고 push한다. 정하는 중인 것(살 것, 고를 것)이 있으면 정해진 뒤에 관련 변경을 한 번에 보고한다. 커밋하기 전에 git 작성자(user.name, user.email)가 기존 커밋과 같은지 확인한다.
 
 ## 자주 쓰는 명령
@@ -46,6 +47,7 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
   - `cargo test --workspace`
 - 파이용 실행 파일 만들기 ([0026](docs/decisions/0026-pi-runtime-deploy-records.md)): `uv run tools/pi_build.py -p <크레이트> --bin <실행 파일>`
 - 실물 서보·카메라 테스트는 `uv run pytest --hardware`다. 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
+- 서보 첫 연결(찾기, 덤프, 통신 시간): `uv run python -m horilab_servo ports|scan|dump|timing` ([docs/servo-setup.md](docs/servo-setup.md)). `timing`은 서보에 값을 쓰므로(움직이지는 않는다) 확인을 받은 뒤 `--yes`로 돌린다.
 - 시험 기록 올리고 받기 ([0022](docs/decisions/0022-records-and-sync.md)). 실물 시험이 끝나면 올리고, 분석을 시작할 때 받는다:
   - `uv run tools/sync.py push`
   - `uv run tools/sync.py pull` (경로를 주거나 `--max-age 3d`로 골라 받는다)

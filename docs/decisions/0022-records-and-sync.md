@@ -53,7 +53,7 @@ rclone + 구글 드라이브로 한다.
 
 ## 영향
 
-- 올리고 받는 명령은 `tools/sync.py`다 ([software.md](../software.md#시험-기록과-데이터)). 기록의 형식과 표준 경로(`records/`, `videos/`)는 [0024](0024-servo-bus.md)에서 정했고, 기록을 처음 만들 때 동기화 목록에 넣는다. 파이에서 생기는 기록은 파이가 직접 올린다 ([0026](0026-pi-runtime-deploy-records.md)). 첫 기록은 관절 하나 시험([joint-test.md](../joint-test.md))에서 나온다.
+- 올리고 받는 명령은 `tools/sync.py`다 ([software.md](../software.md#시험-기록과-데이터)). 기록의 형식과 표준 경로(`records/`, `videos/`)는 [0024](0024-servo-bus.md)에서 정했고, 두 폴더를 동기화 목록에 넣었다. 파이에서 생기는 기록은 파이가 직접 올린다 ([0026](0026-pi-runtime-deploy-records.md)). 첫 기록은 서보 첫 연결 명령([servo-setup.md](../servo-setup.md))에서 나온다.
 - 무료 용량(15 GB)이 모자라면 영상을 ffmpeg로 줄이거나 분석이 끝난 것을 정리한다. 용량을 늘리는 것은 비용이 들어 따로 정한다.
 - 영상은 ffmpeg로 프레임을 뽑아 보거나 OpenCV로 마커 위치를 재서 분석한다. 카메라 고정이나 마커 같은 찍는 법은 영상이 필요할 때 정한다. ffmpeg도 PC에 설치하지 않고 레포 안(`tools/local/`)에 둔다.
 - Claude의 메모는 PC마다 따로라서, 두 PC가 같이 알아야 할 것은 이 레포의 문서에 둔다.
