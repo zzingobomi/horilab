@@ -3,7 +3,7 @@
 칸마다 치수를 조금씩 바꾸고 윗면에 그 치수를 새긴다. 실물(볼트, 너트, 서보, 혼)을 끼워 보고
 가장 잘 맞는 칸의 치수를 data/measured.toml에 필라멘트마다 적는다.
 
-- 1차: M3 볼트 구멍과 너트 홈
+- 1차: M3 볼트 구멍과 너트 홈. 너트 홈은 출력할 때 너트가 눕는지 서는지에 따라 따로 잰다
 - 2차: 서보 몸체 자리와 혼 자리. 도면 치수(params/servos.toml)에 여유를 더해 간다
 - 3차: 영점 핀 구멍(MISUMI MSH3, 0015), J1 베어링 6806의 바깥 링 자리와 안쪽 링 축(0015)
 
@@ -34,6 +34,7 @@ from build123d import (
     extrude,
 )
 
+from horilab_design.parts.shapes import nut_trap, solid
 from horilab_design.values import REPO_ROOT, ServoSpec, load_servos
 
 OUT_DIR = REPO_ROOT / "build" / "coupons"
@@ -55,6 +56,36 @@ NUT_SLOTS = (  # 옆에서 밀어 넣는 홈 (폭, 높이). 앞 넷은 폭을, �
     (5.8, 2.6),
     (5.8, 3.0),
 )
+# 너트가 서는 홈 (볼트가 가로). 눕힌 너트 홈(NUT_SLOTS)과 뽑히는 방향이 달라서 값이 옮겨지지 않는다.
+# 흰색 받침 기둥 귀(옆 홈, 5.6 × 2.8)에 너트가 손으로 들어가지 않아 드라이버로 밀어 넣었다 (2026-11-11).
+# - 옆 홈: 너트가 옆에서 밀려 들어간다 (받침 기둥 귀, 관 끝 고리의 조임 나사). 맞변 쪽 폭이 세로라
+#   천장이 허공에 걸쳐 처진다. 폭은 층에 맞춰 0.2씩, 두께는 가로
+# - 떨어뜨리는 홈: 너트가 윗면에서 세로로 내려간다 (시험 링크 뿌리). 폭과 두께가 다 가로다
+UPRIGHT_SLOT_THICKNESS = 2.8
+UPRIGHT_SLOTS = (  # (세로 폭, 가로 두께). 앞 넷은 폭을, 뒤 둘은 두께를 바꾼다
+    (5.8, UPRIGHT_SLOT_THICKNESS),
+    (6.0, UPRIGHT_SLOT_THICKNESS),
+    (6.2, UPRIGHT_SLOT_THICKNESS),
+    (6.4, UPRIGHT_SLOT_THICKNESS),
+    (6.0, 2.6),
+    (6.0, 3.0),
+)
+UPRIGHT_FLOOR = 6.0  # 옆 홈 바닥 높이. 홈 위아래가 층 경계에 오게 둔다
+UPRIGHT_BLOCK = (
+    9.0,
+    12.0,
+    16.0,
+)  # 옆 홈 칸 하나 (x, 볼트 방향 y, 높이). 받침 기둥 귀(14 × 12)와 비슷하다
+UPRIGHT_GAP = 10.0  # 칸 사이. 너트를 옆에서 밀어 넣을 자리
+DROP_SLOTS = (  # (폭, 두께). 앞 셋은 폭을, 뒤 둘은 두께를 바꾼다
+    (5.6, 2.8),
+    (5.7, 2.8),
+    (5.8, 2.8),
+    (5.7, 2.6),
+    (5.7, 3.0),
+)
+DROP_BLOCK = (14.0, 14.0)  # 떨어뜨리는 홈 막대 (볼트 방향 y, 높이)
+DROP_NUT = (5.5, 6.0)  # 너트 가운데 (y, 높이). 윗면에서 8 mm 내려간다
 
 SEAT_CLEARANCES = (0.1, 0.2, 0.3, 0.4, 0.5)  # 서보 단면의 길이와 폭에 더하는 여유
 HORN_CLEARANCES = (0.1, 0.2, 0.3, 0.4)  # 혼 지름에 더하는 여유
@@ -177,6 +208,45 @@ def nut_slots() -> Compound:
     return block
 
 
+def nut_slots_upright() -> Compound:
+    """너트가 서서 옆(+x)에서 밀려 들어가는 홈. 볼트는 앞면(y = 0)에서 가로로 지나간다.
+
+    받침 기둥 귀처럼 칸마다 따로 선 덩어리이고, 바닥판으로 이어져 있다. 홈은 부품과 같은 함수(nut_trap)로
+    낸다: 맞변 거리(폭)가 세로라 천장이 허공에 걸치고, 두께는 볼트 방향(y)이다.
+    """
+    bx, by, bh = UPRIGHT_BLOCK
+    base, pitch = 2.0, bx + UPRIGHT_GAP
+    length = 2 * MARGIN + pitch * len(UPRIGHT_SLOTS)
+    part: Compound = Box(length, by, base, align=CORNER)
+    for i, (width, thickness) in enumerate(UPRIGHT_SLOTS):
+        x0 = MARGIN + pitch * i
+        xc = x0 + bx / 2
+        part = solid(part + Pos(x0, 0, 0) * Box(bx, by, bh, align=CORNER))
+        zc = UPRIGHT_FLOOR + width / 2
+        part -= nut_trap((xc, by / 2, zc), (0, 1, 0), (1, 0, 0), bx / 2 + 1.0, width, thickness)
+        part -= _horizontal_hole(BOLT_HOLE, xc, zc, by)
+        text = f"{width:.1f}" if thickness == UPRIGHT_SLOT_THICKNESS else f"t{thickness:.1f}"
+        part -= _label(text, xc, by / 2, bh)
+    return part
+
+
+def nut_drops() -> Compound:
+    """너트가 서서 윗면에서 세로로 떨어뜨려 넣는 홈. 볼트는 앞면(y = 0)에서 가로로 지나간다.
+
+    시험 링크 뿌리의 너트 홈과 같은 모양이다 (nut_trap). 폭(맞변 거리)은 x, 두께는 볼트 방향(y)이다.
+    """
+    depth, height = DROP_BLOCK
+    ny, nz = DROP_NUT
+    block: Compound = Box(_length(len(DROP_SLOTS)), depth, height, align=CORNER)
+    for i, (width, thickness) in enumerate(DROP_SLOTS):
+        x = _x(i)
+        block -= nut_trap((x, ny, nz), (0, 1, 0), (0, 0, 1), height - nz + 1.0, width, thickness)
+        block -= _horizontal_hole(BOLT_HOLE, x, nz, depth)
+        text = f"{width:.1f}" if thickness == UPRIGHT_SLOT_THICKNESS else f"t{thickness:.1f}"
+        block -= _label(text, x, depth - 3.0, height)
+    return block
+
+
 def servo_frames(spec: ServoSpec) -> Compound:
     """서보 몸체가 들어갈 틀. 안쪽은 도면 단면(길이 × 폭)에 여유를 더한 크기이고, 틀 하나에 여유 하나다.
 
@@ -291,6 +361,8 @@ COUPONS: dict[str, Callable[[], Compound]] = {
     "fit1_horizontal_holes": horizontal_holes,
     "fit1_nut_pockets": nut_pockets,
     "fit1_nut_slots": nut_slots,
+    "fit1_nut_slots_upright": nut_slots_upright,
+    "fit1_nut_drops": nut_drops,
     # STS3215와 STS3250은 도면이 같아서 같은 시험편으로 본다
     "fit2_sts_frames": lambda: servo_frames(load_servos()["STS3215"]),
     "fit2_sts_horn": lambda: horn_recesses(load_servos()["STS3215"]),

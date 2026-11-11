@@ -105,8 +105,15 @@ class PrintFit(_Values):
     m3_hole_horizontal_mm: float | None = None  # 가로 구멍(둥근 구멍)의 지름
     m3_tap_hole_mm: float | None = None  # M3 볼트를 플라스틱에 바로 조여 넣는 구멍
     m3_nut_pocket_mm: float | None = None  # 위에서 눌러 끼우는 육각 홈의 맞변 거리
-    m3_nut_slot_width_mm: float | None = None  # 옆에서 밀어 넣는 홈의 폭
-    m3_nut_slot_height_mm: float | None = None  # 옆에서 밀어 넣는 홈의 높이
+    m3_nut_slot_width_mm: float | None = None  # 너트가 누워 옆에서 밀려 들어가는 홈의 폭
+    m3_nut_slot_height_mm: float | None = None  # 그 홈의 높이 (볼트 방향, 세로)
+    # 너트가 서는 홈 (볼트가 가로). 뽑히는 방향이 달라 누운 너트 값을 쓰지 않는다
+    m3_nut_upright_width_mm: float | None = (
+        None  # 옆에서 밀어 넣는 홈의 세로 폭 (천장이 허공에 걸친다)
+    )
+    m3_nut_upright_thickness_mm: float | None = None  # 그 홈의 두께 (볼트 방향, 가로)
+    m3_nut_drop_width_mm: float | None = None  # 윗면에서 떨어뜨려 넣는 홈의 폭 (가로)
+    m3_nut_drop_thickness_mm: float | None = None  # 그 홈의 두께 (볼트 방향, 가로)
     # 서보 몸체 자리와 혼 자리: 도면 치수(params/servos.toml)에 더하는 여유. 길이·폭·지름에 그대로 더한다
     seat_clearance_mm: dict[ServoModel, float] = {}
     horn_clearance_mm: dict[ServoModel, float] = {}
@@ -131,6 +138,9 @@ class ServoBody(_Values):
 class Measured(_Values):
     servo_mass_g: dict[ServoModel, float] = {}  # 서보 몸통 (혼 빼고)
     servo_horn_mass_g: dict[ServoModel, float] = {}  # 혼 두 개 (출력 혼과 뒷면 혼, 나사 포함)
+    printed_mass_g: dict[
+        str, float
+    ] = {}  # 출력물 무게 (STL 파일 이름 → g). 무게 어림을 맞춰 보는 데 쓴다
     servo_body: dict[ServoModel, ServoBody] = {}
     fit: dict[Filament, PrintFit] = {}
 
