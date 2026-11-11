@@ -36,6 +36,7 @@ from horilab_design.values import (
     load_arm,
     load_measured,
     load_servos,
+    servo_mass,
 )
 
 MM = 1e-3
@@ -122,12 +123,14 @@ BACK_HORN_T = 3.1
 HORN_GAP = 0.3
 # 실측이 없을 때 쓰는 도면 값: 혼 자리 바닥 29 + 틈 0.35 + 혼 4.5, 먼 쪽 35
 DRAWING_BODY = ServoBody(far_thickness_mm=35.0, horn_to_back_mm=33.85)
+# 혼 두 개의 무게를 저울로 재기 전의 어림 [kg] (재면 data/measured.toml의 servo_horn_mass_g)
+HORN_MASS_GUESS: dict[ServoModel, float] = {"STS3215": 0.008, "STS3250": 0.008, "ST-3120": 0.025}
 # 뒷면 커넥터 두 개가 꽂히는 자리 (사진으로 어림): 축에서 x 범위, 뒷면에서 플러그와 선이 솟는 깊이 [mm]
 CONNECTOR_X = (-16.0, -9.0)
 CONNECTOR_DEPTH = 6.0
 
 
-def sts_shape(model: ServoModel, body: ServoBody) -> ServoShape:
+def sts_shape(model: ServoModel, body: ServoBody, horn_mass: float) -> ServoShape:
     front = STS_BACK + STS_BODY
     horn_top = STS_BACK + body.horn_to_back_mm
     floor = horn_top - HORN_T - HORN_GAP
@@ -147,18 +150,28 @@ def sts_shape(model: ServoModel, body: ServoBody) -> ServoShape:
         horn_r=9.975 * MM,
         horn_out=_span(horn_top - HORN_T, horn_top),
         horn_back=_span(STS_BACK - HORN_GAP - BACK_HORN_T, STS_BACK - HORN_GAP),
-        horn_mass=0.008,
+        horn_mass=horn_mass,
     )
+
+
+def horn_mass(model: ServoModel) -> float:
+    """혼 두 개의 무게 [kg]. 저울로 잰 값이 있으면 그 값을, 없으면 어림을 쓴다."""
+    grams = load_measured().servo_horn_mass_g.get(model)
+    return HORN_MASS_GUESS[model] if grams is None else grams * 1e-3
 
 
 @cache
 def shapes() -> dict[ServoModel, ServoShape]:
     measured = load_measured().servo_body
     return {
-        "STS3215": sts_shape("STS3215", measured.get("STS3215", DRAWING_BODY)),
-        "STS3250": sts_shape("STS3250", measured.get("STS3250", DRAWING_BODY)),
+        "STS3215": sts_shape(
+            "STS3215", measured.get("STS3215", DRAWING_BODY), horn_mass("STS3215")
+        ),
+        "STS3250": sts_shape(
+            "STS3250", measured.get("STS3250", DRAWING_BODY), horn_mass("STS3250")
+        ),
         # 65 × 30 × 48, 축에서 가까운 끝 15.9. 혼(FT110M)은 지름 29.9, 두께 9로 스플라인(7.4 나옴) 위에 끼운다.
-        # 뒷면은 돌기(4.4 나옴)를 혼이나 MR106ZZ로 받친다 (0015). 혼 무게는 사양에 없어 어림이다.
+        # 뒷면은 돌기(4.4 나옴)를 혼이나 MR106ZZ로 받친다 (0015). 혼 무게는 사양에 없어 재기 전에는 어림이다.
         "ST-3120": ServoShape(
             "ST-3120",
             near=15.9 * MM,
@@ -168,7 +181,7 @@ def shapes() -> dict[ServoModel, ServoShape]:
             horn_r=14.95 * MM,
             horn_out=_span(24.9, 33.9),
             horn_back=_span(-28.4, -24.4),
-            horn_mass=0.025,
+            horn_mass=horn_mass("ST-3120"),
         ),
     }
 
@@ -513,12 +526,12 @@ def camera_of(layout: Layout, mods: list[Module]) -> Camera:
 def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Module]]:
     """골격 후보의 형상 전체: 베이스, 관절 모듈, 링크 몸통, 손목 연결, D405, 플랜지, 도구."""
     robot = arm(layout)
-    servos = load_servos()
+    servos, measured = load_servos(), load_measured()
     mods = modules(layout, robot)
     by_joint = {m.joint: m for m in mods}
     b = Builder()
     for m in mods:
-        m.build(b, servos[m.shape.model].mass_g * 1e-3)
+        m.build(b, servo_mass(m.shape.model, servos, measured))
     sh = robot.joints[1].origin[2]  # 설치면 → J2 축
 
     # 베이스(0)와 돌림판(1). J1 서보와 베어링은 베이스 안이라 충돌 검사에서 뺀다.

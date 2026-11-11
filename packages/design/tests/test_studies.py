@@ -86,6 +86,19 @@ def test_sts_shape_follows_the_measured_body() -> None:
         assert walls and all(z[4] >= s.horn_r for z in walls)
 
 
+def test_packaging_uses_the_weighed_servo_and_horn_mass() -> None:
+    # 0006의 "질량": 저울로 잰 값이 있으면 명목값과 어림 대신 그 값을 쓴다
+    measured = load_measured()
+    for model, grams in measured.servo_horn_mass_g.items():
+        assert packaging.shapes()[model].horn_mass == pytest.approx(grams * 1e-3)
+    _, prims, mods = packaging.build_arm(packaging.Layout(), packaging.TOOLS["gripper"])
+    for m in mods:
+        body = sum(p.mass for p in prims if p.name.startswith(f"J{m.joint}/servo"))
+        grams = measured.servo_mass_g.get(m.shape.model)
+        if grams is not None:
+            assert body == pytest.approx(grams * 1e-3), m.joint
+
+
 def test_rect_overlaps_uses_separating_axes() -> None:
     square = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
     assert packaging.rect_overlaps(square, (0.5, 2.0), (0.5, 2.0))

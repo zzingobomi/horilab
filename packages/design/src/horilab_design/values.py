@@ -129,7 +129,8 @@ class ServoBody(_Values):
 
 
 class Measured(_Values):
-    servo_mass_g: dict[ServoModel, float] = {}
+    servo_mass_g: dict[ServoModel, float] = {}  # 서보 몸통 (혼 빼고)
+    servo_horn_mass_g: dict[ServoModel, float] = {}  # 혼 두 개 (출력 혼과 뒷면 혼, 나사 포함)
     servo_body: dict[ServoModel, ServoBody] = {}
     fit: dict[Filament, PrintFit] = {}
 

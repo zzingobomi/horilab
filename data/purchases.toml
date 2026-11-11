@@ -20,6 +20,7 @@ qty = 1
 stage = 0
 ordered = 2026-11-08
 arrive = [2026-11-11, 2026-11-15]
+received = 2026-11-11
 vendor = "디바이스마트"
 url = "https://www.devicemart.co.kr/goods/view?no=15811773"
 lead_days = [4, 7]
@@ -47,6 +48,7 @@ qty = 1
 stage = 2
 ordered = 2026-11-08
 arrive = [2026-11-11, 2026-11-15]
+received = 2026-11-11
 vendor = "디바이스마트"
 url = "https://www.devicemart.co.kr/goods/view?no=12508308"
 lead_days = [3, 6]
