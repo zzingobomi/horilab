@@ -28,7 +28,7 @@
 | | 라즈베리파이 4 Model B Rev 1.5, 4 GB (Ubuntu 22.04.5, 커널 5.15.0-1113-raspi, 64 GB SD 카드) | 3 | 이전 프로젝트에서 쓰던 것. 2026-11-10에 세 대 모두 모델을 확인하고 패키지를 올렸다. 이름과 주소는 hori1~hori3, 192.168.0.101~103이고, 이 PC에서 SSH 키로 들어간다 (sudo는 비밀번호 없이 된다). 셋 다 유선 1 Gbps다. hori2에는 pyrealsense2를 소스 빌드해 뒀다. 부트로더 EEPROM은 셋 다 2022-01-25판이다. 22.04 패키지에 든 가장 새 판은 2022-03-10이고, 26.04는 2022-11-25 이후가 필요하다 ([0026](decisions/0026-pi-runtime-deploy-records.md)). 역할은 hori1 컨트롤러, hori2 카메라, hori3 여분이다 ([0025](decisions/0025-controller-on-pi.md)). 26.04는 hori3에서 먼저 시험한다 |
 | | NAS Synology DS220+ (Celeron J4025 2코어, 메모리 약 10 GB, 디스크 1개 1.8 TB) | 1 | 192.168.0.4. 2026-11-10에 DSM 7.2.2-72806 Update 10으로 올렸고, 중요 업데이트는 자동으로 설치한다. Container Manager 24.0.2 (Docker 엔진 24.0.2, Compose v2.20). 커널 4.4라 arm64 컨테이너는 못 돌린다. 디스크가 하나라 RAID 보호가 없다. 쓰임은 [0026](decisions/0026-pi-runtime-deploy-records.md) |
 | 네트워크 | 통신사 게이트웨이 → ipTIME 공유기(192.168.0.1) + ipTIME 메시 2대 | | 공유기를 두 번 거친다(이중 NAT). 이 PC, NAS, 파이는 유선이고 서로 1 ms 안에 응답한다. 어느 기기가 어느 공유기·스위치에 꽂혔는지는 ipTIME 관리 화면에서 본다 |
-| 도메인 | AWS Route 53에 도메인 하나 | | 펜던트 HTTPS 인증서(Let's Encrypt, DNS-01)에 쓸 수 있다 ([0023](decisions/0023-robot-controller.md)) |
+| 도메인 | AWS Route 53에 도메인 하나 | | 펜던트 HTTPS 인증서(Let's Encrypt, DNS-01)에 쓴다 ([0023](decisions/0023-robot-controller.md)) |
 | 입력 장치 | 8BitDo Ultimate 2C 유무선 컨트롤러 (유스 에디션) | 1 | 조그·티칭 입력 후보. 이전 프로젝트에서 pygame으로 읽어 조그 펜던트로 썼다 (LT를 누르고 있어야 움직임, horibot `docs/motion.md`). 연결 방식과 PC·파이에서 어떻게 잡히는지는 쓰기 전에 확인한다 |
 | 그 밖 | ChArUco 보드 7×5 / 25 mm (종이, 알루미늄 아님) | | 이전 프로젝트에서 쓰던 것 |
 

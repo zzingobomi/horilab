@@ -65,7 +65,7 @@ horilab/
 
 - pyproject 파일이 여섯 개다 (루트, design, motor, control, camera, 파이 카메라 프로젝트).
 - .gitignore에 `build/`를 더한다.
-- 모터 프로세스는 Rust 실행 파일로 컨트롤러 파이에 올린다. 교차 컴파일할지 파이에서 빌드할지는 0025의 2단계 전에 정한다.
+- 모터 프로세스는 Rust 실행 파일로 컨트롤러 파이에 올린다. PC에서 교차 컴파일해 만든다 ([0026](0026-pi-runtime-deploy-records.md)).
 
 ## 바뀐 점
 
