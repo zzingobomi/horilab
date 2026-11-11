@@ -6,8 +6,8 @@ docs/decisions/0009-control-architecture.md의 "실물 백엔드의 오류 처�
 
 import pytest
 
-from horilab_motor.feetech import registers as reg
-from horilab_motor.feetech.bus import (
+from horilab_servo.feetech import registers as reg
+from horilab_servo.feetech.bus import (
     BadReply,
     NoReply,
     PortError,
@@ -15,8 +15,8 @@ from horilab_motor.feetech.bus import (
     Reply,
     VerifyError,
 )
-from horilab_motor.feetech.fake import FakeServo, open_fake_bus
-from horilab_motor.feetech.registers import Fault, Register
+from horilab_servo.feetech.fake import FakeServo, open_fake_bus
+from horilab_servo.feetech.registers import Fault, Register
 
 
 def test_ping_returns_model() -> None:

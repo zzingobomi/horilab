@@ -160,7 +160,7 @@
 | 시험되는 Rust 코드 | 루프와 안전 검사 | 거기에 ID 대응, 방향·영점 변환, 상태 기준, 오류 길까지 | 거기에 프로토콜 코드까지 |
 | Python 재사용 | 없다 (장면, 카메라, 뷰어가 Rust로 와야 한다) | 모두 (공식 뷰어, 설계에서 만든 MJCF, 비전용 카메라 그림) | 모두, 지금의 가짜 서보(`fake.py`)까지 |
 | MuJoCo 판 맞추기 | Rust와 Python이 같이 올려야 하고 크레이트가 자주 깨진다 | Python만 | Python만 |
-| 파이 | 기능 플래그로 빼야 한다 | Rust 쪽에 MuJoCo가 없다. 파이의 모터 프로세스를 랜 너머 PC 시뮬레이션에 붙일 수도 있다 | 같지만 Windows에 가상 시리얼(pty)이 없어서 어차피 TCP가 필요하다 |
+| 파이 | 기능 플래그로 빼야 한다 | Rust 쪽에 MuJoCo가 없다. 파이의 컨트롤러를 랜 너머 PC 시뮬레이션에 붙일 수도 있다 | 같지만 Windows에 가상 시리얼(pty)이 없어서 어차피 TCP가 필요하다 |
 
 ### IK
 
@@ -219,7 +219,7 @@
 ### Rust 빌드
 
 - [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild): `pip install cargo-zigbuild`로 zig까지 깔린다 (PyPI 0.24.1, Windows 휠 있음). glibc 판을 대상에 붙일 수 있고(`aarch64-unknown-linux-gnu.2.35`), 완전한 정적 실행 파일은 musl 대상으로 만든다. C 의존성은 헤더나 라이브러리를 못 찾을 수 있다.
-- C 라이브러리가 끼는 크레이트: serialport 4.x(rustypot이 쓴다)는 기본으로 libudev를 쓰지만 musl 대상에서는 빠진다. 게임패드의 gilrs-core는 리눅스에서 libudev가 늘 필요하고, evdev는 순수 Rust다. musl로 빌드하면 0023 8번 추천(gilrs)과 부딪힌다.
+- C 라이브러리가 끼는 크레이트: serialport 4.x(rustypot이 쓴다)는 기본으로 libudev를 쓰지만 musl 대상에서는 빠진다. 게임패드의 gilrs-core는 리눅스에서 libudev가 늘 필요하고, evdev는 순수 Rust다. musl로 빌드하면 gilrs와 부딪힌다 (그래서 0023은 evdev를 먼저 본다).
 - [cross](https://github.com/cross-rs/cross)는 Docker 안에서 빌드하고 라이브러리를 넣을 수 있지만, aarch64 gnu 이미지의 glibc가 2.39로 적혀 있어 22.04(2.35)에서 안 돌 수 있고, Rust 1.85 이상이 필요하다. buildx 에뮬레이션은 네이티브보다 훨씬 느리다 ([Docker](https://docs.docker.com/build/building/multi-platform/)).
 - GitHub의 arm64 리눅스 러너(`ubuntu-22.04-arm`, `ubuntu-24.04-arm`, 4 vCPU)는 공개 레포에서 2025-08-07부터 정식이고 무료다 ([발표](https://github.blog/changelog/2025-08-07-arm64-hosted-runners-for-public-repositories-are-now-generally-available/)).
 - 파이에서 직접 빌드하면 교차 빌드 문제는 없지만 느리고, 4 GB 메모리와 SD에 빌드 파일과 툴체인을 둬야 한다. 이전 프로젝트에서 번거로웠던 방식이다.

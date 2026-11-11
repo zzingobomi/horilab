@@ -5,9 +5,8 @@ description = "3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6
 requires-python = ">=3.12,<3.15"
 dependencies = [
     "horilab-camera",
-    "horilab-control",
     "horilab-design",
-    "horilab-motor",
+    "horilab-servo",
 ]
 
 [tool.uv]
@@ -20,8 +19,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 horilab-design = { workspace = true }
-horilab-motor = { workspace = true }
-horilab-control = { workspace = true }
+horilab-servo = { workspace = true }
 horilab-camera = { workspace = true }
 
 [dependency-groups]
@@ -40,13 +38,23 @@ target-version = "py312"
 
 [tool.ruff.lint]
 # 기본 규칙(E4, E7, E9, F)에 스타일, import 정렬, 흔한 버그, 최신 문법 규칙을 더한다.
-select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+select = ["E", "F", "W", "I", "B", "UP", "RUF", "TID251"]
 # E501: 코드 줄 길이는 포맷터가 맞춘다. 한국어 주석은 글자 폭이 2로 세어져 길이 검사에서 뺀다.
 # RUF001~003: 문서에서 쓰는 ×(곱하기) 같은 기호를 헷갈리는 문자로 잡는 규칙이라 뺀다.
 ignore = ["E501", "RUF001", "RUF002", "RUF003"]
 
+# 서보에 직접 닿는 모듈은 servo 패키지에서만 부른다. 편집기에서 바로 보이게 하려는 것이고,
+# 경계 규칙 전체는 tests/test_structure.py가 본다 (docs/decisions/0007-repo-structure.md).
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"horilab_servo".msg = "서보에 직접 명령하는 코드는 servo 패키지에만 둔다. 컨트롤러 클라이언트를 쓴다 (0007)"
+"serial".msg = "서보 포트는 servo 패키지만 연다 (0007)"
+"scservo_sdk".msg = "서보 SDK는 servo 패키지만 쓴다 (0007)"
+
+[tool.ruff.lint.per-file-ignores]
+"packages/servo/**" = ["TID251"]
+
 [tool.ruff.lint.isort]
-known-first-party = ["horilab_design", "horilab_motor", "horilab_control", "horilab_camera"]
+known-first-party = ["horilab_design", "horilab_servo", "horilab_camera"]
 
 [tool.pyright]
 pythonVersion = "3.12"
@@ -54,8 +62,8 @@ typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"
 include = ["packages", "tests", "tools", "conftest.py"]
-# 실물을 움직이는 코드는 더 엄격하게 본다.
-strict = ["packages/motor"]
+# 서보에 직접 명령하는 코드는 더 엄격하게 본다.
+strict = ["packages/servo"]
 # camera는 파이에서 Python 3.11로 돌 수 있다 (0007).
 executionEnvironments = [
     { root = "packages/camera", pythonVersion = "3.11" },

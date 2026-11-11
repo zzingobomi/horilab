@@ -5,8 +5,8 @@ import itertools
 
 import pytest
 
-from horilab_motor.feetech import registers as reg
-from horilab_motor.feetech.registers import Encoding, Fault, Register
+from horilab_servo.feetech import registers as reg
+from horilab_servo.feetech.registers import Encoding, Fault, Register
 
 # SDK는 형식 정보가 없어서 상수는 모듈에서 이름으로 꺼낸다.
 SDK_STS = importlib.import_module("scservo_sdk.sms_sts")

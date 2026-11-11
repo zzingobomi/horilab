@@ -21,6 +21,7 @@
 - conda로만 설치되는 라이브러리는 쓰지 않는다.
 - 쓰려는 IK 라이브러리(EAIK, mink)는 Windows에서 동작을 확인했다 ([software.md](../software.md#패키지)).
 - 리눅스가 꼭 필요한 일은 라즈베리파이가 맡는다.
+- 컨트롤러는 파이(리눅스)에서 돌지만 Windows에서 짜고 파이용으로 교차 빌드한다 ([0026](0026-pi-runtime-deploy-records.md)). 리눅스에서만 도는 부분(실시간 우선순위, 게임패드, systemd)은 여분 파이(hori3)에서 돌려 본다. WSL2는 PC의 커널이라 파이의 커널, 실시간 커널, USB를 대신하지 못한다. Windows에서 파이용으로 빌드되지 않는 크레이트가 나오면 WSL보다 GitHub의 arm64 러너를 먼저 본다.
 
 USB 지연과 WSLg 성능은 일반적으로 알려진 내용이고 따로 측정하지 않았다. 결정이 이 두 가지에만 기대지는 않는다.
 
@@ -48,7 +49,7 @@ USB 지연과 WSLg 성능은 일반적으로 알려진 내용이고 따로 측�
 | URDF 작성 | 표준 라이브러리 xml.etree | urchin, odio_urdf | 의존성이 없다. 다른 라이브러리는 관리가 약하다 |
 | URDF 검사 (테스트) | yourdfpy | | URDF를 읽고 FK를 따로 계산해 MJCF와 대조한다 |
 | IK | 해석적 IK는 EAIK, 수치 IK는 mink. 골격 설계부터 둘 다 쓴다 | Pinocchio, ikpy, py-opw-kinematics, roboticstoolbox | EAIK는 축 배치에서 구조를 판별해 구형 손목과 UR형을 모두 풀고, 가능한 해를 전부 빠르게 준다. 그래서 손목 후보의 작업 범위 비교와 해 고르기에 쓴다. mink는 생성된 MJCF를 그대로 쓰고 관절 한계와 충돌을 지키며 풀어서, 이어지는 동작(직선 이동, 조그)과 보정 모델에 쓴다. 시작점은 EAIK의 해로 준다. Pinocchio는 Windows에서 conda가 필요하고, ikpy는 느리다. py-opw-kinematics는 구형 손목만 풀고, EAIK 하나로 두 형식을 다 풀어서 roboticstoolbox도 필요 없다 |
-| 서보 SDK | Feetech 공식 ftservo-python-sdk | rustypot, LeRobot, feetech-servo-sdk | 공식이고 동기 읽기·쓰기를 지원하며 pyserial만 필요하다. Python이 느리면 rustypot으로 바꾼다. LeRobot은 torch 등이 딸려 와 무겁고, feetech-servo-sdk는 2022년 이후 멈췄다 |
+| 서보 SDK | 컨트롤러는 Rust (rustypot을 평가해 쓰거나 직접 짠다, [0024](0024-servo-bus.md)). Feetech 공식 ftservo-python-sdk는 Python 기준 구현에만 쓴다 | LeRobot, feetech-servo-sdk | 컨트롤러가 Rust라서다 ([0025](0025-controller-on-pi.md)). 공식 SDK는 동기 읽기·쓰기를 지원하고 pyserial만 필요해 기준 구현에 맞다. LeRobot은 torch 등이 딸려 와 무겁고, feetech-servo-sdk는 2022년 이후 멈췄다 |
 | 영상 전송 | pyzmq (PUB/SUB) | Zenoh, gRPC | 파이 한 대에서 PC 한 대로 보내는 단순한 구조라 자동 탐색이 필요 없다 |
 
 - 버전은 uv.lock으로 고정하고, 올릴 때는 따로 검토한 뒤 올린다. MuJoCo 4.0이 곧 나오는데 패키지가 나뉘는 큰 변경이라 특히 그렇다.
@@ -57,10 +58,11 @@ USB 지연과 WSLg 성능은 일반적으로 알려진 내용이고 따로 측�
 ## 영향
 
 - IK는 골격 설계 때 생성한 모델로 다시 확인하고, EAIK와 mink의 해를 서로 대조하는 테스트를 둔다.
-- 서보 통신 속도는 서보 7개를 연결해 잰다. 한 주기(동기 쓰기 + 위치·부하·온도 동기 읽기)에 걸리는 시간과 흔들림을 보고 (조사로는 100~200 Hz 예상), 이 값으로 모터 프로세스의 주기를 정한다 ([0009](0009-control-architecture.md)). 모터 프로세스는 Rust로 짜고 컨트롤러 파이에서 돌리므로, 통신 시간도 파이에서 잰다 ([0025](0025-controller-on-pi.md)).
+- 서보 통신 속도는 서보 7개를 연결해 잰다. 한 주기(동기 쓰기 + 위치·부하·온도 동기 읽기)에 걸리는 시간과 흔들림을 보고 (조사로는 100~200 Hz 예상), 이 값으로 실행 루프의 주기를 정한다 ([0009](0009-control-architecture.md)). 컨트롤러는 Rust로 짜고 컨트롤러 파이에서 돌리므로, 통신 시간도 파이에서 잰다 ([0025](0025-controller-on-pi.md)).
 - 영상 압축과 시계 동기화는 카메라를 구현할 때 정한다. 848×480 30 fps면 깊이 영상은 압축 없이 기가비트 랜에 들어간다 (약 195 Mbit/s).
 
 ## 바뀐 점
 
+- 2026-11-11: 컨트롤러가 파이(리눅스)로 가도([0025](0025-controller-on-pi.md)) Windows 네이티브를 유지하기로 하고, 리눅스에서만 도는 부분을 다루는 법을 결정에 더했다. Rust는 PC마다 Windows에 rustup으로 깐다 ([setup.md](../setup.md#8-rust)).
 - 2026-11-10: 모터 프로세스를 Rust로 짜면서([0025](0025-controller-on-pi.md)) 서보 프로토콜도 Rust로 직접 짠다. ftservo-python-sdk는 Python 기준 구현([0024](0024-servo-bus.md))에만 쓴다. PC마다 Rust(rustup)를 둔다 ([setup.md](../setup.md)).
 - 2026-11-07: IK를 골격 설계부터 해석적 IK(EAIK)와 수치 IK(mink)를 같이 쓰는 것으로 바꿨다. 처음에는 해석적 IK가 손목 형식마다 다르다고 보고 mink로 시작하려 했다. 그런데 Windows에서 시험해 보니 EAIK가 구형 손목과 UR형을 모두 풀었고, mink가 국소해 때문에 못 푼 목표도 모두 풀었다.

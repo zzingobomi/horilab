@@ -116,8 +116,14 @@ uv run tools/sync.py login --client <앱 파일>
 
 ## 8. Rust
 
-모터 프로세스는 Rust다 ([0025](decisions/0025-controller-on-pi.md)).
+컨트롤러는 Rust다 ([0025](decisions/0025-controller-on-pi.md)). 개발은 Windows에서 한다 ([0008](decisions/0008-environment-and-packages.md)).
 
-- Windows용 Rust를 rustup(https://rustup.rs)으로 설치하고 `cargo --version`으로 확인한다. WSL 안의 Rust는 쓰지 않는다. 서보 어댑터가 Windows의 COM 포트로 잡히기 때문이다 ([0008](decisions/0008-environment-and-packages.md)).
+```powershell
+winget install --id Rustlang.Rustup -e
+code --install-extension rust-lang.rust-analyzer
+```
+
+- rustup과 최신 안정판 도구 모음이 함께 깔린다. 새 터미널에서 `cargo --version`으로 확인한다. 이미 깔린 PC는 `rustup update`로 올린다.
 - Windows의 기본 도구 모음(MSVC)은 Visual Studio C++ 빌드 도구의 링커가 있어야 한다. 없으면 rustup 설치 때 안내가 나온다.
-- 도구 모음 버전은 Rust 크레이트를 만들 때 레포에 고정한다.
+- 도구 모음 버전은 Rust 워크스페이스를 만들 때 레포(`rust-toolchain.toml`)에 고정한다.
+- WSL 안의 Rust는 쓰지 않는다. 파이용 실행 파일도 Windows에서 교차 컴파일한다 ([0026](decisions/0026-pi-runtime-deploy-records.md)).

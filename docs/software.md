@@ -1,6 +1,6 @@
 # 소프트웨어
 
-결정 기록: 하드웨어 연결 [0005](decisions/0005-connection-architecture.md), 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md), 시험 기록과 데이터 넘기기 [0022](decisions/0022-records-and-sync.md), 서보 연결 프로그램의 맨 아래층 [0024](decisions/0024-servo-bus.md), 컨트롤러 자리와 모터 프로세스 언어 [0025](decisions/0025-controller-on-pi.md).
+결정 기록: 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md), 시험 기록과 데이터 넘기기 [0022](decisions/0022-records-and-sync.md), 로봇 컨트롤러와 응용의 경계 [0023](decisions/0023-robot-controller.md), 서보 버스 [0024](decisions/0024-servo-bus.md), 컨트롤러 자리와 하드웨어 연결 [0025](decisions/0025-controller-on-pi.md), 파이의 실행 환경·배포·기록 [0026](decisions/0026-pi-runtime-deploy-records.md).
 
 ## 하나의 치수 값에서 모든 결과물을
 
@@ -27,31 +27,35 @@
 
 ```
 horilab/
-├── pyproject.toml, uv.lock, .python-version   PC 워크스페이스 루트
-├── Cargo.toml     Rust 워크스페이스 루트
-├── crates/motor/  모터 프로세스 (Rust): 서보 버스, 실행 루프, 안전 검사, 서보 준비·관절 시험 명령
+├── Cargo.toml, rust-toolchain.toml   Rust 워크스페이스
+├── crates/
+│   ├── servo/       서보 버스 (라이브러리)
+│   └── controller/  컨트롤러: 실행 루프, 안전 검사, 조종권, API 서버(펜던트 화면, WSS), 기록, 서보 준비·관절 시험 명령
+├── pendant/         펜던트 화면 (웹, R3F)
+├── pyproject.toml, uv.lock, .python-version   Python 워크스페이스
 ├── packages/
-│   ├── design/    치수 값 → 부품·조립 → 출력 파일·URDF·MJCF·부품표 → 검사
-│   ├── motor/     모터 프로세스와 이야기하는 Python 쪽 (메시지). 지금은 서보 버스의 Python 기준 구현
-│   ├── control/   상위 제어: IK, 궤적, 작업 코드
-│   └── camera/    영상 메시지 형식, PC 쪽 수신
-├── pi/camera-service/   파이 카메라 프로그램 (별도 uv 프로젝트)
-├── params/        설계 값 (TOML)
-├── data/          실측 값, 로봇 설정·캘리브레이션, 구매 데이터 (TOML)
-├── tools/         레포 도구 (시험 기록 올리고 받기)
-└── build/         생성물 (git 제외)
+│   ├── design/      치수 값 → 부품·조립 → 출력 파일·URDF·MJCF·부품표 → 검사
+│   ├── servo/       서보 버스의 Python 기준 구현, 첫 연결 명령
+│   ├── client/      컨트롤러 API의 Python 클라이언트
+│   ├── sim/         시뮬레이션 서버 (MuJoCo)
+│   └── camera/      영상 메시지 형식, PC 쪽 수신
+├── apps/            응용 (팔레타이징 등): 작업 순서, 비전. 응용마다 패키지 하나
+├── pi/              파이에 올리는 것: 컨트롤러 파이 설정(controller/), 카메라 파이 프로그램(camera/)
+├── params/          설계 값 (TOML). 응용에 딸린 값은 params/<응용>/
+├── data/            실측 값, 로봇 설정·캘리브레이션, 구매 데이터 (TOML)
+├── tools/           레포 도구 (시험 기록 올리고 받기, 파이 배포)
+└── build/, target/  생성물 (git 제외)
 ```
 
-- Rust 워크스페이스와 `crates/motor`는 모터 코어를 시작할 때 만든다 ([0025](decisions/0025-controller-on-pi.md)).
-
-- 의존 방향: design, motor, camera는 다른 패키지를 불러오지 않는다. control은 motor만 불러온다. 테스트로 확인한다.
+- 폴더는 첫 코드를 넣을 때 만든다. 지금 있는 패키지는 design, servo, camera다. 자리와 이름을 고른 이유는 [0007](decisions/0007-repo-structure.md)에 있다.
+- 의존 방향: design, servo, camera, client는 다른 패키지를 불러오지 않고, sim은 camera만 불러온다. 응용은 client와 camera만 불러온다. 서보에 직접 명령하는 코드는 servo(Rust 크레이트와 Python 기준 구현)뿐이다. 문서에만 두지 않고 테스트(`tests/test_structure.py`)와 ruff로 막는다 ([0007](decisions/0007-repo-structure.md)).
+- 응용은 컨트롤러 API가 자리 잡을 때까지 이 레포에 두고, 무거운 의존성(AI 모델 등)이 들어오면 다른 레포로 빼거나 별도 환경으로 둔다 ([0023](decisions/0023-robot-controller.md)).
 
 ## 설계 도구
 
 - **build123d**: Python 코드 CAD다. FreeCAD와 같은 OpenCascade 커널이라 원하는 모서리만 골라 필렛할 수 있고, STEP/STL/3MF로 내보낼 수 있고, 조인트로 조립할 수 있다.
 - **OCP CAD Viewer**: VS Code 확장이다. 코드를 실행하면 VS Code 안에 3D로 보여 준다.
 - **bd_warehouse**: 나사, 너트, 베어링 같은 표준 부품 라이브러리다. 너트 홈을 내는 구멍도 있다 ([0003](decisions/0003-fastening-nut-traps.md)).
-- Rust는 필수가 아니다. 나중에 제어나 펌웨어 쪽에서 쓸 수 있다.
 
 ## 시뮬레이션 (MuJoCo)
 
@@ -64,20 +68,22 @@ horilab/
 ## 제어 구조
 
 ```
-[응용: 작업 순서, 비전]                              PC
+[응용: 작업 순서, 비전]                                    PC
      │  이동 명령 ↓  ↑ 상태, 이벤트 (컨트롤러 API, WSS)
-[컨트롤러: 경로 계획(IK, 블렌드, 시간 매기기), 조종권, 펜던트 화면]
-     │  관절 궤적, 정지, 토크 켜기·끄기 ↓  ↑ 관절 위치, 부하, 온도, 전압, 오류
-[모터 프로세스 (Rust): 실행 루프 + 안전 검사]
-     ├─ 실물 백엔드: Feetech 서보 (로봇 옆 컨트롤러 파이)
-     └─ 시뮬레이션 백엔드: MuJoCo (PC에서만)
+[컨트롤러 (Rust)]                                          컨트롤러 파이
+ ├─ API 서버, 조종권, 펜던트 화면
+ ├─ 경로 계획: IK, 블렌드, 시간 매기기 (팔 움직이기 단계에서는 PC에 있다)
+ │     │  관절 궤적, 정지, 토크 켜기·끄기 ↓  ↑ 관절 위치, 부하, 온도, 전압, 오류
+ └─ 실행 루프 + 안전 검사
+       ├─ 실물 백엔드: 서보 버스 → Feetech 서보
+       └─ 시뮬레이션 백엔드: MuJoCo 시뮬레이션 서버 (PC)
 ```
 
-- 응용은 이동 명령을 보내고, 컨트롤러가 IK와 블렌드로 관절 궤적을 만들어 모터 프로세스가 일정한 주기로 실행한다. 응용은 상대가 시뮬레이션인지 실물인지 모른다. 경계, API, 조종권, 펜던트는 [0023](decisions/0023-robot-controller.md), 실행 루프와 안전은 [0009](decisions/0009-control-architecture.md)에 있다.
+- 응용은 이동 명령을 보내고, 컨트롤러가 IK와 블렌드로 관절 궤적을 만들어 실행 루프가 일정한 주기로 실행한다. 응용은 상대가 시뮬레이션인지 실물인지 모른다. 경계, API, 조종권, 펜던트는 [0023](decisions/0023-robot-controller.md), 실행 루프와 안전은 [0009](decisions/0009-control-architecture.md)에 있다.
 - 관절은 이름으로 부르고, 단위는 rad와 s다. 서보 값과 rad 사이 변환은 실물 백엔드 안에서만 한다.
-- 모터 프로세스는 Rust로 짜고(`crates/motor`) 로봇 옆 컨트롤러 파이에서 돈다. 개발과 시뮬레이션은 PC에서 같은 프로그램으로 한다 ([0025](decisions/0025-controller-on-pi.md)). 로봇 설정은 data/에서만 읽는다.
-- 안전 검사(시작 절차, 한계, 통신 오류, 과부하, 정지)는 모터 프로세스에 있다. 실물을 처음 움직이기 전에 통과할 시험은 [0009](decisions/0009-control-architecture.md)에 있다.
-- 실물 백엔드의 맨 아래층(서보 버스)은 메모리 표, 서보마다 확인하는 동기 읽기, EEPROM 쓰기 절차를 둔다. 실물이 없는 PC에서는 가짜 서보 버스로 시험한다 ([0024](decisions/0024-servo-bus.md)). 공식 SDK 위에 Python으로 먼저 짠 것(`horilab_motor.feetech`)은 기준 구현이다.
+- 컨트롤러는 Rust로 짜고(`crates/controller`, 서보 버스는 `crates/servo`) 로봇 옆 컨트롤러 파이에서 돈다. 개발과 시뮬레이션은 PC에서 같은 프로그램으로 한다 ([0025](decisions/0025-controller-on-pi.md)). 로봇 설정은 data/에서만 읽는다.
+- 안전 검사(시작 절차, 한계, 통신 오류, 과부하, 정지)는 실행 루프에 있다. 실물을 처음 움직이기 전에 통과할 시험은 [0009](decisions/0009-control-architecture.md)에 있다.
+- 서보 버스는 메모리 표, 서보마다 확인하는 동기 읽기, EEPROM 쓰기 절차를 둔다. 실물이 없는 PC에서는 가짜 서보 버스로 시험한다 ([0024](decisions/0024-servo-bus.md)). 공식 SDK 위에 Python으로 먼저 짠 것(`horilab_servo.feetech`)은 기준 구현이다.
 - 프로그램은 기본으로 시뮬레이션만 움직이고, 실물은 명시적으로 켰을 때만 움직인다.
 
 ## 하드웨어 연결
@@ -88,8 +94,8 @@ horilab/
              └─ [카메라 파이, 로봇 옆] ── USB 3 ── [D405]
 ```
 
-- 모터 프로세스는 컨트롤러 파이에서 돈다. 그래서 PC가 꺼져 있어도 폰·게임패드로 로봇을 쓸 수 있고, PC 부하가 모터 루프에 닿지 않는다 ([0025](decisions/0025-controller-on-pi.md)). 파이는 로봇을 쓸 때만 켜고, 안 쓸 때는 멀티탭까지 끈다 ([0026](decisions/0026-pi-runtime-deploy-records.md)). 서보와 카메라는 USB 컨트롤러를 나누려고 다른 파이에 꽂는다. 파이는 라즈베리파이 4B다.
-- 개발할 때는 어댑터를 PC에 꽂고(5 m USB 2) 같은 모터 프로세스를 PC에서 돌려도 된다. 관절 하나 시험이 그렇다.
+- 컨트롤러는 컨트롤러 파이에서 돈다. 그래서 PC가 꺼져 있어도 폰·게임패드로 로봇을 쓸 수 있고, PC 부하가 실행 루프에 닿지 않는다 ([0025](decisions/0025-controller-on-pi.md)). 파이는 로봇을 쓸 때만 켜고, 안 쓸 때는 멀티탭까지 끈다 ([0026](decisions/0026-pi-runtime-deploy-records.md)). 서보와 카메라는 USB 컨트롤러를 나누려고 다른 파이에 꽂는다. 파이는 라즈베리파이 4B다.
+- 개발할 때는 어댑터를 PC에 꽂고(5 m USB 2) 같은 컨트롤러를 PC에서 돌려도 된다. 관절 하나 시험이 그렇다.
 - 카메라 파이는 D405 영상을 PC로 보내는 일만 하고, 켜지면 자동으로 실행된다.
 - 펜던트: 게임패드는 컨트롤러 파이에 꽂고, 안드로이드 폰은 집 와이파이로 컨트롤러의 웹 화면에 들어간다 ([0023](decisions/0023-robot-controller.md)).
 - 경로 계획(IK)은 지금은 PC에 있다. PC 없이 쓰는 단계에서 파이로 옮긴다 ([0025](decisions/0025-controller-on-pi.md)).
@@ -100,14 +106,15 @@ horilab/
 
 - 실물 실행의 기록은 그것만 보고 실물이 없는 다른 PC에서 분석할 수 있게 남긴다. 분석은 레포 안 스크립트로 한다.
 - 데이터는 종류마다 표준 경로에 둔다. git에서 뺀 데이터 폴더는 rclone으로 구글 드라이브에 레포와 같은 경로로 비춘다. 명령 한 번으로 올리고 받는다.
-- 올리고 받는 명령은 `tools/sync.py`다 (명령은 [CLAUDE.md](../CLAUDE.md#자주-쓰는-명령), PC 준비는 [setup.md](setup.md#7-시험-기록-올리고-받기)). 동기화 목록은 그 파일의 `SYNC_DIRS`이고 아직 비어 있다. 표준 경로는 서보 연결 프로그램을 만들 때 정해서 목록과 `.gitignore`에 같이 넣는다.
+- 올리고 받는 명령은 `tools/sync.py`다 (명령은 [CLAUDE.md](../CLAUDE.md#자주-쓰는-명령), PC 준비는 [setup.md](setup.md#7-시험-기록-올리고-받기)). 동기화 목록은 그 파일의 `SYNC_DIRS`이고 아직 비어 있다. 표준 경로(`records/`, `videos/`)는 [0024](decisions/0024-servo-bus.md)에서 정했고, 기록을 처음 만들 때 목록과 `.gitignore`에 같이 넣는다.
 
 ## 개발 환경
 
-- Windows 네이티브에서 한다 (WSL 아님). 서보 어댑터가 COM 포트로 바로 잡히고, OCP CAD Viewer와 MuJoCo 뷰어가 GPU로 바로 그린다. 리눅스가 꼭 필요한 일은 라즈베리파이가 맡는다.
+- Windows 네이티브에서 한다 (WSL 아님). 서보 어댑터가 COM 포트로 바로 잡히고, OCP CAD Viewer와 MuJoCo 뷰어가 GPU로 바로 그린다. 리눅스가 꼭 필요한 일은 라즈베리파이가 맡는다. 파이에서 도는 컨트롤러도 Windows에서 짜고 파이용으로 빌드하며, 리눅스에서만 도는 부분은 여분 파이(hori3)에서 돌려 본다 ([0008](decisions/0008-environment-and-packages.md)).
 - Python은 3.12로 고정하고 uv로 관리한다. 패키지 버전은 uv.lock으로 고정하고, 올릴 때는 따로 검토한다.
 - Windows의 기본 인코딩이 cp949라서 파일은 항상 UTF-8로 읽고 쓰고, `PYTHONUTF8=1`을 켠다.
 - conda로만 설치되는 라이브러리는 쓰지 않는다.
+- 컨트롤러는 Rust로 짠다 ([0025](decisions/0025-controller-on-pi.md)). PC마다 Windows용 Rust를 두고([setup.md](setup.md#8-rust)), 파이용 실행 파일은 PC에서 교차 컴파일한다 ([0026](decisions/0026-pi-runtime-deploy-records.md)).
 - 작업하는 PC는 모두 Windows이고 NVIDIA GPU가 있다 ([hardware.md](hardware.md#가진-것)). GPU는 기본 전제다. 도구와 방법을 고를 때 GPU로 할 수 있는 방법을 먼저 따진다.
   - 주로 쓸 곳: 영상 처리(물체 인식, 파지 검출, 포인트 클라우드), 많은 후보를 한꺼번에 돌리는 시뮬레이션.
   - CAD 커널(OpenCascade)과 서보 통신은 CPU 일이고, 라즈베리파이에는 CUDA가 없다.
@@ -124,7 +131,7 @@ horilab/
 | 시뮬레이션, MJCF | mujoco |
 | URDF | xml.etree (작성), yourdfpy (테스트에서 읽기) |
 | IK | EAIK (해석적, 가능한 해를 전부 준다), mink (수치, 관절 한계와 충돌을 지키며 이어지는 동작) |
-| 서보 | Feetech ftservo-python-sdk |
+| 서보 | 컨트롤러는 Rust (rustypot을 평가해 쓰거나 직접 짠다, [0024](decisions/0024-servo-bus.md)). Feetech ftservo-python-sdk는 Python 기준 구현에만 |
 | 영상 전송 | pyzmq |
 | 카메라 (파이) | pyrealsense2. 설치 방법은 파이 준비 때 정한다 |
 
@@ -133,7 +140,7 @@ horilab/
   - EAIK 1.2.2: 축 배치만 넣으면 구조를 알아서 판별했다 (구형 손목 예제, UR5e 치수의 UR형). 목표 50개를 모두 풀고, 목표마다 가능한 해를 전부(2~8개) 줬다. 한 번에 약 10 µs.
   - mink 1.4.0 (QP 풀이기 daqp 0.11.0): 관절 한계를 지키고, 충돌 회피 제한을 걸면 정한 최소 거리(5 mm)에서 멈췄다. 한 번 풀이에 보통 1 ms 안쪽. 다만 고정된 시작 자세에서 먼 목표 50개 중 12개는 국소해에 걸렸다.
   - 그래서 해석적 IK로 후보 해를 구하고, 그 해를 시작점으로 mink가 관절 한계·충돌·보정 모델까지 반영해 다듬는다.
-- React(R3F) 화면은 실물 로봇을 다루는 단계에서 필요해지면 붙인다. 관절 조그, 티칭, 실물 상태를 3D로 보는 디지털 트윈, 카메라 화면 같은 것이다. 그때도 같은 URDF와 메쉬(glTF)를 불러와서, 치수 값 하나에서 나온 결과물을 그대로 쓴다.
+- React(R3F) 화면은 펜던트 화면으로, 컨트롤러가 HTTPS로 준다 ([0023](decisions/0023-robot-controller.md)). 관절 조그, 티칭, 실물 상태를 3D로 보는 디지털 트윈, 카메라 화면 같은 것이다. 같은 URDF와 메쉬(glTF)를 불러와서, 치수 값 하나에서 나온 결과물을 그대로 쓴다.
 
 ## 구현할 때 알아 둘 것
 

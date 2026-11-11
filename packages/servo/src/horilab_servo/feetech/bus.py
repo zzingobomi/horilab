@@ -25,8 +25,8 @@ from scservo_sdk import (
     protocol_packet_handler,
 )
 
-from horilab_motor.feetech import registers as reg
-from horilab_motor.feetech.registers import Area, Fault, Register
+from horilab_servo.feetech import registers as reg
+from horilab_servo.feetech.registers import Area, Fault, Register
 
 
 class BusError(Exception):

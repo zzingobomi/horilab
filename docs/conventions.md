@@ -72,7 +72,7 @@
 - 파일은 UTF-8로 열고, 경로는 `pathlib`으로 다룬다.
 - 출력은 `logging`을 쓴다. 명령줄 도구가 결과를 보여 주는 출력은 `print`로 해도 된다.
 - 결정 기록에 쓰는 계산 결과는 검토 코드로 다시 만들 수 있게 하고, 기록에 실행 명령을 적는다.
-- 포맷과 린트는 ruff, 타입 검사는 pyright(standard 모드, motor 패키지는 strict 모드)다.
+- 포맷과 린트는 ruff, 타입 검사는 pyright(standard 모드, servo 패키지는 strict 모드)다.
 
 ## 테스트
 

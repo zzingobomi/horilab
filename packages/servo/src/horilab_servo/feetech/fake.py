@@ -12,9 +12,9 @@
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 
-from horilab_motor.feetech import registers as reg
-from horilab_motor.feetech.bus import Bus, SerialPort
-from horilab_motor.feetech.registers import Area, Fault, Register
+from horilab_servo.feetech import registers as reg
+from horilab_servo.feetech.bus import Bus, SerialPort
+from horilab_servo.feetech.registers import Area, Fault, Register
 
 INST_PING = 0x01
 INST_READ = 0x02
