@@ -4,7 +4,8 @@
   관절 이름과 rad는 이 위의 층이 다룬다.
 - 동기 읽기는 SDK의 GroupSyncRead를 쓰지 않는다. 응답이 한 패킷보다 짧으면 지난 주기 값을
   그대로 돌려주기 때문이다. 받은 바이트를 서보마다 나눠 확인하고, 응답이 없는 서보는 없다고 알린다.
-- EEPROM은 write_eeprom과 change_id로만 쓴다: 잠금 풀기 → 쓰기 → 잠그기 → 다시 읽어 확인.
+- EEPROM은 세 길로만 쓴다: write_eeprom(잠금 풀기 → 쓰기 → 잠그기 → 다시 읽어 확인), change_id,
+  write_trial(잠근 채 바꿔 보기: 바로 듣고 전원을 끄면 사라진다).
 - SDK는 스레드 안전이 없고, 통신 도중 예외가 나면 포트가 계속 '사용 중'으로 남는다.
   그래서 모든 통신을 잠금 하나로 묶고, 끝날 때마다 사용 중 표시를 되돌린다.
 """
@@ -27,6 +28,9 @@ from scservo_sdk import (
 
 from horilab_servo.feetech import registers as reg
 from horilab_servo.feetech.registers import Area, Fault, Register
+
+# 잠근 채 바꿔 볼 수 있는 레지스터: P·I·D와 응답 지연(7번) (docs/decisions/0024-servo-bus.md)
+TRIAL_REGISTERS = (reg.P_GAIN, reg.I_GAIN, reg.D_GAIN, reg.RESPONSE_DELAY)
 
 
 class BusError(Exception):
@@ -250,10 +254,26 @@ class Bus:
         with self._unlocked(servo_id, relock_ids=(servo_id,)):
             for register, value in values.items():
                 self._write_bytes(servo_id, register.address, _to_bytes(register, value))
-        readback = self.read(servo_id, *values).values
-        wrong = {r.name: (v, readback[r.name]) for r, v in values.items() if readback[r.name] != v}
-        if wrong:
-            raise VerifyError(f"다시 읽은 값이 다르다 (쓴 값, 읽은 값): {wrong}", servo_id)
+        self._verify(servo_id, values)
+
+    def write_trial(self, servo_id: int, values: Mapping[Register, int]) -> None:
+        """잠근 채 바꿔 보기: 바로 듣고, 전원을 끄면 사라진다. 토크가 켜져 있어도 된다.
+
+        P·I·D와 응답 지연(7번)만 받는다 (TRIAL_REGISTERS). 잠금이 풀린 채 쓰면 값이 남으므로
+        먼저 잠근다. 바꾼 값을 기록에 남기는 것은 부르는 쪽이 한다.
+        """
+        if not values:
+            return
+        for register, value in values.items():
+            if register not in TRIAL_REGISTERS:
+                raise ValueError(
+                    f"{register.name}은 잠근 채 바꿔 보지 않는다 (P·I·D와 응답 지연만)"
+                )
+            register.encode(value)
+        self._write_bytes(servo_id, reg.LOCK.address, [1])
+        for register, value in values.items():
+            self._write_bytes(servo_id, register.address, _to_bytes(register, value))
+        self._verify(servo_id, values)
 
     def change_id(self, old_id: int, new_id: int) -> None:
         """서보 ID를 바꾼다. 버스에 서보가 하나만 물렸을 때만 쓴다 (부르는 쪽이 확인한다).
@@ -304,6 +324,12 @@ class Bus:
                     break
             raise
         self._write_bytes(relock_ids[0], reg.LOCK.address, [1])
+
+    def _verify(self, servo_id: int, values: Mapping[Register, int]) -> None:
+        readback = self.read(servo_id, *values).values
+        wrong = {r.name: (v, readback[r.name]) for r, v in values.items() if readback[r.name] != v}
+        if wrong:
+            raise VerifyError(f"다시 읽은 값이 다르다 (쓴 값, 읽은 값): {wrong}", servo_id)
 
     def _require_torque_off(self, servo_id: int) -> None:
         torque = self.read(servo_id, reg.TORQUE_ENABLE).values[reg.TORQUE_ENABLE.name]

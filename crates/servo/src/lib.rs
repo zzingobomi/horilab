@@ -1,7 +1,9 @@
 //! 서보 버스: 서보와 이야기하는 맨 아래층 (docs/decisions/0024-servo-bus.md).
 //!
 //! 서보에 직접 닿는 코드는 이 크레이트에만 둔다 (docs/decisions/0007-repo-structure.md).
-//! 메모리 표, 서보 버스, 가짜 서보는 rustypot을 평가한 뒤 0024 만드는 순서 1번에서 짠다.
+//! Python 기준 구현(packages/servo)과 같은 설계이고, 실물에서 두 구현의 결과를 맞춰 본다.
+
+pub mod feetech;
 
 /// 이 컴퓨터에서 보이는 시리얼 포트 이름. 서보 어댑터를 찾을 때 쓴다.
 pub fn port_names() -> Result<Vec<String>, serialport::Error> {

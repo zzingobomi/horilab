@@ -132,7 +132,7 @@ horilab/
 | 시뮬레이션, MJCF | mujoco |
 | URDF | xml.etree (작성), yourdfpy (테스트에서 읽기) |
 | IK | EAIK (해석적, 가능한 해를 전부 준다), mink (수치, 관절 한계와 충돌을 지키며 이어지는 동작) |
-| 서보 | 컨트롤러는 Rust (rustypot을 평가해 쓰거나 직접 짠다, [0024](decisions/0024-servo-bus.md)). Feetech ftservo-python-sdk는 Python 기준 구현에만 |
+| 서보 | 컨트롤러는 Rust로 직접 짠 서보 버스(`crates/servo`, [0024](decisions/0024-servo-bus.md)), 시리얼은 serialport. Feetech ftservo-python-sdk는 Python 기준 구현에만 |
 | 영상 전송 | pyzmq |
 | 카메라 (파이) | pyrealsense2. 설치 방법은 파이 준비 때 정한다 |
 

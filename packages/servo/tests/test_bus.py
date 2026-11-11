@@ -151,6 +151,33 @@ def test_write_eeprom_detects_value_that_did_not_stick() -> None:
         bus.write_eeprom(3, {reg.MAX_TEMPERATURE: 60})
 
 
+def test_write_trial_applies_now_and_is_lost_at_power_off() -> None:
+    servo = FakeServo(3)
+    bus, _ = open_fake_bus([servo])
+    bus.write(3, reg.TORQUE_ENABLE, reg.TORQUE_ON)  # 토크가 켜져 있어도 된다
+    bus.write_trial(3, {reg.P_GAIN: 16, reg.RESPONSE_DELAY: 5})
+    assert (servo.get(reg.P_GAIN), servo.get(reg.RESPONSE_DELAY)) == (16, 5)
+    assert servo.eeprom_saves == 0
+    servo.power_cycle()
+    assert (servo.get(reg.P_GAIN), servo.get(reg.RESPONSE_DELAY)) == (32, 0)
+
+
+def test_write_trial_locks_first_so_values_never_persist() -> None:
+    servo = FakeServo(3)
+    servo.set(reg.LOCK, 0)  # 앞선 작업이 잠금을 풀어 둔 채 끝난 경우
+    bus, _ = open_fake_bus([servo])
+    bus.write_trial(3, {reg.P_GAIN: 16})
+    assert servo.get(reg.LOCK) == 1
+    assert servo.eeprom_saves == 0
+
+
+@pytest.mark.parametrize("register", [reg.MAX_TEMPERATURE, reg.ID, reg.TORQUE_LIMIT, reg.LOCK])
+def test_write_trial_rejects_other_registers(register: Register) -> None:
+    bus, _ = open_fake_bus([FakeServo(3)])
+    with pytest.raises(ValueError):
+        bus.write_trial(3, {register: 1})
+
+
 def test_change_id_persists() -> None:
     servo = FakeServo(1)
     bus, _ = open_fake_bus([servo])

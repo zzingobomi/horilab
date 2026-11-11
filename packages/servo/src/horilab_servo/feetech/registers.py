@@ -102,6 +102,12 @@ MODEL = Register("model", 3, 2, Area.EEPROM, False, "모델 번호")
 # EEPROM 설정
 ID = _eeprom("id", 5, 1, "0~253")
 BAUD_RATE = _eeprom("baud_rate", 6, 1, "코드 (BAUD_RATES)")
+RESPONSE_DELAY = _eeprom(
+    "response_delay",
+    7,
+    1,
+    "2 µs (메모리 표에는 예약. LeRobot과 rustypot은 응답 지연으로 쓴다, 실물로 확인)",
+)
 RESPONSE_LEVEL = _eeprom("response_level", 8, 1, "0: 읽기·핑에만 응답, 1: 모든 명령에 응답")
 MIN_ANGLE_LIMIT = _eeprom("min_angle_limit", 9, 2, "step (0.087°)")
 MAX_ANGLE_LIMIT = _eeprom("max_angle_limit", 11, 2, "step (0.087°)")
@@ -162,6 +168,7 @@ ALL: tuple[Register, ...] = (
     MODEL,
     ID,
     BAUD_RATE,
+    RESPONSE_DELAY,
     RESPONSE_LEVEL,
     MIN_ANGLE_LIMIT,
     MAX_ANGLE_LIMIT,

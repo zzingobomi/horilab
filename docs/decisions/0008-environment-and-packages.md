@@ -49,7 +49,7 @@ USB 지연과 WSLg 성능은 일반적으로 알려진 내용이고 따로 측�
 | URDF 작성 | 표준 라이브러리 xml.etree | urchin, odio_urdf | 의존성이 없다. 다른 라이브러리는 관리가 약하다 |
 | URDF 검사 (테스트) | yourdfpy | | URDF를 읽고 FK를 따로 계산해 MJCF와 대조한다 |
 | IK | 해석적 IK는 EAIK, 수치 IK는 mink. 골격 설계부터 둘 다 쓴다 | Pinocchio, ikpy, py-opw-kinematics, roboticstoolbox | EAIK는 축 배치에서 구조를 판별해 구형 손목과 UR형을 모두 풀고, 가능한 해를 전부 빠르게 준다. 그래서 손목 후보의 작업 범위 비교와 해 고르기에 쓴다. mink는 생성된 MJCF를 그대로 쓰고 관절 한계와 충돌을 지키며 풀어서, 이어지는 동작(직선 이동, 조그)과 보정 모델에 쓴다. 시작점은 EAIK의 해로 준다. Pinocchio는 Windows에서 conda가 필요하고, ikpy는 느리다. py-opw-kinematics는 구형 손목만 풀고, EAIK 하나로 두 형식을 다 풀어서 roboticstoolbox도 필요 없다 |
-| 서보 SDK | 컨트롤러는 Rust (rustypot을 평가해 쓰거나 직접 짠다, [0024](0024-servo-bus.md)). Feetech 공식 ftservo-python-sdk는 Python 기준 구현에만 쓴다 | LeRobot, feetech-servo-sdk | 컨트롤러가 Rust라서다 ([0025](0025-controller-on-pi.md)). 공식 SDK는 동기 읽기·쓰기를 지원하고 pyserial만 필요해 기준 구현에 맞다. LeRobot은 torch 등이 딸려 와 무겁고, feetech-servo-sdk는 2022년 이후 멈췄다 |
+| 서보 SDK | 컨트롤러는 Rust로 직접 짠 서보 버스(`crates/servo`, rustypot은 평가해 보고 참고만 했다, [0024](0024-servo-bus.md)). Feetech 공식 ftservo-python-sdk는 Python 기준 구현에만 쓴다 | LeRobot, feetech-servo-sdk | 컨트롤러가 Rust라서다 ([0025](0025-controller-on-pi.md)). 공식 SDK는 동기 읽기·쓰기를 지원하고 pyserial만 필요해 기준 구현에 맞다. LeRobot은 torch 등이 딸려 와 무겁고, feetech-servo-sdk는 2022년 이후 멈췄다 |
 | 영상 전송 | pyzmq (PUB/SUB) | Zenoh, gRPC | 파이 한 대에서 PC 한 대로 보내는 단순한 구조라 자동 탐색이 필요 없다 |
 
 - 버전은 uv.lock으로 고정하고, 올릴 때는 따로 검토한 뒤 올린다. MuJoCo 4.0이 곧 나오는데 패키지가 나뉘는 큰 변경이라 특히 그렇다.
