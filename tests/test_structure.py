@@ -1,16 +1,21 @@
-"""레포 구조 검사: 패키지 경계와 의존 방향 (docs/decisions/0007-repo-structure.md).
+"""레포 구조 검사: Python 패키지와 Rust 크레이트의 경계, 의존 방향 (docs/decisions/0007-repo-structure.md).
 
 uv 워크스페이스에서는 모든 패키지가 한 가상환경에 깔려서, 경계를 어기는 import도
 PC에서는 그냥 돈다. 그래서 소스를 읽어 import를 확인한다. 경계 규칙의 원본은 이 파일이다.
 """
 
 import ast
+import functools
 import importlib
 import importlib.metadata
+import json
 import re
+import shutil
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -35,6 +40,16 @@ SERVO_ACCESS = {"horilab_servo", "serial", "scservo_sdk"}
 # 따로 설치되는 패키지(파이, 다른 레포, 별도 환경)와, 그 패키지가 불러오면 안 되는 무거운 라이브러리
 LIGHT_PACKAGES = ("horilab_servo", "horilab_camera", "horilab_client")
 HEAVY_LIBRARIES = {"build123d", "OCP", "bd_warehouse", "ocp_vscode", "mujoco", "mink", "eaik"}
+
+# Rust 크레이트마다 부를 수 있는 다른 horilab 크레이트. 아직 없는 크레이트(controller)도 미리 적어 둔다.
+CRATE_ALLOWED_INTERNAL: dict[str, set[str]] = {
+    "horilab-servo": set(),
+    "horilab-controller": {"horilab-servo"},
+    "horilab-bench": {"horilab-servo"},
+}
+
+# 시리얼 포트를 여는 크레이트. 서보에 닿는 길이라 horilab-servo만 쓴다.
+SERIAL_CRATES = {"serialport", "serial2", "tokio-serial", "mio-serial", "rustypot"}
 
 # 검사하지 않는 폴더 (생성물, 받은 도구, 가상환경)
 SKIP_DIRS = {".venv", ".git", "build", "target", "node_modules", "__pycache__"}
@@ -104,6 +119,42 @@ def _distributions_of(module: str) -> set[str]:
     if module.startswith("horilab_"):
         return {_normalize(module)}  # 워크스페이스 패키지: horilab_servo → horilab-servo
     return {_normalize(name) for name in _DISTRIBUTIONS.get(module, [])}
+
+
+@functools.cache
+def _crates() -> list[dict[str, Any]]:
+    """워크스페이스의 크레이트와 그 크레이트가 Cargo.toml에 적은 의존성."""
+    if not (ROOT / "Cargo.toml").exists():
+        return []
+    cargo = shutil.which("cargo")
+    assert cargo, "cargo가 없다. docs/setup.md#8-rust대로 Rust를 깐다"
+    result = subprocess.run(
+        [cargo, "metadata", "--format-version", "1", "--no-deps", "--offline"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return json.loads(result.stdout)["packages"]
+
+
+def test_every_crate_has_rules() -> None:
+    missing = {crate["name"] for crate in _crates()} - set(CRATE_ALLOWED_INTERNAL)
+    assert not missing, f"규칙이 없는 크레이트: {sorted(missing)}. 0007과 이 파일에 먼저 넣는다"
+
+
+def test_crate_dependencies_follow_direction() -> None:
+    for crate in _crates():
+        name = crate["name"]
+        dependencies = {dependency["name"] for dependency in crate["dependencies"]}
+        internal = {d for d in dependencies if d.startswith("horilab-")}
+        allowed = CRATE_ALLOWED_INTERNAL.get(name, set())
+        assert internal <= allowed, f"{name}: {sorted(internal - allowed)}"
+        serial = dependencies & SERIAL_CRATES
+        assert not serial or name == "horilab-servo", (
+            f"{name}: {sorted(serial)}. 시리얼 포트는 horilab-servo만 연다"
+        )
 
 
 def test_every_package_has_rules() -> None:

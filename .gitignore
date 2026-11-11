@@ -10,6 +10,9 @@ build/
 # PC마다 받는 도구와 구글 로그인 설정 (tools/sync.py)
 tools/local/
 
+# Rust
+target/
+
 # Python
 .venv/
 __pycache__/

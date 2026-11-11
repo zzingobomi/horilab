@@ -47,3 +47,7 @@
 ## 영향
 
 - 규칙은 [conventions.md](../conventions.md)에 옮겼다. 도구 설정은 pyproject.toml에 있다.
+
+## 바뀐 점
+
+- 2026-11-11: 컨트롤러를 Rust로 짜면서([0025](0025-controller-on-pi.md)) Rust 도구를 더했다. 포맷은 rustfmt, 린트는 clippy(경고도 실패), 테스트는 cargo test이고, 워크스페이스에서 unsafe를 막는다. 도구 판은 `rust-toolchain.toml`로 맞춘다.

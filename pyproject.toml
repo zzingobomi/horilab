@@ -24,6 +24,7 @@ horilab-camera = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "cargo-zigbuild>=0.24.1",
     "pyright[nodejs]>=1.1.414",
     "pytest>=8",
     "ruff>=0.17.4",

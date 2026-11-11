@@ -30,7 +30,8 @@ horilab/
 ├── Cargo.toml, rust-toolchain.toml   Rust 워크스페이스
 ├── crates/
 │   ├── servo/       서보 버스 (라이브러리)
-│   └── controller/  컨트롤러: 실행 루프, 안전 검사, 조종권, API 서버(펜던트 화면, WSS), 기록, 서보 준비·관절 시험 명령
+│   ├── controller/  컨트롤러: 실행 루프, 안전 검사, 조종권, API 서버(펜던트 화면, WSS), 기록, 서보 준비·관절 시험 명령
+│   └── bench/       파이에서 미리 재는 시험 프로그램
 ├── pendant/         펜던트 화면 (웹, R3F)
 ├── pyproject.toml, uv.lock, .python-version   Python 워크스페이스
 ├── packages/

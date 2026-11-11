@@ -1,0 +1,25 @@
+[package]
+name = "horilab-bench"
+description = "파이에서 미리 재는 시험 프로그램 (docs/decisions/0026-pi-runtime-deploy-records.md의 2)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# TLS 암호 구현. 둘 다 C 소스를 같이 빌드해서, 파이용 교차 빌드와 파이에서 도는지를 둘 다 본다.
+default = ["ring"]
+ring = ["rustls/ring", "rcgen/ring"]
+aws-lc-rs = ["rustls/aws_lc_rs", "rcgen/aws_lc_rs"]
+
+[dependencies]
+horilab-servo = { version = "0.1.0", path = "../servo" }
+rcgen = { version = "0.14.10", default-features = false, features = ["pem"] }
+rustls = { version = "0.23.46", default-features = false, features = ["std", "tls12", "logging"] }
+
+[lints]
+workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.13.2"

@@ -125,5 +125,6 @@ code --install-extension rust-lang.rust-analyzer
 
 - rustup과 최신 안정판 도구 모음이 함께 깔린다. 새 터미널에서 `cargo --version`으로 확인한다. 이미 깔린 PC는 `rustup update`로 올린다.
 - Windows의 기본 도구 모음(MSVC)은 Visual Studio C++ 빌드 도구의 링커가 있어야 한다. 없으면 rustup 설치 때 안내가 나온다.
-- 도구 모음 버전은 Rust 워크스페이스를 만들 때 레포(`rust-toolchain.toml`)에 고정한다.
+- 도구 모음 판은 레포의 `rust-toolchain.toml`이 정한다. 레포에서 cargo를 처음 쓰면 rustup이 그 판과 파이용 대상(aarch64 리눅스)을 받는다. 받지 않으면 레포 폴더에서 `rustup toolchain install`을 한다.
+- 파이용 빌드 도구(cargo-zigbuild, zig)는 `uv sync`가 레포 환경에 깐다 ([0026](decisions/0026-pi-runtime-deploy-records.md)).
 - WSL 안의 Rust는 쓰지 않는다. 파이용 실행 파일도 Windows에서 교차 컴파일한다 ([0026](decisions/0026-pi-runtime-deploy-records.md)).

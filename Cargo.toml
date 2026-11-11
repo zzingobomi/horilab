@@ -1,0 +1,16 @@
+# Rust 워크스페이스. 크레이트 자리와 경계는 docs/decisions/0007-repo-structure.md에 있고,
+# 경계는 tests/test_structure.py가 확인한다.
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+
+[workspace.lints.rust]
+# 로봇을 움직이는 프로그램이라 unsafe는 막아 두고, 꼭 필요한 곳만 이유를 적어 연다.
+unsafe_code = "deny"

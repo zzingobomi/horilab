@@ -1,0 +1,15 @@
+[package]
+name = "horilab-servo"
+description = "서보 버스: 서보와 이야기하는 맨 아래층 (docs/decisions/0024-servo-bus.md)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# 기본 기능의 libudev(C 라이브러리)를 빼야 파이용 정적 실행 파일(musl)이 된다 (0026).
+serialport = { version = "4.10.1", default-features = false }
+
+[lints]
+workspace = true

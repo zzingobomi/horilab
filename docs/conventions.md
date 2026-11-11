@@ -60,7 +60,7 @@
 
 ## 코드
 
-[0010](decisions/0010-code-test-git-rules.md)에서 정했다. 도구 설정은 `pyproject.toml`에 있다.
+[0010](decisions/0010-code-test-git-rules.md)에서 정했다. 도구 설정은 Python은 `pyproject.toml`, Rust는 `Cargo.toml`과 `rust-toolchain.toml`에 있다.
 
 - **단위**: 코드는 SI(m, rad, s, kg, N·m)다. build123d로 부품을 그리는 코드만 mm다. SI가 아닌 값을 함수 인자, 반환 값, 필드로 주고받을 때는 이름에 단위를 붙인다 (`_mm`, `_deg`, `_g`). 단위는 값 파일을 읽을 때, 로봇 기술에서 부품 코드로 넘길 때, 화면·파일로 내보낼 때만 바꾼다.
 - **자세**: 4×4 동차 변환 행렬(numpy)로 주고받는다. 이름은 `T_a_b`이고, b 좌표계를 a 좌표계에서 본 자세다. 그래서 `T_a_c = T_a_b @ T_b_c`처럼 가운데 글자가 맞물린다. 쿼터니언과 오일러 각은 MuJoCo, URDF, 사람이 보는 값 같은 경계에서만 쓴다.
@@ -73,12 +73,16 @@
 - 출력은 `logging`을 쓴다. 명령줄 도구가 결과를 보여 주는 출력은 `print`로 해도 된다.
 - 결정 기록에 쓰는 계산 결과는 검토 코드로 다시 만들 수 있게 하고, 기록에 실행 명령을 적는다.
 - 포맷과 린트는 ruff, 타입 검사는 pyright(standard 모드, servo 패키지는 strict 모드)다.
+- Rust: 이름과 포맷은 Rust 관례(rustfmt)를 따르고, 단위와 이름 규칙은 위와 같다. 주석과 문서 주석은 한국어로 쓴다.
+- Rust의 린트는 clippy이고 경고도 실패로 본다. unsafe는 워크스페이스에서 막아 두고, 꼭 필요한 곳만 이유를 적어 연다.
+- Rust 오류는 `Result`로 돌려준다. 실물을 움직이는 코드에서는 `unwrap`, `expect`로 프로그램을 끝내지 않는다.
 
 ## 테스트
 
 - pytest를 쓴다. 테스트는 패키지마다 `packages/<이름>/tests/`에 두고, 패키지를 넘나드는 검사(의존 방향 등)와 패키지 밖 도구(`tools/`)의 테스트는 루트 `tests/`에 둔다.
 - 표시는 없음(빠른 것), `slow`(CAD 생성처럼 느린 것), `hardware`(실물 서보·카메라)다. 기본 실행은 `hardware`를 뺀 전부다. `hardware`는 `--hardware`를 줘야 돌고, Claude는 확인을 받은 뒤에만 돌린다. 실물 백엔드는 `hardware` 테스트에서만 만든다.
-- 패키지 사이의 의존 방향은 `tests/test_structure.py`가 확인한다.
+- Rust 테스트는 `cargo test`로 돈다. 단위 테스트는 모듈 안(`#[cfg(test)]`)에, 여러 모듈을 묶는 테스트는 `crates/<이름>/tests/`에 둔다.
+- 패키지와 크레이트 사이의 의존 방향은 `tests/test_structure.py`가 확인한다.
 - 커밋 전에 포맷, 린트, 타입, 테스트를 돌린다. 명령은 [CLAUDE.md](../CLAUDE.md#자주-쓰는-명령)에 있다. CI는 두지 않는다.
 
 ## git

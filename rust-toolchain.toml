@@ -1,0 +1,8 @@
+# 두 PC의 Rust 판을 맞춘다 (docs/setup.md#8-rust). 올릴 때는 따로 검토한다.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+# rust-src는 편집기(rust-analyzer)가 표준 라이브러리를 읽는 데 쓴다.
+components = ["rustfmt", "clippy", "rust-src"]
+# 파이용 실행 파일. musl은 정적 실행 파일, gnu는 비교용이다 (docs/decisions/0026-pi-runtime-deploy-records.md).
+targets = ["aarch64-unknown-linux-musl", "aarch64-unknown-linux-gnu"]
