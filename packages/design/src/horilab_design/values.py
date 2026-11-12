@@ -196,7 +196,7 @@ def arm_robot(params: ArmParams, servos: dict[ServoModel, ServoSpec]) -> Robot:
     flange = np.eye(4)
     flange[:3, :3] = rotation(X, -np.pi / 2) @ rotation(Z, -np.pi / 2)
     flange[:3, 3] = (0.0, g.j6_to_flange_mm * 1e-3, 0.0)
-    return Robot("horilab", joints, flange)
+    return Robot("horibot", joints, flange)
 
 
 def load_robot() -> Robot:

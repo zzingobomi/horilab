@@ -2,9 +2,9 @@
 
 이전 프로젝트에 대해 여기 적힌 원인과 교훈은 그때 그렇게 판단한 기록이고, 검증된 것이 아니다. 사실만 참고하고 결론은 이 프로젝트에서 다시 따진다 ([CLAUDE.md](../CLAUDE.md)).
 
-## 이전 프로젝트 (horibot)
+## 이전 프로젝트
 
-- 저장소: https://github.com/zzingobomi/horibot. 이어가지 않는다. 하드웨어와 캘리브레이션 기록은 참고한다 (`docs/hardware.md`, `docs/calibration.md`).
+- 저장소: https://github.com/zzingobomi/horibot. 레포 이름은 이 로봇(호리봇)과 같지만 다른 프로젝트이고, 이어가지 않는다. 하드웨어와 캘리브레이션 기록은 참고한다 (`docs/hardware.md`, `docs/calibration.md`).
 - 로봇 두 대를 썼다. 둘 다 이제 쓰지 않으며, 분해해서 모터를 옮겨 쓸 수 있다.
   - **SO-101 6DOF**: SO-101에 ts_flake wrist yaw 개조로 1축을 더한 팔. Feetech 서보 7개.
   - **OMX_F**: ROBOTIS 5축과 그리퍼. Dynamixel 6개.
@@ -28,7 +28,7 @@ URDF(`robot/so101_6dof/urdf/so101_6dof.urdf`)를 영점 자세에서 풀어 본 
 
 ## 정밀도 문제
 
-horibot `docs/calibration.md`와 `docs/hardware.md` 요약.
+이전 프로젝트의 `docs/calibration.md`와 `docs/hardware.md` 요약.
 
 - hand-eye σ가 SO-101+D405에서 0.80° / 7.53 mm, OMX에서 0.65° / 7.94 mm(처짐 모델까지 적용)에서 더 내려가지 않았다. 보정 없는 값은 3.45° / 24.9 mm(OMX)였다.
 - 알고리즘으로는 더 내릴 수 없었고, 하드웨어가 한계였다. 캘리브레이션에 많은 시간이 들었다.
@@ -43,7 +43,7 @@ horibot `docs/calibration.md`와 `docs/hardware.md` 요약.
 
 ## 이전 프로젝트의 연결 구조
 
-horibot `docs/hardware.md`, `CLAUDE.md`와 커밋 기록 요약.
+이전 프로젝트의 `docs/hardware.md`, `CLAUDE.md`와 커밋 기록 요약.
 
 - Windows PC 1대와 라즈베리파이 3대를 같은 네트워크(Zenoh)로 묶었다. 파이가 로봇 제어 루프를 직접 돌리고, PC는 계획과 인식 같은 상위 판단을 했다.
   - pi_hori1: SO-101 서보 (Waveshare 어댑터, USB)

@@ -37,7 +37,7 @@
 | 네트워크 | 통신사 게이트웨이 → ipTIME 공유기(192.168.0.1) + ipTIME 메시 2대 | | 공유기를 두 번 거친다(이중 NAT). 이 PC, NAS, 파이는 유선이고 서로 1 ms 안에 응답한다. 어느 기기가 어느 공유기·스위치에 꽂혔는지는 ipTIME 관리 화면에서 본다 |
 | | 기가비트 스위칭 허브 (ipTIME H7005로 보임) | 1 | 파이들과 공유기 사이에 유선으로 있다. 2년쯤 전에 산 것이다 (지금은 단종되고 후속은 H8005R). 포트 수, 크기, 전원 어댑터는 확인하지 않았다 |
 | 도메인 | AWS Route 53에 도메인 하나 | | 펜던트 HTTPS 인증서(Let's Encrypt, DNS-01)에 쓴다 ([0023](decisions/0023-robot-controller.md)) |
-| 입력 장치 | 8BitDo Ultimate 2C 유무선 컨트롤러 (유스 에디션) | 1 | 게임패드 펜던트(조그, 데드맨). 컨트롤러 파이에 꽂고 컨트롤러가 직접 읽는다 ([0023](decisions/0023-robot-controller.md)). 이전 프로젝트에서 pygame으로 읽어 조그 펜던트로 썼다 (LT를 누르고 있어야 움직임, horibot `docs/motion.md`). 파이(우분투 22.04, 커널 5.15)에 USB로 꽂으면(2dc8:310a) 게임패드 드라이버(xpad)가 이 기기를 몰라 키보드와 마우스로만 잡힌다. `sudo modprobe xpad`와 `echo "2dc8 310a" \| sudo tee /sys/bus/usb/drivers/xpad/new_id`로 ID를 알려 주면 "Generic X-Box pad"(`/dev/input/event*`, `js0`)로 잡히고, 교차 빌드한 evdev가 읽는다 (2026-11-11 hori3). 부팅 때마다 거는 설정은 컨트롤러 파이를 설정할 때 만들고, 26.04 커널은 그냥 잡는지 본다 |
+| 입력 장치 | 8BitDo Ultimate 2C 유무선 컨트롤러 (유스 에디션) | 1 | 게임패드 펜던트(조그, 데드맨). 컨트롤러 파이에 꽂고 컨트롤러가 직접 읽는다 ([0023](decisions/0023-robot-controller.md)). 이전 프로젝트에서 pygame으로 읽어 조그 펜던트로 썼다 (LT를 누르고 있어야 움직임, 이전 프로젝트의 `docs/motion.md`). 파이(우분투 22.04, 커널 5.15)에 USB로 꽂으면(2dc8:310a) 게임패드 드라이버(xpad)가 이 기기를 몰라 키보드와 마우스로만 잡힌다. `sudo modprobe xpad`와 `echo "2dc8 310a" \| sudo tee /sys/bus/usb/drivers/xpad/new_id`로 ID를 알려 주면 "Generic X-Box pad"(`/dev/input/event*`, `js0`)로 잡히고, 교차 빌드한 evdev가 읽는다 (2026-11-11 hori3). 부팅 때마다 거는 설정은 컨트롤러 파이를 설정할 때 만들고, 26.04 커널은 그냥 잡는지 본다 |
 | 그 밖 | ChArUco 보드 7×5 / 25 mm (종이, 알루미늄 아님) | | 이전 프로젝트에서 쓰던 것 |
 | | LED 누름 버튼 (빨간 고리형, 흰 전원 표시형) | | 예전에 사 둔 것. 크기, 정격, 단자 모양, 누르고 있을 때만 붙는지는 확인하지 않았다 |
 | | 팬 40 × 40 × 10, 50 × 50 × 10 | | 예전에 사 둔 것. 전압은 확인하지 않았다 |

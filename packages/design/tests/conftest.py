@@ -56,7 +56,7 @@ def ur_type_robot() -> Robot:
 ROBOTS = {
     "spherical_wrist": spherical_wrist_robot(),
     "ur_type": ur_type_robot(),
-    "horilab": load_robot(),
+    "horibot": load_robot(),
 }
 
 
