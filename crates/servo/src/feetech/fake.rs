@@ -8,6 +8,10 @@
 //! - 토크를 켜거나 토크가 켜진 채 목표를 쓰면 현재 위치가 곧바로 목표가 된다.
 //! - 응답 없음, 깨진 응답, 잘린 응답, 상태 바이트의 오류 비트, 같은 ID 둘, 포트 오류를 일부러 낸다.
 //! - 가짜 포트는 기다리지 않아서, 응답 없음 시험도 바로 끝난다.
+//! - `offset_moves_reading`을 켜면 위치 오프셋을 쓸 때 읽는 위치가 그만큼 옮겨진다 (Rust 쪽에만 있다).
+//!   실물로 확인하기 전의 가정이고, 맨 서보 확인의 오프셋 단계를 시험할 때 쓴다.
+//!
+//! 각도 한계, 보호, 0/4095 경계는 흉내 내지 않는다. 맨 서보 확인 결과가 나오면 실물의 동작으로 맞춘다.
 
 use std::collections::BTreeSet;
 use std::io;
@@ -43,6 +47,8 @@ pub struct FakeServo {
     /// flash에 쓴 횟수 (EEPROM 수명)
     pub eeprom_saves: u32,
     pub faults: Faults,
+    /// 위치 오프셋을 쓰면 읽는 위치가 그만큼 옮겨진다: 읽는 위치 = 엔코더 값 - 오프셋 (확인 전의 가정)
+    pub offset_moves_reading: bool,
 }
 
 impl FakeServo {
@@ -57,6 +63,7 @@ impl FakeServo {
             flash: [0; EEPROM_END],
             eeprom_saves: 0,
             faults: Faults::default(),
+            offset_moves_reading: false,
         };
         let defaults = [
             (reg::FIRMWARE_MAJOR, 3),
@@ -147,6 +154,7 @@ impl FakeServo {
 
     pub fn write(&mut self, address: u8, data: &[u8]) {
         let start = usize::from(address);
+        let offset_before = self.get(reg::POSITION_OFFSET);
         for (offset, &value) in data.iter().enumerate() {
             let target = start + offset;
             let ignored = is_read_only(target)
@@ -154,6 +162,12 @@ impl FakeServo {
             if target < self.memory.len() && !ignored {
                 self.memory[target] = value;
             }
+        }
+        let offset_change = self.get(reg::POSITION_OFFSET) - offset_before;
+        if self.offset_moves_reading && offset_change != 0 {
+            let turn = reg::STEPS_PER_TURN as i32;
+            let position = (self.get(reg::PRESENT_POSITION) - offset_change).rem_euclid(turn);
+            self.set(reg::PRESENT_POSITION, position);
         }
         if start < EEPROM_END && self.memory[usize::from(reg::LOCK.address)] == 0 {
             self.flash.copy_from_slice(&self.memory[..EEPROM_END]);

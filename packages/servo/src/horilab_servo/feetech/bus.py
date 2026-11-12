@@ -30,7 +30,8 @@ from horilab_servo.feetech import registers as reg
 from horilab_servo.feetech.registers import Area, Fault, Register
 
 # 잠근 채 바꿔 볼 수 있는 레지스터: P·I·D, 응답 지연(7번), 그리고 맨 서보 확인에서 서보의 동작을 보려고
-# 잠깐 바꾸는 각도 한계, 전압 하한, 힘을 빼는 조건, 과부하 보호 설정 (docs/decisions/0024-servo-bus.md)
+# 잠깐 바꾸는 각도 한계, 전압 하한, 힘을 빼는 조건, 위치 오프셋, 과부하 보호 설정
+# (docs/decisions/0024-servo-bus.md)
 TRIAL_REGISTERS = (
     reg.P_GAIN,
     reg.I_GAIN,
@@ -40,6 +41,7 @@ TRIAL_REGISTERS = (
     reg.MAX_ANGLE_LIMIT,
     reg.MIN_VOLTAGE,
     reg.UNLOAD_CONDITION,
+    reg.POSITION_OFFSET,
     reg.HOLDING_TORQUE,
     reg.PROTECTION_TIME,
     reg.OVERLOAD_TORQUE,

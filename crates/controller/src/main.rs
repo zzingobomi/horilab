@@ -6,7 +6,7 @@
 //!     cargo run -p horilab-controller -- settings
 //!     cargo run -p horilab-controller -- apply --port COM5            (바꿀 칸만 보여 준다)
 //!     cargo run -p horilab-controller -- apply --port COM5 --yes      (쓴다)
-//!     cargo run -p horilab-controller -- check --port COM5 --id 20    (할 일만 보여 준다)
+//!     cargo run -p horilab-controller -- check --port COM5 --id 20    (할 일을 보여 주고 상태를 읽는다)
 //!     cargo run -p horilab-controller -- check --port COM5 --id 20 --yes
 //!     cargo run -p horilab-controller -- check-state --port COM5 --id 20
 
@@ -34,7 +34,8 @@ const USAGE: &str = "\
   apply               값 적용: 서보의 EEPROM을 로봇 설정과 견주어 다른 칸을 보여 주고,
                       --yes가 있으면 쓴다. 토크가 꺼져 있어야 하고, 서보는 움직이지 않는다
   check               맨 서보 확인: 로봇에 달지 않은 서보 하나의 동작을 단계마다 본다.
-                      --yes가 없으면 할 일만 보여 준다. --yes가 있으면 서보가 움직인다
+                      --yes가 없으면 할 일을 보여 주고 서보 상태를 한 번 읽는다 (움직이지 않는다).
+                      --yes가 있으면 서보가 움직인다
   check-state         맨 서보의 상태만 읽는다 (끊김 확인). 서보는 움직이지 않는다
 
 옵션:
@@ -309,11 +310,20 @@ fn open_bench(options: &Options, id: u8) -> Result<Option<(Joints<SerialLink>, u
     Ok(Some((Joints::open(bus, vec![servo], BENCH_CAPS)?, model)))
 }
 
+/// 맨 서보가 응답하지 않을 때 볼 것. 같은 서보를 Python 첫 연결 명령이 찾으면 선과 전원은 맞다.
+fn no_reply(id: u8) -> String {
+    format!(
+        "서보 {id}가 응답하지 않는다. + 플러그를 꽂았는지, 서보 선과 USB, 포트 이름(ports)을 본다. 다 맞으면 \
+         `uv run python -m horilab_servo scan`으로 같은 서보가 찾아지는지 본다 (찾아지면 선과 전원은 맞고 \
+         컨트롤러 쪽 문제다)"
+    )
+}
+
 fn servo_json(id: u8, model: u16) -> Value {
     json!({ "id": id, "model": model, "model_name": prepare::model_name(model) })
 }
 
-/// 맨 서보 확인 ([`check`]). --yes가 없으면 할 일만 보여 준다.
+/// 맨 서보 확인 ([`check`]). --yes가 없으면 할 일을 보여 주고 서보 상태를 한 번 읽는다 (움직이지 않는다).
 fn run_check(options: &Options) -> Result<(), String> {
     let id = options.id.ok_or("--id가 없다")?;
     if !SPARE_IDS.contains(&id) {
@@ -335,11 +345,18 @@ fn run_check(options: &Options) -> Result<(), String> {
         BENCH_CAPS.torque_limit, BENCH_CAPS.speed, BENCH_CAPS.acceleration
     );
     if !options.yes {
-        println!("서보가 움직인다. 준비되면 --yes를 붙여 다시 돌린다");
+        // 움직이기 전에 서보를 한 번 읽어 본다. 컨트롤러가 이 서보와 처음 말하는 자리다
+        let (mut joints, model) = open_bench(options, id)?.ok_or_else(|| no_reply(id))?;
+        let state = joints.snapshot(id)?;
+        println!(
+            "서보 {id} ({})가 응답한다: {}",
+            prepare::model_name(model),
+            check::describe(&state)
+        );
+        println!("--yes를 붙이면 서보가 움직인다. 준비되면 --yes를 붙여 다시 돌린다");
         return Ok(());
     }
-    let (joints, model) =
-        open_bench(options, id)?.ok_or_else(|| format!("서보 {id}가 응답하지 않는다"))?;
+    let (joints, model) = open_bench(options, id)?.ok_or_else(|| no_reply(id))?;
     let port = options.port.as_deref().unwrap_or_default();
     let started = Local::now();
     let folder = record::new_record_dir(&options.records, "servo", "check", &started)?;

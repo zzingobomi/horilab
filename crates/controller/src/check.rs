@@ -1,7 +1,7 @@
 //! 맨 서보 확인 (docs/decisions/0028-ur-style-joints.md의 시험과 측정, 0024의 만드는 순서 5).
 //!
-//! 로봇에 달지 않은 예비 서보 하나를 책상에 두고, 서보 프로그램이 위치 경계, 각도 한계, 보호, 끊김에서
-//! 어떻게 하는지 몇 분 안에 본다 (0027의 "실물로 미리 확인할 것"). 서보를 움직이는 쓰기는 모두 관절
+//! 로봇에 달지 않은 예비 서보 하나를 책상에 두고, 서보 프로그램이 위치 경계, 각도 한계, 위치 오프셋,
+//! 보호, 끊김에서 어떻게 하는지 몇 분 안에 본다 (0027의 "실물로 미리 확인할 것"). 서보를 움직이는 쓰기는 모두 관절
 //! 층([`Joints`])을 거친다. 서보 설정은 잠근 채 잠깐 바꾸고(전원을 끄면 사라진다) 그 단계 끝에 되돌린다.
 //! 단계마다 결과를 화면에 보이고 기록(`meta.json`의 results, `samples.csv`, `events.csv`)에 남긴다.
 //!
@@ -48,9 +48,17 @@ const TRIAL_MIN_VOLTAGE: i32 = 100;
 const MOVE_TIMEOUT: f64 = 30.0;
 /// 여러 바퀴를 볼 때 기다리는 가장 긴 시간 [s]. 멈추지 않고 계속 돌면 이만큼 뒤에 그친다.
 const MULTI_TURN_TIMEOUT: f64 = 15.0;
+/// 한계 밖에서 토크를 켜 볼 때 잠깐 두는 각도 한계. 가운데(2048)가 아래 한계보다 252칸(약 22°) 밖이다.
+const OUTSIDE_LIMITS: (i32, i32) = (2300, 2600);
+/// 위치 오프셋을 볼 때 잠깐 더하는 값 (서보 값, 45°).
+const OFFSET_SHIFT: i32 = 512;
+/// 옛 0/4095 경계 자리를 지나가 볼 때, 그 자리에서 양쪽으로 떨어진 거리 (서보 값, 약 26°).
+const OFFSET_CROSS: i32 = 300;
+/// 한 바퀴의 서보 값 칸 수.
+const TURN: i32 = reg::STEPS_PER_TURN as i32;
 
 /// 단계 이름과 사람이 볼 설명. 이 순서로 한다.
-pub const STEPS: [(&str, &str); 10] = [
+pub const STEPS: [(&str, &str); 12] = [
     ("state", "상태 읽기 (움직이지 않는다)"),
     (
         "enable",
@@ -75,6 +83,14 @@ pub const STEPS: [(&str, &str); 10] = [
     (
         "angle_limit",
         "각도 한계: 한계를 1500~2600으로 잠깐 바꾸고 3000으로 보낸다",
+    ),
+    (
+        "limit_enable",
+        "한계 밖에서 토크 켜기: 토크를 끄고 한계를 2300~2600으로 잠깐 바꾼 뒤(지금 위치가 한계 밖) 토크를 켠다",
+    ),
+    (
+        "offset",
+        "위치 오프셋: 토크를 끄고 오프셋을 512 바꿔 읽는 위치가 옮겨지는지 보고, 옛 0/4095 경계 자리를 지나가 본다",
     ),
     (
         "overload_unload",
@@ -450,6 +466,8 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
                 "boundary" => self.step_boundary(),
                 "multi_turn" => self.step_multi_turn(),
                 "angle_limit" => self.step_angle_limit(),
+                "limit_enable" => self.step_limit_enable(),
+                "offset" => self.step_offset(),
                 "overload_unload" => self.step_overload(name, true, PUSH),
                 "overload_hold" => self.step_overload(name, false, -PUSH),
                 _ => self.step_voltage(),
@@ -790,6 +808,183 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
             "end": end,
             "restored": registers_json(&original),
         }))
+    }
+
+    /// 지금 위치가 각도 한계 밖일 때 토크를 켜면 서보가 어떻게 하는지 본다. 기계 멈춤이 프로그램 한계보다
+    /// 조금 밖에 있어서(0029), 팔을 손으로 멈춤까지 밀어 둔 채 토크를 켜면 생기는 상황이다.
+    fn step_limit_enable(&mut self) -> Result<Value, String> {
+        self.ensure_torque("limit_enable")?;
+        let original = self
+            .joints
+            .read(self.id, &[reg::MIN_ANGLE_LIMIT, reg::MAX_ANGLE_LIMIT])?;
+        self.go("limit_enable", CENTER, MOVE_TIMEOUT)?;
+        self.joints.disable(self.id)?;
+        self.event("limit_enable", "토크를 껐다")?;
+        let tried = self.enable_outside_limits();
+        // 결과와 상관없이 한계를 되돌리고, 토크를 껐다 켜서 가운데로 보낸다
+        self.joints.trial(self.id, &original)?;
+        self.reset_torque("limit_enable")?;
+        self.go("limit_enable", CENTER, MOVE_TIMEOUT)?;
+        let mut value = tried?;
+        value["restored"] = registers_json(&original);
+        Ok(value)
+    }
+
+    /// 토크가 꺼진 채 한계를 지금 위치 밖으로 두고, 시작 절차(목표를 지금 위치로, 상한, 토크 켜기)를 한다.
+    fn enable_outside_limits(&mut self) -> Result<Value, String> {
+        let (low, high) = OUTSIDE_LIMITS;
+        let before = self.sample("limit_enable")?;
+        self.joints.trial(
+            self.id,
+            &[(reg::MIN_ANGLE_LIMIT, low), (reg::MAX_ANGLE_LIMIT, high)],
+        )?;
+        let enable_error = self.joints.enable(self.id).err();
+        let points = self.watch("limit_enable", 2.0)?;
+        let end = points.last().map_or(before, |(_, s)| *s);
+        let moved_by = end.position - before.position;
+        let text = if !end.torque_on() {
+            "토크가 켜지지 않았다"
+        } else if (end.position - low).abs() <= 30 {
+            "서보가 한계까지 스스로 움직였다"
+        } else if moved_by.abs() <= 20 {
+            "움직이지 않고 그 자리에서 버틴다"
+        } else {
+            "한계가 아닌 자리로 움직였다"
+        };
+        self.console.say(&format!(
+            "위치 {}에서 한계를 {low}~{high}로 두고 토크를 켰더니 {}에서 멈췄다 (서보에 남은 목표 {}): {text}",
+            before.position, end.position, end.goal_position
+        ));
+        self.event("limit_enable", text)?;
+        Ok(json!({
+            "limits": [low, high],
+            "position_before": before.position,
+            "enable_error": enable_error,
+            "goal_after_enable": points.first().map(|(_, s)| s.goal_position),
+            "end": end.position,
+            "moved_by": moved_by,
+            "moved_at_s": first_time(&points, |s| (s.position - before.position).abs() > 20),
+            "torque_on": end.torque_on(),
+            "status": end.status.0,
+        }))
+    }
+
+    /// 위치 오프셋(31)이 읽는 위치와 0/4095 경계를 같이 옮기는지 본다. 옮긴다면 혼 톱니를 맞추지 않고
+    /// 오프셋으로 영점을 잡을 수 있다 (0024의 영점). 읽는 위치가 바뀔 때 혼이 따라 돌지 않게 토크를 끄고 바꾼다.
+    fn step_offset(&mut self) -> Result<Value, String> {
+        self.ensure_torque("offset")?;
+        let original = self.read_one(reg::POSITION_OFFSET)?;
+        self.go("offset", CENTER, MOVE_TIMEOUT)?;
+        self.joints.disable(self.id)?;
+        self.event("offset", "토크를 껐다")?;
+        let tried = self.offset_moves(original);
+        // 결과와 상관없이 되돌린다: 토크를 끄고 오프셋을 되돌린 뒤, 다시 켜서 가운데로 보낸다
+        self.joints.disable(self.id)?;
+        self.joints
+            .trial(self.id, &[(reg::POSITION_OFFSET, original)])?;
+        let restored = self.sample("offset")?.position;
+        self.joints.enable(self.id)?;
+        self.go("offset", CENTER, MOVE_TIMEOUT)?;
+        let mut value = tried?;
+        value["offset_restored"] = json!(original);
+        value["position_after_restore"] = json!(restored);
+        Ok(value)
+    }
+
+    /// 토크가 꺼진 채 오프셋을 바꿔 읽는 위치가 옮겨지는지 보고, 옮겨졌으면 토크를 켜서 옛 0/4095 경계
+    /// 자리를 가로질러 본다.
+    fn offset_moves(&mut self, original: i32) -> Result<Value, String> {
+        let trial = if original + OFFSET_SHIFT <= 2047 {
+            original + OFFSET_SHIFT
+        } else {
+            original - OFFSET_SHIFT
+        };
+        let before = self.sample("offset")?.position;
+        self.joints
+            .trial(self.id, &[(reg::POSITION_OFFSET, trial)])?;
+        let after = self.sample("offset")?.position;
+        let shift = after - before;
+        let mut value = json!({
+            "offset_before": original,
+            "offset_trial": trial,
+            "position_before": before,
+            "position_after": after,
+            "shift": shift,
+        });
+        let applied = (shift.abs() - OFFSET_SHIFT).abs() <= 20;
+        value["applied"] = json!(applied);
+        if !applied {
+            let text = format!(
+                "오프셋을 {original} → {trial}로 잠근 채 바꿨는데 읽는 위치가 {before} → {after}다: \
+                 그만큼 옮겨지지 않았다"
+            );
+            self.console.say(&text);
+            self.event("offset", &text)?;
+            return Ok(value);
+        }
+        self.console.say(&format!(
+            "오프셋을 {original} → {trial}로 잠근 채 바꾸자 읽는 위치가 {before} → {after}로 옮겨졌다 ({shift:+})"
+        ));
+        // 오프셋을 바꾸기 전의 0/4095 경계가 지금 읽히는 자리. 지금 위치 쪽에서 다가가 가로지른다
+        let seam = shift.rem_euclid(TURN);
+        let (near, far) = if after < seam {
+            (seam - OFFSET_CROSS, seam + OFFSET_CROSS)
+        } else {
+            (seam + OFFSET_CROSS, seam - OFFSET_CROSS)
+        };
+        value["old_boundary_at"] = json!(seam);
+        if !(0..TURN).contains(&near) || !(0..TURN).contains(&far) {
+            let text = format!("옛 경계 자리({seam})가 끝에 가까워 가로질러 보지 않았다");
+            self.console.say(&text);
+            self.event("offset", &text)?;
+            return Ok(value);
+        }
+        self.joints.enable(self.id)?;
+        // 목표에서 20칸(약 1.8°) 안에 멈추면 닿은 것으로 본다 (토크 20 %라 조금 못 미쳐 설 수 있다)
+        let close = |end: Option<i32>, goal: i32| end.is_some_and(|end| (end - goal).abs() <= 20);
+        let end_near = self.go("offset", near, MOVE_TIMEOUT)?.end();
+        let at_near = close(end_near, near);
+        let crossing = self.go("offset", far, MOVE_TIMEOUT)?;
+        let end_far = crossing.end();
+        let reached = !crossing.timed_out && close(end_far, far);
+        // 옛 경계 자리에서 1000칸 넘게 떨어진 곳을 지났으면 가로지르지 않고 반대쪽으로 돈 것이다
+        let long_way = at_near
+            && crossing
+                .points
+                .iter()
+                .any(|(_, s)| (s.position - seam).abs() > 1000);
+        let boundary_moved = at_near && reached && !long_way;
+        let text = if boundary_moved {
+            format!(
+                "옛 0/4095 경계 자리({seam})를 {near} → {far}로 그냥 지나갔다: 경계도 오프셋과 같이 옮겨진다"
+            )
+        } else if !at_near {
+            format!(
+                "옛 0/4095 경계 자리({seam}) 앞({near})까지 가지 못했다: {}에서 멈췄다",
+                show(end_near)
+            )
+        } else {
+            format!(
+                "옛 0/4095 경계 자리({seam})를 지나가지 못했다: {near}에서 {far}로 보냈더니 {}에서 멈췄다{}",
+                show(end_far),
+                if long_way {
+                    " (반대쪽으로 돌았다)"
+                } else {
+                    ""
+                }
+            )
+        };
+        self.console.say(&text);
+        self.event("offset", &text)?;
+        value["near"] = json!(near);
+        value["far"] = json!(far);
+        value["end_near"] = json!(end_near);
+        value["end_far"] = json!(end_far);
+        value["at_near"] = json!(at_near);
+        value["reached"] = json!(reached);
+        value["long_way"] = json!(long_way);
+        value["boundary_moved"] = json!(boundary_moved);
+        Ok(value)
     }
 
     /// 혼을 손으로 붙잡은 채 밀게 해서 과부하 보호에 들게 한다. `unload`면 과부하에 힘을 빼는 조건을 켜고,
@@ -1229,17 +1424,21 @@ mod tests {
         assert_eq!(run.results["enable"]["enabled"], "turned_on");
         assert_eq!(run.results["lock"]["applied"], true);
         assert_eq!(run.results["multi_turn"]["beyond_one_turn"], true); // 가짜는 한계를 지키지 않는다
+        assert_eq!(run.results["limit_enable"]["moved_by"], 0); // 가짜는 한계 밖에서도 그 자리에 있는다
+        assert_eq!(run.results["limit_enable"]["torque_on"], true);
+        assert_eq!(run.results["offset"]["applied"], false); // 가짜는 따로 켜지 않으면 읽는 위치를 옮기지 않는다
         assert_eq!(run.results["current"]["sign"], "unknown"); // 가짜는 전류가 0이다
         let state = run.joints.snapshot(20).unwrap();
         assert!(state.torque_on());
         assert_eq!(state.position, CENTER);
         assert_eq!(state.torque_limit, BENCH_CAPS.torque_limit);
-        // 잠깐 바꾼 한계와 보호 설정은 되돌렸다
+        // 잠깐 바꾼 한계, 오프셋, 보호 설정은 되돌렸다
         let registers = [
             reg::MIN_ANGLE_LIMIT,
             reg::MAX_ANGLE_LIMIT,
             reg::MIN_VOLTAGE,
             reg::UNLOAD_CONDITION,
+            reg::POSITION_OFFSET,
             reg::HOLDING_TORQUE,
             reg::PROTECTION_TIME,
             reg::OVERLOAD_TORQUE,
@@ -1251,7 +1450,7 @@ mod tests {
             .iter()
             .map(|(_, v)| *v)
             .collect();
-        assert_eq!(values, [0, 4095, 40, 44, 20, 200, 80]);
+        assert_eq!(values, [0, 4095, 40, 44, 0, 20, 200, 80]);
         // 모두 잠근 채 써서, 전원을 껐다 켜면 P 게인까지 처음과 같다
         let fake = &mut run.joints.wire().servos[0];
         assert_eq!((fake.flash, fake.eeprom_saves), (flash, 0));
@@ -1308,6 +1507,58 @@ mod tests {
         assert_eq!(trace.end(), Some(2048));
         let (last, _) = trace.points.last().unwrap();
         assert!((0.5..0.6).contains(last), "{last}");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn offset_step_follows_the_reading_and_crosses_the_old_boundary() {
+        let folder = temp_dir("check-offset");
+        let mut servo = FakeServo::with(20, 2825, 900);
+        servo.offset_moves_reading = true;
+        servo.set(reg::POSITION_OFFSET, 85); // 가진 서보에 남아 있던 값
+        let mut run = check(servo, &[], &folder);
+        let value = run.step_offset().unwrap();
+        assert_eq!(value["offset_before"], 85);
+        assert_eq!(value["offset_trial"], 597);
+        // 읽는 위치 = 엔코더 값 - 오프셋이면, 오프셋을 512 올릴 때 읽는 위치가 512 내려간다
+        assert_eq!(value["position_before"], CENTER);
+        assert_eq!(value["shift"], -512);
+        assert_eq!(value["applied"], true);
+        // 옛 경계(읽는 값 0)는 이제 3584로 읽힌다. 지금 위치(1536) 쪽인 3284에서 3884로 가로지른다
+        assert_eq!(value["old_boundary_at"], 3584);
+        assert_eq!(value["near"], 3284);
+        assert_eq!(value["far"], 3884);
+        assert_eq!(value["end_far"], 3884);
+        assert_eq!(value["boundary_moved"], true);
+        // 오프셋을 되돌리자 읽는 위치도 돌아왔고(3884 + 512 - 4096), 토크를 켠 채 가운데로 돌아왔다
+        assert_eq!(value["position_after_restore"], 300);
+        assert_eq!(run.read_one(reg::POSITION_OFFSET).unwrap(), 85);
+        let state = run.joints.snapshot(20).unwrap();
+        assert!(state.torque_on());
+        assert_eq!(state.position, CENTER);
+        assert_eq!(run.joints.wire().servos[0].eeprom_saves, 0);
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn offset_step_restores_the_offset_when_the_servo_does_not_cross() {
+        let folder = temp_dir("check-offset-stuck");
+        let mut servo = FakeServo::new(20);
+        servo.offset_moves_reading = true;
+        let mut run = check(servo, &[], &folder);
+        run.joints.enable(20).unwrap();
+        // 목표 쓰기를 무시해 제자리에 서는 서보: 옛 경계 자리를 지나가지 못한 것으로 본다
+        run.joints.wire().servos[0]
+            .faults
+            .ignored_writes_to
+            .extend([42, 43]);
+        let value = run.step_offset().unwrap();
+        assert_eq!(value["applied"], true);
+        assert_eq!(value["at_near"], false);
+        assert_eq!(value["reached"], false);
+        assert_eq!(value["boundary_moved"], false);
+        assert_eq!(run.read_one(reg::POSITION_OFFSET).unwrap(), 0);
+        assert!(run.joints.snapshot(20).unwrap().torque_on());
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

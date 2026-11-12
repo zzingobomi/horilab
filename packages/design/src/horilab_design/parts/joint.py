@@ -58,10 +58,19 @@ PIN_HOLE_H = _WHITE.pin_hole_horizontal_mm  # 가로 구멍 (손목 몸통의 �
 M3_FREE = 3.2  # 볼트가 지나가는 세로 구멍: 시험편 3.1에 구멍 자리 오차 몫 0.1
 M3_FREE_H = 3.4  # 가로 구멍: 시험편 3.3에 0.1
 M3_TAP = 2.8  # 조여 넣는 구멍 (뒷덮개 나사)
-NUT_AF, NUT_T = 5.6, 2.4  # 눌러 끼우는 육각 홈의 맞변 거리, 너트 두께
+NUT_AF, NUT_T = 5.6, 2.4  # 위에서 눌러 끼우는 육각 홈의 맞변 거리, 너트 두께 (출력 원판 밑면)
+# 누름 틀과 서보 받침의 너트 자리: 뽑을 때 너트가 서고(축이 가로) 홈 천장이 허공에 걸친다. 위에서 끼우는 홈과
+# 뽑히는 방향이 달라 그 값이 옮겨지지 않는다 (흰 받침 기둥 귀에서 5.6에 너트가 손으로 들어가지 않았다).
+# 임시: 검정 fit1_nut_slots_upright 결과(세로 폭)로 바꾼다
+NUT_AF_UPRIGHT = 5.6
 BEARING_BORE = 42.1  # 6806 바깥 링 자리 (임시: 흰색 fit3_6806_bores 결과로 바꾼다)
 JOURNAL_D = 29.9  # 안쪽 링 속 저널 (임시: 검정 fit3_6806_shafts 결과로 바꾼다)
-PROVISIONAL = ("BEARING_BORE", "JOURNAL_D", "검정 부품의 구멍과 너트 홈 (흰색 값을 씀)")
+PROVISIONAL = (
+    "BEARING_BORE",
+    "JOURNAL_D",
+    "NUT_AF_UPRIGHT",
+    "검정 부품의 구멍과 너트 홈 (흰색 값을 씀)",
+)
 
 # ---- 베어링과 축 방향 쌓임 ----
 BRG_D, BRG_OD, BRG_B = 30.0, 42.0, 7.0
@@ -331,11 +340,11 @@ def retainer() -> Compound:
             if s > 0
             else (-leg_in - NUT_T - 0.3, -leg_in + 0.01)
         )
-        part -= hex_z(0.0, RET_SCREW_Y, z0, z1)
+        part -= hex_z(0.0, RET_SCREW_Y, z0, z1, NUT_AF_UPRIGHT)
         part -= (
             cyl_z(r, 10, 25, 0.0, RET_SCREW_Y) if s > 0 else cyl_z(r, -25, -10, 0.0, RET_SCREW_Y)
         )
-    part -= hex_x(RET_SCREW_Y, 0.0, leg_in - 0.01, leg_in + NUT_T + 0.3)
+    part -= hex_x(RET_SCREW_Y, 0.0, leg_in - 0.01, leg_in + NUT_T + 0.3, NUT_AF_UPRIGHT)
     part -= cyl_x(r, 10, 25, RET_SCREW_Y, 0.0)
     part -= box(
         -30, -9.0, 0, LABEL + 0.17 + 0.75, -7.7, 7.7
@@ -388,7 +397,7 @@ def carrier() -> Compound:
             if sg > 0
             else (-boss_in - NUT_T - 0.3, -boss_in + 0.01)
         )
-        part -= hex_z(0.0, CAR_SCREW_Y, z0, z1)
+        part -= hex_z(0.0, CAR_SCREW_Y, z0, z1, NUT_AF_UPRIGHT)
         part -= (
             cyl_z(r, 10, 25, 0.0, CAR_SCREW_Y) if sg > 0 else cyl_z(r, -25, -10, 0.0, CAR_SCREW_Y)
         )
