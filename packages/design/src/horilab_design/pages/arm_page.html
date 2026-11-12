@@ -1,0 +1,984 @@
+<title>horilab 팔 전체</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* Layout: a drafting sheet. The desk scene is the drawing, closed by a title-block strip;
+   colours, playback, joint controls and checks sit in a column beside it and stack under it on phones. */
+:root {
+  --paper: #edf0f1;
+  --sheet: #f8f9f9;
+  --stage: #dfe4e7;
+  --ink: #1a2227;
+  --muted: #56636c;
+  --rule: #c8d0d5;
+  --accent: #2356a3;
+  --accent-ink: #ffffff;
+  --tag-bg: rgba(248, 249, 249, 0.93);
+  --ok: #2f7a4f;
+  --warn: #a5650f;
+  /* Physical colours of the planned materials. Same in both themes: they are the real filaments. */
+  --pla-white: #eeeeea;
+  --pla-black: #25272a;
+  --pla-blue: #2f6bd8;
+  --cam: #3a3e44;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  --font-mono: "IBM Plex Mono", "IBM Plex Sans KR", ui-monospace, Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13.5px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: clamp(28px, 4.4vw, 40px);
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #101417;
+    --sheet: #161b1f;
+    --stage: #1a2026;
+    --ink: #e1e6e9;
+    --muted: #97a3ab;
+    --rule: #283137;
+    --accent: #6c9ae0;
+    --accent-ink: #0b1220;
+    --tag-bg: rgba(22, 27, 31, 0.93);
+    --ok: #6cc08e;
+    --warn: #e0a55a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #101417;
+  --sheet: #161b1f;
+  --stage: #1a2026;
+  --ink: #e1e6e9;
+  --muted: #97a3ab;
+  --rule: #283137;
+  --accent: #6c9ae0;
+  --accent-ink: #0b1220;
+  --tag-bg: rgba(22, 27, 31, 0.93);
+  --ok: #6cc08e;
+  --warn: #e0a55a;
+}
+
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  padding-inline: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1240px; margin-inline: auto; padding-block: 28px 56px; display: grid; gap: 22px; }
+.head { display: grid; gap: 8px; }
+.eyebrow { margin: 0; font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 500; letter-spacing: 0.08em; color: var(--muted); }
+h1 { margin: 0; font-size: var(--fs-xl); font-weight: 600; line-height: 1.15; letter-spacing: -0.015em; text-wrap: balance; }
+.lede { margin: 0; max-width: 66ch; color: var(--muted); }
+
+.main { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(300px, 1fr); gap: 22px; align-items: start; }
+.view { display: grid; gap: 10px; min-width: 0; }
+
+.stage { position: relative; height: min(70vh, 660px); min-height: 360px; background: var(--stage); border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+#gl { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#gl:active { cursor: grabbing; }
+
+.tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.tag { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.tag .dot { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--stage); }
+.tag .ln { position: absolute; left: 4px; top: 0; width: 12px; height: 1px; background: var(--ink); opacity: 0.55; }
+.tag .txt {
+  position: absolute; left: 16px; top: 0; transform: translateY(-50%); white-space: nowrap;
+  font-family: var(--font-body); font-size: 12px; font-weight: 500; line-height: 1.25; color: var(--ink);
+  background: var(--tag-bg); border: 1px solid var(--rule); border-radius: 3px; padding: 2px 6px;
+}
+.tag.j .txt { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: 0.03em; padding: 1px 6px; }
+.tag.j .dot { background: var(--accent); }
+.tag.flip .ln { left: auto; right: 4px; }
+.tag.flip .txt { left: auto; right: 16px; }
+
+.view-seg { position: absolute; top: 10px; right: 10px; }
+.view-seg button { background: var(--tag-bg); font-size: var(--fs-xs); padding: 6px 10px; }
+.titleblock {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px;
+  padding: 6px 12px; font-family: var(--font-body); font-size: 12px; line-height: 1.35; color: var(--muted);
+  background: var(--tag-bg); border-top: 1px solid var(--rule); pointer-events: none;
+}
+.titleblock b { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: 0.04em; color: var(--ink); }
+.gl-error { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--fs-xs); color: var(--muted); }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 2px; flex: none; border: 1px solid var(--rule); }
+.sw-white { background: var(--pla-white); }
+.sw-black { background: var(--pla-black); }
+.sw-blue { background: var(--pla-blue); }
+.sw-cam { background: var(--cam); }
+.sw-cap { background: var(--cap-swatch, var(--pla-black)); }
+
+.panel { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); min-width: 0; }
+.block { padding: 16px 18px; display: grid; gap: 12px; }
+.block + .block { border-top: 1px solid var(--rule); }
+.block h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; line-height: 1.3; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.count { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.progress { height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; }
+.progress span { display: block; height: 100%; width: 0; background: var(--accent); }
+
+.btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn, .seg button {
+  appearance: none; margin: 0; border: 1px solid var(--rule); background: var(--paper); color: var(--ink);
+  font: inherit; font-size: var(--fs-sm); font-weight: 500; line-height: 1.2; padding: 9px 13px; border-radius: 4px; cursor: pointer;
+}
+.btn:hover, .seg button:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); min-width: 74px; }
+.seg { display: inline-flex; flex-wrap: wrap; }
+.seg button { border-radius: 0; padding-inline: 11px; }
+.seg.mono button { font-family: var(--font-mono); }
+.seg button + button { margin-left: -1px; }
+.seg button:first-child { border-radius: 4px 0 0 4px; }
+.seg button:last-child { border-radius: 0 4px 4px 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); position: relative; }
+.field { display: grid; gap: 6px; }
+.colors { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+.colors .lbl { font-size: var(--fs-sm); line-height: 1.3; }
+.colors .lbl small { display: block; font-size: var(--fs-xs); color: var(--muted); }
+.seg.swatch button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; }
+.seg.swatch .sw { width: 11px; height: 11px; }
+.filament { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--fs-sm); }
+.filament span { display: inline-flex; align-items: center; gap: 6px; }
+.filament b { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
+.field > span { font-size: var(--fs-sm); color: var(--muted); }
+.note { margin: 0; font-size: var(--fs-sm); color: var(--muted); }
+
+.joints { display: grid; grid-template-columns: max-content minmax(0, 1fr) 54px; gap: 6px 10px; align-items: center; }
+.joints label { font-size: var(--fs-sm); color: var(--ink); white-space: nowrap; }
+.joints label b { font-family: var(--font-display); font-size: 16px; font-weight: 600; letter-spacing: 0.03em; margin-right: 6px; }
+.joints label span { color: var(--muted); }
+.joints input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); }
+.joints output { font-family: var(--font-mono); font-size: var(--fs-xs); text-align: right; font-variant-numeric: tabular-nums; }
+
+.spec { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 14px; font-size: var(--fs-sm); }
+.spec dt { color: var(--muted); }
+.spec dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; align-self: center; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--ink); cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+
+.checks-wrap { overflow-x: auto; }
+.checks { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.checks th, .checks td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.checks th { font-size: var(--fs-xs); font-weight: 500; color: var(--muted); letter-spacing: 0.02em; }
+.checks td.n { font-family: var(--font-mono); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.checks tr.active-col td.cur { color: var(--ink); }
+.checks td.cur, .checks th.cur { color: var(--ink); font-weight: 600; }
+.checks td.dim, .checks th.dim { color: var(--muted); }
+.pill { display: inline-block; font-family: var(--font-body); font-size: 11px; font-weight: 600; line-height: 1.2; padding: 2px 6px; border-radius: 999px; border: 1px solid currentColor; }
+.pill.ok { color: var(--ok); }
+.pill.warn { color: var(--warn); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 900px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .stage { height: min(62vh, 480px); min-height: 320px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+
+<div class="wrap">
+  <header class="head">
+    <p class="eyebrow">HORILAB · UR식 관절 · 2026-11</p>
+    <h1>팔 전체 모습</h1>
+    <p class="lede">UR식 관절로 다시 그린 팔의 대략적인 모습이에요. 서보는 부모 링크의 원통 안에 들어가고, 자식 링크는 출력 쪽의 검정 원판에만 붙어요. 그래서 위팔, 아래팔, 손목이 옆으로 한 칸씩 비켜 있고, 관절마다 양쪽 160°까지 돌아요. 원통과 손목의 크기는 관절 하나를 실제 치수로 그린 CAD의 값이고, 이 형상으로 부딪힘과 버팀 토크를 확인했어요. 이 그림의 링크와 손목 몸통은 검토용으로 원통과 상자로 줄인 모양이라, 실제 부품(관절 그림)과 이음매와 모서리가 달라요. 어깨(J2)는 서보가 오면 재서 고쳐요. 도구는 평행 그리퍼예요. 박스 윗면의 구멍에 손가락을 넣고 벌려 잡아서, 박스를 틈 없이 붙여 쌓아요. 그리퍼와 베이스는 아직 설계 전이라 모양이 대략이에요. 베이스는 양옆 날개를 얇은 금속 C 클램프 두 개로 책상 뒤 가장자리에 물려요. D405는 J6 원통 옆에 달아요. 오른쪽 위의 "손목 가까이"를 누르면 손목을 따라가며 보여 줘요. 책상 위의 옅은 반원과 점선은 로봇의 작업 범위(반지름 16~30 cm)예요.</p>
+  </header>
+
+  <div class="main">
+    <section class="view" aria-label="팔 3D 개념도">
+      <div class="stage" id="stage">
+        <canvas id="gl" aria-label="책상 위의 로봇팔 3D 모델. 끌어서 돌려 볼 수 있어요"></canvas>
+        <div class="tags" id="tags" aria-hidden="true"></div>
+        <div class="seg view-seg" role="group" aria-label="보는 자리" id="view-seg">
+          <button type="button" id="view-all" data-view="all" aria-pressed="true">전체</button>
+          <button type="button" id="view-wrist" data-view="wrist" aria-pressed="false">손목 가까이</button>
+        </div>
+        <div class="titleblock"><span id="title-dims">개념도 · 어깨 높이 160 · 위팔 220 · 아래팔 180 · 손목 79 · 70 · 35</span><span>단위 mm · <b>UR식 관절</b></span></div>
+        <p class="gl-error" id="gl-error" hidden>이 브라우저에서 3D를 그리지 못했어요. 다른 브라우저로 열거나 하드웨어 가속을 켜 보세요.</p>
+      </div>
+      <ul class="legend" aria-label="색 구분" id="legend"></ul>
+    </section>
+
+    <aside class="panel">
+      <section class="block" aria-labelledby="h-colors" hidden>
+        <h2 id="h-colors">색 조합</h2>
+        <div class="colors" id="colors"></div>
+        <div class="field">
+          <span>이 조합으로 뽑을 때 색별 필라멘트 (어림)</span>
+          <div class="filament" id="filament" aria-live="polite"></div>
+        </div>
+        <p class="note">출력 무게는 형상에서 계산한 어림이에요 (벽 2.6 mm, 채움 25%). 도구, 클램프, 시험용 박스, 서포트와 버리는 양은 빠져 있어요.</p>
+      </section>
+
+      <section class="block" aria-labelledby="h-play">
+        <div class="row"><h2 id="h-play">박스 쌓기</h2><span class="count" id="box-count">박스 0 / 16</span></div>
+        <div class="progress" aria-hidden="true"><span id="progress-bar"></span></div>
+        <div class="btns">
+          <button type="button" class="btn primary" id="play">멈춤</button>
+          <button type="button" class="btn" id="restart">처음부터</button>
+          <div class="seg mono" role="group" aria-label="재생 속도">
+            <button type="button" id="speed-1" data-speed="1" aria-pressed="false">1×</button>
+            <button type="button" id="speed-2" data-speed="2" aria-pressed="true">2×</button>
+            <button type="button" id="speed-4" data-speed="4" aria-pressed="false">4×</button>
+          </div>
+        </div>
+        <p class="note">집는 곳에 박스를 손으로 하나씩 놓으면, 팔이 평행 그리퍼로 들어서 2 × 2 팔레트에 4층으로 붙여 쌓아요. 관절 각도는 설계 코드의 IK로 계산했어요.</p>
+      </section>
+
+      <section class="block" aria-labelledby="h-joints">
+        <h2 id="h-joints">관절 직접 움직이기</h2>
+        <div class="joints" id="joints"></div>
+        <p class="note">슬라이더를 움직이면 재생이 멈춰요. 재생을 누르면 작업 자세로 돌아가요. 슬라이더 범위는 기계 멈춤 안쪽의 한계예요 (J2~J6는 양쪽 160°, J4는 180° 둘레, J1은 양쪽 165°).</p>
+      </section>
+
+      <section class="block" aria-labelledby="h-checks">
+        <h2 id="h-checks">새 관절로 확인한 것</h2>
+        <dl class="spec">
+          <dt>UR3e가 되는 자세 중</dt><dd>78.2% (6,363개 중 4,977개)</dd>
+          <dt>못 하는 까닭</dt><dd>거의 다 버팀 토크 (어깨, 팔꿈치)</dd>
+          <dt>주 작업 범위</dt><dd>40칸 모두 됨 (그리퍼 + 짐 150 g)</dd>
+          <dt>버팀 토크 / 정격</dt><dd>어깨 0.78 · 팔꿈치 0.71 (목표 0.8 안)</dd>
+          <dt>관절 범위</dt><dd>양쪽 160° (기계 멈춤 163°)</dd>
+          <dt>어깨가 드는 무게</dt><dd>1,017 g (선과 자잘한 것은 빼고)</dd>
+          <dt>포인터 기울이기</dt><dd>30°는 40칸 중 39칸 · 45°는 32칸이 8방향</dd>
+          <dt>박스 쌓기</dt><dd>자세 246개 모두 됨, 부딪힘 없음</dd>
+        </dl>
+        <p class="note">무게는 전에 뽑아서 잰 부품에 맞춘 어림이에요. 형상에 없는 무게를 플랜지에 30 g 더 달면 UR3e 비교가 74.7%로 내려가요. 그래서 가볍게 만드는 것이 중요해요.</p>
+      </section>
+
+      <section class="block" aria-labelledby="h-dims">
+        <h2 id="h-dims">치수</h2>
+        <dl class="spec">
+          <dt>어깨 높이</dt><dd>160 mm (책상 → J2 축)</dd>
+          <dt>베이스</dt><dd>돌림판 윗면 93 mm (다시 그릴 예정)</dd>
+          <dt>위팔 · 아래팔</dt><dd>220 · 180 mm</dd>
+          <dt>손목 오프셋</dt><dd>79 · 70 · 35 mm</dd>
+          <dt>관절 원통 지름</dt><dd>어깨 57 · 팔꿈치와 손목 47 mm</dd>
+          <dt>관절 길이</dt><dd>뒷덮개 ~ 자식이 앉는 면 59 mm (팔꿈치, 손목)</dd>
+          <dt>관 링크</dt><dd>위팔 40 · 아래팔 36 mm, 관절 쪽 면이 납작</dd>
+          <dt>옆으로 비킨 자리</dt><dd>위팔 가운데 56 · 아래팔 24 · 손목 79 mm</dd>
+          <dt>작업 범위</dt><dd>반지름 16~30 cm, 높이 2~18 cm</dd>
+          <dt>평행 그리퍼</dt><dd>105 mm (플랜지 → 잡는 점, 교체부 포함)</dd>
+          <dt>서보</dt><dd>J1 STS3215 · J2 ST-3120 · J3 STS3250 · J4~J6 STS3215</dd>
+          <dt>베어링</dt><dd>J2 6808 · J3~J6 6806 (가진 것)</dd>
+        </dl>
+        <div class="btns">
+          <label class="check" for="show-tags"><input type="checkbox" id="show-tags" checked>이름표 보기</label>
+          <label class="check" for="show-fov"><input type="checkbox" id="show-fov" checked>D405 시야 보기</label>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const DATA = __DATA__;
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const stageEl = $('stage'), canvas = $('gl'), tagsEl = $('tags'), errEl = $('gl-error'), viewSeg = $('view-seg');
+  const viewBtns = Array.from(document.querySelectorAll('[data-view]')), fovToggle = $('show-fov');
+  const playBtn = $('play'), restartBtn = $('restart'), countEl = $('box-count'), barEl = $('progress-bar');
+  const speedBtns = Array.from(document.querySelectorAll('[data-speed]'));
+  const jointsEl = $('joints'), tagsToggle = $('show-tags');
+
+  const reduceMQ = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let reduce = reduceMQ.matches;
+  if (reduceMQ.addEventListener) reduceMQ.addEventListener('change', (e) => { reduce = e.matches; });
+
+  const JOINT_NAMES = ['베이스', '어깨', '팔꿈치', '손목 1', '손목 2', '손목 3'];
+  const deg = (r) => (r * 180) / Math.PI;
+  const rad = (d) => (d * Math.PI) / 180;
+  const fmt = (d) => (d < -0.5 ? '−' : '') + Math.abs(Math.round(d)) + '°';
+
+  const vi = 0; // 정한 모양 하나만 그린다
+
+  const sliders = DATA.variants[0].chain.map((j, i) => {
+    const label = document.createElement('label');
+    label.htmlFor = `joint-${i + 1}`;
+    label.innerHTML = '<b></b><span></span>';
+    label.querySelector('b').textContent = `J${i + 1}`;
+    label.querySelector('span').textContent = JOINT_NAMES[i];
+    const input = document.createElement('input');
+    input.type = 'range'; input.id = `joint-${i + 1}`; input.min = String(j.lower); input.max = String(j.upper); input.step = '1';
+    const out = document.createElement('output');
+    out.htmlFor = input.id;
+    jointsEl.append(label, input, out);
+    return { input, out };
+  });
+
+  if (typeof THREE === 'undefined') { errEl.hidden = false; viewSeg.hidden = true; return; }
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); } catch (e) { errEl.hidden = false; viewSeg.hidden = true; return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 5, 9000);
+  let controls;
+  if (THREE.OrbitControls) {
+    controls = new THREE.OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.1;
+    controls.rotateSpeed = 0.8;
+    controls.screenSpacePanning = true;
+    controls.minDistance = 150;
+    controls.maxDistance = 2600;
+    controls.maxPolarAngle = Math.PI / 2 - 0.04;
+  } else {
+    controls = { target: new THREE.Vector3(), update() { camera.lookAt(this.target); }, addEventListener() {} };
+  }
+
+  const tok = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888888';
+  const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
+  const W = (x, y, z) => new THREE.Vector3(x, z, -y); // robot (x forward, y left, z up) to three.js (y up)
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8d8a84, 0.75));
+  const key = new THREE.DirectionalLight(0xffffff, 0.85);
+  key.position.copy(W(420, -520, 1100));
+  key.target.position.copy(W(100, 0, 0));
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, { left: -520, right: 520, top: 520, bottom: -520, near: 200, far: 2600 });
+  key.shadow.bias = -0.0004;
+  scene.add(key, key.target);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.3);
+  fill.position.copy(W(-500, 600, 500));
+  scene.add(fill);
+
+  // Robot frame: Z up, mm. Everything below is built in this frame.
+  const R = new THREE.Group();
+  R.rotation.x = -Math.PI / 2;
+  scene.add(R);
+
+  // Printed parts come in four colour groups; each can be any of the three PLA colours on hand.
+  const COLORS = { white: tok('--pla-white'), black: tok('--pla-black'), blue: tok('--pla-blue') };
+  const COLOR_NAMES = { white: '흰색', black: '검정', blue: '파랑' };
+  const GROUPS = [
+    { key: 'body', label: '몸통', sub: '관절 원통 · 관', color: 'white' },
+    { key: 'cap', label: '뚜껑', sub: '관절 원통 양 끝', color: 'black' },
+    { key: 'frame', label: '브래킷 · 서보 자리', sub: '검은 띠, 관 끝의 서보 집', color: 'black' },
+    { key: 'base', label: '베이스', sub: '바닥 원통과 돌림판', color: 'black' },
+    { key: 'grip', label: '그리퍼', sub: '몸통과 손가락', color: 'black' },
+  ];
+  const M = {
+    white: new THREE.MeshStandardMaterial({ color: lin(tok('--pla-white')), roughness: 0.55 }),
+    black: new THREE.MeshStandardMaterial({ color: lin(tok('--pla-black')), roughness: 0.5 }),
+    blue: new THREE.MeshStandardMaterial({ color: lin(tok('--pla-blue')), roughness: 0.5 }),
+    body: new THREE.MeshStandardMaterial({ color: lin(COLORS.white), roughness: 0.55 }),
+    cap: new THREE.MeshStandardMaterial({ color: lin(COLORS.black), roughness: 0.45 }),
+    frame: new THREE.MeshStandardMaterial({ color: lin(COLORS.black), roughness: 0.5 }),
+    base: new THREE.MeshStandardMaterial({ color: lin(COLORS.black), roughness: 0.5 }),
+    grip: new THREE.MeshStandardMaterial({ color: lin(COLORS.black), roughness: 0.5 }),
+    hole: new THREE.MeshStandardMaterial({ color: lin('#0d1c3d'), roughness: 0.9 }),
+    servo: new THREE.MeshStandardMaterial({ color: lin('#17191b'), roughness: 0.7 }),
+    metal: new THREE.MeshStandardMaterial({ color: lin('#9aa0a6'), roughness: 0.35, metalness: 0.5 }),
+    camera: new THREE.MeshStandardMaterial({ color: lin('#646b73'), roughness: 0.4, metalness: 0.35 }),
+    glass: new THREE.MeshStandardMaterial({ color: lin('#0b0c0e'), roughness: 0.12, metalness: 0.3 }),
+    lens: new THREE.MeshStandardMaterial({ color: lin('#1b2433'), roughness: 0.08, metalness: 0.6 }),
+    tool: new THREE.MeshStandardMaterial({ color: lin(tok('--pla-white')), roughness: 0.55 }),
+    steel: new THREE.MeshStandardMaterial({ color: lin('#8d9399'), roughness: 0.35, metalness: 0.45 }),
+    rubber: new THREE.MeshStandardMaterial({ color: lin('#454a52'), roughness: 0.8 }),
+    desk: new THREE.MeshStandardMaterial({ color: lin('#d4d2cc'), roughness: 0.9 }),
+  };
+  const edgeWhite = new THREE.LineBasicMaterial({ color: lin('#8f948f'), transparent: true, opacity: 0.4 });
+  const edgeBox = new THREE.LineBasicMaterial({ color: lin('#173f86'), transparent: true, opacity: 0.8 });
+  const edgeDesk = new THREE.LineBasicMaterial({ color: lin('#9c9890'), transparent: true, opacity: 0.9 });
+  const edgeCam = new THREE.LineBasicMaterial({ color: lin('#a7b0ba'), transparent: true, opacity: 0.7 });
+  const fovMat = new THREE.MeshBasicMaterial({ color: lin('#4f8de8'), transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false });
+  const fovLine = new THREE.LineBasicMaterial({ color: lin('#2f6bd8'), transparent: true, opacity: 0.6 });
+
+  function add(parent, geom, material, o = {}) {
+    const m = new THREE.Mesh(geom, material);
+    m.castShadow = o.cast !== false;
+    m.receiveShadow = o.receive !== false;
+    if (o.edges) m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geom, 30), o.edges));
+    parent.add(m);
+    return m;
+  }
+  function box(x0, x1, y0, y1, z0, z1) {
+    const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
+    g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    return g;
+  }
+  function cylZ(r, z0, z1, x = 0, y = 0, seg = 48) {
+    const g = new THREE.CylinderGeometry(r, r, z1 - z0, seg);
+    g.rotateX(Math.PI / 2);
+    g.translate(x, y, (z0 + z1) / 2);
+    return g;
+  }
+
+  // One shape from the design check (box, cylinder or ring), placed in its link frame.
+  function primGeom(p) {
+    if (p.s === 'box') return new THREE.BoxGeometry(2 * p.z[0], 2 * p.z[1], 2 * p.z[2]);
+    if (p.s === 'cyl') {
+      const g = new THREE.CylinderGeometry(p.z[0], p.z[0], 2 * p.z[1], 56);
+      g.rotateX(Math.PI / 2);
+      return g;
+    }
+    if (p.s === 'dtube') {
+      const a = Math.asin((p.z[0] - p.z[2]) / p.z[0]);
+      const sh = new THREE.Shape();
+      sh.absarc(0, 0, p.z[0], -a, Math.PI + a, false);
+      sh.closePath();
+      const gd = new THREE.ExtrudeGeometry(sh, { depth: 2 * p.z[1], bevelEnabled: false, curveSegments: 48 });
+      gd.translate(0, 0, -p.z[1]);
+      return gd;
+    }
+    const s = new THREE.Shape();
+    s.absarc(0, 0, p.z[0], 0, Math.PI * 2, false);
+    const hole = new THREE.Path();
+    hole.absarc(0, 0, p.z[2], 0, Math.PI * 2, true);
+    s.holes.push(hole);
+    const g = new THREE.ExtrudeGeometry(s, { depth: 2 * p.z[1], bevelEnabled: false, curveSegments: 56 });
+    g.translate(0, 0, -p.z[1]);
+    return g;
+  }
+  const ROLE = { body: 'body', cap: 'cap', frame: 'frame', base: 'base', servo: 'servo', metal: 'metal', camera: 'camera', glass: 'glass', lens: 'lens', tool: 'tool', grip: 'grip' };
+  const groupEdges = { body: [], cap: [], frame: [], base: [], grip: [] };
+  function placePrim(parent, p) {
+    const mat = M[ROLE[p.c] || 'frame'];
+    const inGroup = p.c in groupEdges;
+    const edges = inGroup || p.c === 'tool' ? edgeWhite : p.c === 'camera' ? edgeCam : null;
+    const m = add(parent, primGeom(p), mat, { edges });
+    if (inGroup) groupEdges[p.c].push(m.children[0]);
+    const r = p.r;
+    new THREE.Matrix4().set(r[0], r[1], r[2], p.p[0], r[3], r[4], r[5], p.p[1], r[6], r[7], r[8], p.p[2], 0, 0, 0, 1)
+      .decompose(m.position, m.quaternion, m.scale);
+    return m;
+  }
+
+  // Desk, base clamp, frames for the pick spot and the pallet.
+  add(R, box(-55, 285, -275, 275, -40, 0), M.desk, { cast: false, edges: edgeDesk });
+  {
+    const pts = [];
+    for (let x = -50; x <= 280; x += 50) pts.push(x, -275, 0.4, x, 275, 0.4);
+    for (let y = -250; y <= 250; y += 50) pts.push(-55, y, 0.4, 285, y, 0.4);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    R.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: lin('#b4b0a8'), transparent: true, opacity: 0.55 })));
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(180, 240, 96, 1, rad(-100), rad(200)),
+      new THREE.MeshBasicMaterial({ color: lin(tok('--pla-blue')), transparent: true, opacity: 0.09, depthWrite: false })
+    );
+    ring.position.z = 0.6;
+    R.add(ring);
+  }
+  // Base fixing (design.md): two wings reach the desk's back edge, each held by a thin metal C-clamp
+  // whose top jaw bites the wing about 2 cm in from the edge. The desk top is 40 mm thick.
+  for (const s of [1, -1]) {
+    const yc = s * 48;
+    add(R, box(-55, -8, yc - 20, yc + 20, 0, 10), M.black);
+    add(R, box(-63, -57, yc - 6, yc + 6, -72, 16), M.black);
+    add(R, box(-63, -33, yc - 6, yc + 6, 10, 16), M.black);
+    add(R, box(-63, -33, yc - 6, yc + 6, -72, -66), M.black);
+    add(R, cylZ(4, -84, -42, -45, yc, 16), M.steel);
+    add(R, cylZ(14, -42, -40, -45, yc, 32), M.steel);
+    add(R, cylZ(12, -96, -84, -45, yc, 24), M.rubber);
+  }
+  const [pickX, pickY] = DATA.pick;
+  function frame(cx, cy, inner, outer) {
+    add(R, box(cx - outer, cx + outer, cy + inner, cy + outer, 0, 3), M.black);
+    add(R, box(cx - outer, cx + outer, cy - outer, cy - inner, 0, 3), M.black);
+    add(R, box(cx + inner, cx + outer, cy - inner, cy + inner, 0, 3), M.black);
+    add(R, box(cx - outer, cx - inner, cy - inner, cy + inner, 0, 3), M.black);
+  }
+  frame(pickX, pickY, 21.5, 25.5);
+  const palX = DATA.boxes.reduce((s, b) => s + b.x, 0) / DATA.boxes.length;
+  const palY = DATA.boxes.reduce((s, b) => s + b.y, 0) / DATA.boxes.length;
+  frame(palX, palY, 42.5, 46.5);
+  // The robot's main work zone (0017): radius 15-30 cm in front. The desk is a little smaller at the edges.
+  {
+    const zone = new THREE.Mesh(
+      new THREE.RingGeometry(160, 300, 128, 1, rad(-90), rad(180)),
+      new THREE.MeshBasicMaterial({ color: lin(tok('--pla-blue')), transparent: true, opacity: 0.05, depthWrite: false })
+    );
+    zone.position.z = 0.3;
+    R.add(zone);
+    const pts = [];
+    for (let a = -90; a <= 90; a += 2) pts.push(300 * Math.cos(rad(a)), 300 * Math.sin(rad(a)), 0.5);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    R.add(new THREE.Line(g, new THREE.LineDashedMaterial({ color: lin(tok('--pla-blue')), dashSize: 8, gapSize: 6, transparent: true, opacity: 0.7 })).computeLineDistances());
+  }
+
+  // Boxes: hand-placed one at a time at the pick spot, stacked on the pallet.
+  const BOX = DATA.box_mm;
+  const boxGeom = new THREE.BoxGeometry(BOX, BOX, BOX);
+  // The top hole the gripper fingers open inside (0014).
+  const holeGeom = new THREE.CircleGeometry(DATA.hole_mm / 2, 32);
+  const boxes = DATA.boxes.map(() => {
+    const m = add(R, boxGeom, M.blue, { edges: edgeBox });
+    const h = add(m, holeGeom, M.hole, { cast: false });
+    h.position.z = BOX / 2 + 0.05;
+    m.visible = false;
+    m.userData.appear = 1;
+    return m;
+  });
+
+  // Labels.
+  const tags = [];
+  function tag(parentObj, x, y, z, text, cls = '', group = tags) {
+    const a = new THREE.Object3D();
+    a.position.set(x, y, z);
+    parentObj.add(a);
+    const el = document.createElement('div');
+    el.className = 'tag ' + cls;
+    el.hidden = true;
+    el.innerHTML = '<span class="dot"></span><span class="ln"></span><span class="txt"></span>';
+    el.querySelector('.txt').textContent = text;
+    tagsEl.appendChild(el);
+    const t = { a, el, shown: false, flip: null };
+    group.push(t);
+    return t;
+  }
+  tag(R, pickX, pickY + 26, 3, '집는 곳');
+  tag(R, -60, 72, 16, '금속 C 클램프 (양옆 2개)');
+  tag(R, palX + 47, palY, 3, '팔레트 2 × 2');
+  tag(R, 236, 40, 1, '박스 자리 18~24 cm');
+  tag(R, 276, -118, 1, '로봇 작업 범위 16~30 cm');
+
+  // D405 field of view: a wedge from the lens along the optical axis, 84° wide along the baseline, 58° across.
+  const FOV_LEN = 150;
+  function fovWedge(c) {
+    const u = new THREE.Vector3(...c.axis).normalize();
+    const w = new THREE.Vector3(...c.wide).normalize();
+    const n = new THREE.Vector3().crossVectors(w, u).normalize();
+    const tw = Math.tan(rad(c.fov[0] / 2)) * FOV_LEN, tn = Math.tan(rad(c.fov[1] / 2)) * FOV_LEN;
+    const apex = new THREE.Vector3(...c.lens);
+    const far = apex.clone().addScaledVector(u, FOV_LEN);
+    const k = [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([a, b]) => far.clone().addScaledVector(w, a * tw).addScaledVector(n, b * tn));
+    const tri = [], seg = [];
+    for (let i = 0; i < 4; i++) {
+      const a = k[i], b = k[(i + 1) % 4];
+      tri.push(apex.x, apex.y, apex.z, a.x, a.y, a.z, b.x, b.y, b.z);
+      seg.push(apex.x, apex.y, apex.z, a.x, a.y, a.z, a.x, a.y, a.z, b.x, b.y, b.z);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(tri, 3));
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(seg, 3));
+    const grp = new THREE.Group();
+    const mesh = new THREE.Mesh(g, fovMat);
+    mesh.renderOrder = 2;
+    grp.add(mesh, new THREE.LineSegments(lg, fovLine));
+    return grp;
+  }
+
+
+  // Link lettering (concept preview): text on the tube surface, facing the robot's right side (-y),
+  // reading from the shoulder toward the wrist. The letters are cut 0.5 mm into the tube in the same colour (0019),
+  // so they are drawn as a slightly darker shade of the body colour (lighter on black).
+  let labelMats = [];
+  const labelInk = () => {
+    const c = new THREE.Color(COLORS[GROUPS.find((g) => g.key === 'body').color]);
+    const hsl = c.getHSL({ h: 0, s: 0, l: 0 });
+    c.setHSL(hsl.h, hsl.s, hsl.l > 0.5 ? hsl.l - 0.2 : hsl.l + 0.1);
+    return '#' + c.getHexString();
+  };
+  function labelTexture(text, ink) {
+    // The canvas maps around the tube (width) and along it (height); the text is turned to run along it.
+    const CW = 160, CH = 512;
+    const c = document.createElement('canvas');
+    c.width = CW; c.height = CH;
+    const ctx = c.getContext('2d');
+    ctx.translate(CW / 2, CH / 2);
+    ctx.rotate(-Math.PI / 2);
+    const setFont = (px) => {
+      ctx.font = `600 ${px}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+      if ('letterSpacing' in ctx) ctx.letterSpacing = `${Math.round(px * 0.1)}px`;
+    };
+    let size = Math.round(CW * 0.7);
+    setFont(size);
+    const fit = (CH * 0.86) / ctx.measureText(text).width;
+    if (fit < 1) { size = Math.floor(size * fit); setFont(size); }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = ink;
+    ctx.fillText(text, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.encoding = THREE.sRGBEncoding;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return t;
+  }
+  function placeLabels(v, frameOf) {
+    labelMats = [];
+    for (const lb of v.labels || []) {
+      const len = Math.min(2 * lb.half * 0.7, 80);
+      const arc = 26 / lb.r;
+      const g = new THREE.CylinderGeometry(lb.r + 0.35, lb.r + 0.35, len, 32, 1, true, -arc / 2, arc);
+      g.rotateX(Math.PI / 2);
+      const mat = new THREE.MeshStandardMaterial({ map: labelTexture(lb.text, labelInk()), alphaTest: 0.35, roughness: 0.5 });
+      const m = new THREE.Mesh(g, mat);
+      m.receiveShadow = true;
+      m.position.set(...lb.c);
+      if (lb.flip) m.rotation.z = Math.PI;
+      frameOf(lb.l).add(m);
+      labelMats.push({ mat, text: lb.text });
+    }
+  }
+  function recolorLabels() {
+    const ink = labelInk();
+    for (const lm of labelMats) {
+      if (lm.mat.map) lm.mat.map.dispose();
+      lm.mat.map = labelTexture(lm.text, ink);
+      lm.mat.needsUpdate = true;
+    }
+  }
+  // Canvas text needs the web font loaded; draw again once it is there.
+  if (document.fonts && document.fonts.load) document.fonts.load('600 100px "Barlow Condensed"').then(recolorLabels, () => {});
+
+  // Robot: rebuilt when the wrist offset changes. Kinematic chain from the design code.
+  let robot = null, links = [], tcp = null, robotTags = [], fov = null, anchor = null;
+  function buildRobot(v) {
+    for (const k in groupEdges) groupEdges[k].length = 0;
+    if (robot) {
+      boxes.forEach((m) => R.attach(m));
+      R.remove(robot);
+      robot.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+      robotTags.forEach((t) => t.el.remove());
+    }
+    robot = new THREE.Group();
+    R.add(robot);
+    links = [];
+    let parent = robot;
+    for (const j of v.chain) {
+      const jg = new THREE.Group();
+      jg.position.set(...j.origin);
+      parent.add(jg);
+      const rg = new THREE.Group();
+      rg.userData.axis = new THREE.Vector3(...j.axis);
+      jg.add(rg);
+      links.push(rg);
+      parent = rg;
+    }
+    const frameOf = (l) => (l === 0 ? robot : links[l - 1]);
+    for (const p of v.prims) placePrim(frameOf(p.l), p);
+    placeLabels(v, frameOf);
+    const flange = new THREE.Object3D();
+    new THREE.Matrix4().set(...v.flange.flat()).decompose(flange.position, flange.quaternion, flange.scale);
+    links[5].add(flange);
+    tcp = new THREE.Object3D();
+    tcp.position.set(0, 0, v.tcp_mm);
+    flange.add(tcp);
+    robotTags = [];
+    for (const t of v.tags) tag(frameOf(t.l), ...t.p, t.t, t.t.startsWith('J') ? 'j' : '', robotTags);
+    tag(tcp, 0, 0, 0, '평행 그리퍼', '', robotTags);
+    fov = fovWedge(v.cam);
+    fov.visible = fovToggle.checked;
+    frameOf(v.cam.l).add(fov);
+    // The wrist close-up looks at a point 45 mm in front of the D405 lens, between the camera and the tool tip.
+    anchor = new THREE.Object3D();
+    anchor.position.set(...v.cam.lens.map((x, i) => x + v.cam.axis[i] * 45));
+    frameOf(v.cam.l).add(anchor);
+  }
+
+  // Playback: Hermite through the keyframes; stop frames get zero velocity, travel arcs pass through.
+  let F, N, T, TOTAL, tang, seg = 1;
+  function loadFrames(v) {
+    F = v.frames; N = F.length;
+    T = [0];
+    for (let i = 1; i < N; i++) T.push(T[i - 1] + F[i].t);
+    TOTAL = T[N - 1];
+    tang = F.map((f, i) => {
+      if (f.stop || i === 0 || i === N - 1) return f.q.map(() => 0);
+      const dt = F[i].t + F[i + 1].t;
+      return f.q.map((_, k) => (F[i + 1].q[k] - F[i - 1].q[k]) / dt);
+    });
+    seg = 1;
+  }
+  function sample(tau, out) {
+    if (tau <= 0) { F[0].q.forEach((val, k) => { out[k] = val; }); return; }
+    if (tau >= TOTAL) { F[N - 1].q.forEach((val, k) => { out[k] = val; }); return; }
+    if (tau < T[seg - 1]) seg = 1;
+    while (seg < N - 1 && tau > T[seg]) seg++;
+    const a = F[seg - 1], b = F[seg], h = b.t;
+    const s = h > 0 ? (tau - T[seg - 1]) / h : 1;
+    const s2 = s * s, s3 = s2 * s;
+    const h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s, h01 = -2 * s3 + 3 * s2, h11 = s3 - s2;
+    for (let k = 0; k < 6; k++) out[k] = h00 * a.q[k] + h10 * h * tang[seg - 1][k] + h01 * b.q[k] + h11 * h * tang[seg][k];
+  }
+
+  const q = [0, 0, 0, 0, 0, 0], qPlay = [0, 0, 0, 0, 0, 0];
+  let blendFrom = null, blendT = 0;
+  function setQ(val) { links.forEach((g, i) => g.quaternion.setFromAxisAngle(g.userData.axis, val[i])); }
+
+  let tau = 0, ptr = 1, playing = !reduce, speed = 2, placed = 0, holdEnd = 0, manual = false;
+  function spawn(i, animate) {
+    if (i >= boxes.length) return;
+    const m = boxes[i];
+    R.attach(m);
+    m.position.set(pickX, pickY, BOX / 2);
+    m.quaternion.identity();
+    m.visible = true;
+    m.userData.appear = animate && !reduce ? 0 : 1;
+  }
+  function resetBoxes() {
+    boxes.forEach((m) => { R.attach(m); m.visible = false; m.userData.appear = 1; });
+    placed = 0;
+    spawn(0, false);
+  }
+  function fire(f) {
+    if (!f.ev) return;
+    const m = boxes[f.box];
+    if (f.ev === 'grip') {
+      m.userData.appear = 1;
+      m.position.set(pickX, pickY, BOX / 2);
+      R.updateMatrixWorld(true);
+      tcp.attach(m);
+    } else {
+      R.attach(m);
+      const b = DATA.boxes[f.box];
+      m.position.set(b.x, b.y, b.layer * BOX - BOX / 2);
+      m.quaternion.identity();
+      placed = f.box + 1;
+      spawn(f.box + 1, true);
+    }
+  }
+  function restart() {
+    tau = 0; ptr = 1; seg = 1; holdEnd = 0;
+    resetBoxes();
+    sample(0, qPlay);
+  }
+
+  function syncButtons() {
+    playBtn.textContent = playing ? '멈춤' : '재생';
+    speedBtns.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === speed)));
+  }
+  function showArm() {
+    const v = DATA.variants[vi];
+    buildRobot(v);
+    loadFrames(v);
+    restart();
+    q.splice(0, 6, ...qPlay);
+    setQ(q);
+    syncButtons();
+  }
+
+  // Colour groups: one row of three swatch buttons per group, legend and filament totals follow the choice.
+  const swatch = (c) => `<span class="sw" style="background:${COLORS[c]}"></span>`;
+  const colorRows = GROUPS.map((g) => {
+    const lbl = document.createElement('div');
+    lbl.className = 'lbl';
+    lbl.innerHTML = '<span></span><small></small>';
+    lbl.querySelector('span').textContent = g.label;
+    lbl.querySelector('small').textContent = g.sub;
+    const seg = document.createElement('div');
+    seg.className = 'seg swatch';
+    seg.setAttribute('role', 'group');
+    seg.setAttribute('aria-label', `${g.label} 색`);
+    const btns = Object.keys(COLORS).map((c) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.id = `color-${g.key}-${c}`;
+      b.innerHTML = swatch(c) + COLOR_NAMES[c];
+      b.addEventListener('click', () => { g.color = c; applyColors(); });
+      seg.appendChild(b);
+      return { b, c };
+    });
+    $('colors').append(lbl, seg);
+    return { g, btns };
+  });
+  function updateFilament() {
+    const grams = { white: 0, black: 0, blue: 0 };
+    const colorOf = Object.fromEntries(GROUPS.map((g) => [g.key, g.color]));
+    for (const p of DATA.variants[vi].prims) if (p.g && colorOf[p.c]) grams[colorOf[p.c]] += p.g;
+    $('filament').innerHTML = Object.keys(COLORS)
+      .map((c) => `<span>${swatch(c)}${COLOR_NAMES[c]} <b>약 ${Math.round(grams[c] / 10) * 10} g</b></span>`)
+      .join('');
+  }
+  function applyColors() {
+    for (const { g, btns } of colorRows) {
+      M[g.key].color = lin(COLORS[g.color]);
+      btns.forEach(({ b, c }) => b.setAttribute('aria-pressed', String(c === g.color)));
+      groupEdges[g.key].forEach((e) => { e.visible = g.color === 'white'; });
+    }
+    recolorLabels();
+    const items = GROUPS.map((g) => `<li>${swatch(g.color)}${g.label} · ${COLOR_NAMES[g.color]}</li>`);
+    items.push(`<li><span class="sw sw-cam"></span>D405 카메라 · 반투명 쐐기가 시야 (15 cm까지)</li>`);
+    items.push(`<li>${swatch('blue')}시험용 박스 · 파랑</li>`);
+    $('legend').innerHTML = items.join('');
+    updateFilament();
+  }
+
+  playBtn.addEventListener('click', () => {
+    playing = !playing;
+    if (playing && manual) { blendFrom = q.slice(); blendT = 0; manual = false; }
+    syncButtons();
+  });
+  restartBtn.addEventListener('click', () => {
+    restart();
+    if (manual) { blendFrom = q.slice(); blendT = 0; manual = false; }
+    playing = true;
+    syncButtons();
+  });
+  speedBtns.forEach((b) => b.addEventListener('click', () => { speed = Number(b.dataset.speed); syncButtons(); }));
+  sliders.forEach((s, i) => s.input.addEventListener('input', () => {
+    playing = false; manual = true; blendFrom = null;
+    q[i] = rad(Number(s.input.value));
+    s.out.textContent = fmt(Number(s.input.value));
+    syncButtons();
+  }));
+  let tagsOn = true;
+  tagsToggle.addEventListener('change', () => { tagsOn = tagsToggle.checked; });
+
+  // Camera. "전체" is a fixed view of the desk; "손목 가까이" follows the wrist and turns with J1.
+  const VIEW = { pos: W(812, -507, 582), target: W(105, -10, 150) };
+  const WRIST_OFFSET = W(300, -380, 15);
+  const UP = new THREE.Vector3(0, 1, 0);
+  const tmpA = new THREE.Vector3();
+  let viewMode = location.hash === '#wrist' ? 'wrist' : 'all';
+  let userMoved = false, camTween = null, lastQ1 = 0;
+  controls.addEventListener('start', () => { userMoved = true; camTween = null; lastQ1 = q[0]; });
+  function viewPos() {
+    const off = VIEW.pos.clone().sub(VIEW.target);
+    off.multiplyScalar(Math.max(1, Math.pow(1.45 / camera.aspect, 0.85)));
+    return VIEW.target.clone().add(off);
+  }
+  function viewEnd() {
+    if (viewMode === 'all') return { p: viewPos(), t: VIEW.target.clone() };
+    anchor.getWorldPosition(tmpA);
+    const off = WRIST_OFFSET.clone().applyAxisAngle(UP, q[0] - DATA.variants[vi].frames[0].q[0]);
+    return { p: tmpA.clone().add(off), t: tmpA.clone() };
+  }
+  function setView(mode, instant) {
+    viewMode = mode;
+    viewBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === mode)));
+    controls.maxPolarAngle = mode === 'wrist' ? Math.PI * 0.8 : Math.PI / 2 - 0.04;
+    controls.minDistance = mode === 'wrist' ? 90 : 150;
+    userMoved = false;
+    lastQ1 = q[0];
+    if (instant || reduce) {
+      const e = viewEnd();
+      camera.position.copy(e.p); controls.target.copy(e.t); controls.update(); camTween = null;
+    } else {
+      camTween = { t: 0, p0: camera.position.clone(), q0: controls.target.clone() };
+    }
+  }
+  viewBtns.forEach((b) => b.addEventListener('click', () => setView(b.dataset.view, false)));
+  fovToggle.addEventListener('change', () => { if (fov) fov.visible = fovToggle.checked; });
+  function resize() {
+    const w = Math.max(1, stageEl.clientWidth), h = Math.max(1, stageEl.clientHeight);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    if (!userMoved && !camTween && viewMode === 'all') setView('all', true);
+  }
+  if ('ResizeObserver' in window) new ResizeObserver(resize).observe(stageEl);
+  else window.addEventListener('resize', resize);
+
+  function applyTheme() { scene.background = lin(tok('--stage')); }
+  applyTheme();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
+  new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  const tmp = new THREE.Vector3();
+  function placeTags() {
+    const w = stageEl.clientWidth, h = stageEl.clientHeight;
+    for (const t of [...tags, ...robotTags]) {
+      let show = tagsOn;
+      let x = 0, y = 0;
+      if (show) {
+        t.a.getWorldPosition(tmp).project(camera);
+        x = ((tmp.x + 1) / 2) * w;
+        y = ((1 - tmp.y) / 2) * h;
+        show = tmp.z < 1 && x > 6 && x < w - 6 && y > 6 && y < h - 34;
+      }
+      if (show !== t.shown) { t.el.hidden = !show; t.shown = show; }
+      if (show) {
+        const flip = x > w * 0.62;
+        if (flip !== t.flip) { t.el.classList.toggle('flip', flip); t.flip = flip; }
+        t.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      }
+    }
+  }
+
+  const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+  const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  let last = performance.now(), uiTick = 0;
+  function tick(now) {
+    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+    last = now;
+    if (playing) {
+      if (tau >= TOTAL) {
+        holdEnd += dt;
+        if (holdEnd > 2.5) restart();
+      } else {
+        tau = Math.min(TOTAL, tau + dt * speed);
+        sample(tau, qPlay);
+        setQ(qPlay);
+        R.updateMatrixWorld(true);
+        while (ptr < N && T[ptr] <= tau) { fire(F[ptr]); ptr++; }
+      }
+      if (blendFrom) {
+        blendT = Math.min(1, blendT + dt / 0.7);
+        const s = easeInOut(blendT);
+        for (let k = 0; k < 6; k++) q[k] = blendFrom[k] + (qPlay[k] - blendFrom[k]) * s;
+        if (blendT >= 1) blendFrom = null;
+      } else {
+        for (let k = 0; k < 6; k++) q[k] = qPlay[k];
+      }
+    }
+    setQ(q);
+    for (const m of boxes) {
+      if (m.visible && m.userData.appear < 1) {
+        m.userData.appear = Math.min(1, m.userData.appear + dt / 0.6);
+        m.position.z = BOX / 2 + 70 * (1 - easeOut(m.userData.appear));
+      }
+    }
+    if (camTween) {
+      camTween.t = Math.min(1, camTween.t + dt / 0.9);
+      const s = easeInOut(camTween.t);
+      const e = viewEnd();
+      camera.position.lerpVectors(camTween.p0, e.p, s);
+      controls.target.lerpVectors(camTween.q0, e.t, s);
+      if (camTween.t >= 1) { camTween = null; lastQ1 = q[0]; }
+    } else if (viewMode === 'wrist') {
+      // Keep the chosen view of the wrist: move with it and turn with J1.
+      anchor.getWorldPosition(tmpA);
+      const off = camera.position.clone().sub(controls.target).applyAxisAngle(UP, q[0] - lastQ1);
+      controls.target.copy(tmpA);
+      camera.position.copy(tmpA).add(off);
+      lastQ1 = q[0];
+    }
+    controls.update();
+    renderer.render(scene, camera);
+    placeTags();
+    if ((uiTick += dt) > 0.1) {
+      uiTick = 0;
+      countEl.textContent = `박스 ${placed} / ${boxes.length}`;
+      barEl.style.width = `${((tau / TOTAL) * 100).toFixed(1)}%`;
+      if (!manual) sliders.forEach((s, i) => { s.input.value = String(Math.round(deg(q[i]))); s.out.textContent = fmt(deg(q[i])); });
+    }
+    requestAnimationFrame(tick);
+  }
+
+  showArm();
+  applyColors();
+  sliders.forEach((s, i) => { s.input.value = String(Math.round(deg(q[i]))); s.out.textContent = fmt(deg(q[i])); });
+  syncButtons();
+  resize();
+  R.updateMatrixWorld(true);
+  setView(viewMode, true);
+  requestAnimationFrame(tick);
+})();
+</script>
