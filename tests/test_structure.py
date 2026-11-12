@@ -41,7 +41,7 @@ SERVO_ACCESS = {"horilab_servo", "serial", "scservo_sdk"}
 LIGHT_PACKAGES = ("horilab_servo", "horilab_camera", "horilab_client")
 HEAVY_LIBRARIES = {"build123d", "OCP", "bd_warehouse", "ocp_vscode", "mujoco", "mink", "eaik"}
 
-# Rust 크레이트마다 부를 수 있는 다른 horilab 크레이트. 아직 없는 크레이트(controller)도 미리 적어 둔다.
+# Rust 크레이트마다 부를 수 있는 다른 horilab 크레이트. 새 크레이트는 여기에 규칙을 먼저 넣어야 테스트가 통과한다.
 CRATE_ALLOWED_INTERNAL: dict[str, set[str]] = {
     "horilab-servo": set(),
     "horilab-controller": {"horilab-servo"},

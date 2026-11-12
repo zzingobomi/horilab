@@ -1,0 +1,16 @@
+[package]
+name = "horilab-controller"
+description = "로봇 컨트롤러: 로봇 설정, 관절 층과 안전 검사, 서보 준비·관절 시험 명령 (docs/decisions/0024-servo-bus.md)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+horilab-servo = { version = "0.1.0", path = "../servo" }
+serde = { version = "1.0.229", features = ["derive"] }
+toml = { version = "1.2.1", default-features = false, features = ["std", "parse", "serde"] }
+
+[lints]
+workspace = true
