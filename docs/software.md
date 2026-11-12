@@ -30,7 +30,7 @@ horilab/
 ├── Cargo.toml, rust-toolchain.toml   Rust 워크스페이스
 ├── crates/
 │   ├── servo/       서보 버스 (라이브러리)
-│   ├── controller/  컨트롤러: 실행 루프, 안전 검사, 조종권, API 서버(펜던트 화면, WSS), 기록, 서보 준비·관절 시험 명령
+│   ├── controller/  컨트롤러: 실행 루프, 안전 검사, 조종권, API 서버(펜던트 화면, WSS), 기록, 서보 준비·맨 서보 확인 명령
 │   └── bench/       파이에서 미리 재는 시험 프로그램
 ├── pendant/         펜던트 화면 (웹, R3F)
 ├── pyproject.toml, uv.lock, .python-version   Python 워크스페이스
@@ -96,7 +96,7 @@ horilab/
 ```
 
 - 컨트롤러는 컨트롤러 파이에서 돈다. 그래서 PC가 꺼져 있어도 폰·게임패드로 로봇을 쓸 수 있고, PC 부하가 실행 루프에 닿지 않는다 ([0025](decisions/0025-controller-on-pi.md)). 파이는 로봇을 쓸 때만 켜고, 안 쓸 때는 멀티탭까지 끈다 ([0026](decisions/0026-pi-runtime-deploy-records.md)). 서보와 카메라는 USB 컨트롤러를 나누려고 다른 파이에 꽂는다. 파이는 라즈베리파이 4B다.
-- 개발할 때는 어댑터를 PC에 꽂고(5 m USB 2) 같은 컨트롤러를 PC에서 돌려도 된다. 관절 하나 시험이 그렇다.
+- 개발할 때는 어댑터를 PC에 꽂고(5 m USB 2) 같은 컨트롤러를 PC에서 돌려도 된다. 맨 서보 확인이 그렇다.
 - 카메라 파이는 D405 영상을 PC로 보내는 일만 하고, 켜지면 자동으로 실행된다.
 - 펜던트: 게임패드는 컨트롤러 파이에 꽂고, 안드로이드 폰과 PC 브라우저는 집 랜으로 컨트롤러의 웹 화면에 들어간다 ([0023](decisions/0023-robot-controller.md)).
 - 경로 계획(IK)은 지금은 PC에 있다. PC 없이 쓰는 단계에서 파이로 옮긴다 ([0025](decisions/0025-controller-on-pi.md)).

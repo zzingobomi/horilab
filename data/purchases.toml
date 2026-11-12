@@ -203,24 +203,12 @@ priced = "2026-11-08"
 why = "J1을 지나는 구간(어림 30~40 cm, 축을 감는 고리 포함)과, 서보 줄을 둘로 나눌 때(0016) 어댑터에서 가는 선. 위 300 mm와 같은 페이지의 옵션이다. 남는 길이는 감아 둔다"
 
 [[item]]
-name = "MR106ZZ (6 × 10 × 3, EZO)"
-qty = 1
-stage = 3
-when = "if_needed"
-vendor = "미스미"
-url = "https://kr.misumi-ec.com/vona2/detail/221000528976/?HissuCode=MR106ZZ"
-lead_days = [1, 3]
-unit_price_krw = 4279
-priced = "2026-11-08"
-why = "ST-3120에 뒷면 혼이 없을 때 그 자리를 받친다 (0015). UR식 관절로 바꾸면 뒷면 혼을 쓰지 않아 필요 없다 (0027). 당일 출하라서 서보를 받아 보고 정한다. 가진 MF106ZZ(같은 치수에 플랜지형, 3개)로 되면 사지 않는다"
-
-[[item]]
 name = "PETG 검정 한 롤"
 qty = 1
-stage = 3
+stage = 5
 when = "if_needed"
 search = "PETG 필라멘트 검정 1kg"
-why = "관절 시험에서 서보 둘레가 55~60°C 가까이 오르면 그 부품만 PETG로 뽑는다 (manufacturing.md)"
+why = "다 만든 팔에서 서보 둘레가 55~60°C 가까이 오르면 그 부품만 PETG로 뽑는다 (manufacturing.md, 0028)"
 
 [[item]]
 name = "랜 케이블"

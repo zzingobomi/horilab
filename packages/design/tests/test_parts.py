@@ -60,7 +60,7 @@ def test_gauge_set_screws_grip_before_the_head_lands() -> None:
 
 def test_gauge_needle_can_follow_the_link() -> None:
     # 바늘은 10 mm 움직인다. 세로 집게는 바늘을 5 mm 넘게 눌러 둘 수 있어서, 서보가 시험 짐에 2~3 mm 처져도
-    # (다른 사람이 잰 STS3250 값으로 어림, docs/joint-test.md) 바늘이 링크를 따라간다. 옆 집게는 목이 닿을 때
+    # (다른 사람이 잰 STS3250 값으로 어림, docs/hardware.md) 바늘이 링크를 따라간다. 옆 집게는 목이 닿을 때
     # 바늘이 2 mm쯤 눌린다.
     fit = jt.gauge_preload()
     for name, need in (("세로 집게", 5.0), ("옆 집게", 2.0)):

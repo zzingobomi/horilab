@@ -5,7 +5,7 @@
 
 - 1차: M3 볼트 구멍과 너트 홈. 너트 홈은 출력할 때 너트가 눕는지 서는지에 따라 따로 잰다
 - 2차: 서보 몸체 자리와 혼 자리. 도면 치수(params/servos.toml)에 여유를 더해 간다
-- 3차: 영점 핀 구멍(MISUMI MSH3, 0015), J1 베어링 6806의 바깥 링 자리와 안쪽 링 축(0015)
+- 3차: 영점 핀 구멍(MISUMI MSH3, 0028), 베어링 6806의 바깥 링 자리와 안쪽 링 축(0028)
 
     uv run python -m horilab_design.coupons    # build/coupons/에 STL을 만든다
 

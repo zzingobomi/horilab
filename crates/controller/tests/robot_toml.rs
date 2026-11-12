@@ -9,7 +9,7 @@ use horilab_controller::settings::Settings;
 fn repo_settings_load() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/robot.toml");
     let settings = Settings::load(&path).unwrap_or_else(|error| panic!("{error}"));
-    // 관절 하나 시험의 J3부터 있다 (0021)
+    // 옛 관절 시험(0021)의 J3부터 있다. UR식 관절(0028)로 다시 설계하며 바꾼다
     let j3 = settings.joint("j3").expect("j3");
     assert_eq!((j3.id, j3.model), (3, "STS3250"));
 }
