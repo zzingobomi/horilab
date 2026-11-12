@@ -1,7 +1,8 @@
 //! 기록: `records/<종류>/<날짜시각>_<명령>-<컴퓨터>/meta.json` (docs/decisions/0022-records-and-sync.md,
 //! 0024의 기록 형식). 서보 기록은 Python 기준 구현의 기록과 같은 꼴로 남겨 두 구현의 결과를 견줄 수 있게 한다.
 
-use std::fs;
+use std::fs::{self, File};
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Local, SecondsFormat};
@@ -93,6 +94,63 @@ pub fn dump_json(memory: &[u8]) -> Value {
     dump
 }
 
+/// 실행 중에 이어 쓰는 기록 둘: `samples.csv`(시각, 단계, 서보 값)와 `events.csv`(시각, 단계, 알림).
+/// 줄마다 바로 내보내서, 중간에 끊겨도 앞부분이 남는다 (0024의 기록 형식).
+pub struct Log {
+    samples: BufWriter<File>,
+    events: BufWriter<File>,
+}
+
+impl Log {
+    /// 기록 폴더에 두 파일을 만들고 머리줄을 쓴다. `columns`는 samples.csv의 값 칸 이름이다.
+    pub fn create(folder: &Path, columns: &[&str]) -> Result<Self, String> {
+        let open = |name: &str| {
+            let path = folder.join(name);
+            File::create(&path)
+                .map(BufWriter::new)
+                .map_err(|e| format!("{}를 만들지 못했다: {e}", path.display()))
+        };
+        let mut log = Self {
+            samples: open("samples.csv")?,
+            events: open("events.csv")?,
+        };
+        let header = format!("t_s,step,{}", columns.join(","));
+        write_line(&mut log.samples, &header)?;
+        write_line(&mut log.events, "t_s,step,text")?;
+        Ok(log)
+    }
+
+    pub fn sample(&mut self, t: f64, step: &str, values: &[i32]) -> Result<(), String> {
+        let values: Vec<String> = values.iter().map(i32::to_string).collect();
+        write_line(
+            &mut self.samples,
+            &format!("{t:.3},{},{}", csv_text(step), values.join(",")),
+        )
+    }
+
+    pub fn event(&mut self, t: f64, step: &str, text: &str) -> Result<(), String> {
+        write_line(
+            &mut self.events,
+            &format!("{t:.3},{},{}", csv_text(step), csv_text(text)),
+        )
+    }
+}
+
+fn write_line(writer: &mut BufWriter<File>, line: &str) -> Result<(), String> {
+    writeln!(writer, "{line}")
+        .and_then(|()| writer.flush())
+        .map_err(|e| format!("기록을 쓰지 못했다: {e}"))
+}
+
+/// CSV 칸 하나: 쉼표, 따옴표, 줄바꿈이 있으면 따옴표로 감싼다.
+fn csv_text(text: &str) -> String {
+    if text.contains([',', '"', '\n']) {
+        format!("\"{}\"", text.replace('"', "\"\""))
+    } else {
+        text.to_owned()
+    }
+}
+
 /// JSON을 임시 파일에 쓰고 이름을 바꾼다. 중간에 끊겨도 반쯤 쓴 파일이 남지 않는다.
 pub fn write_json(path: &Path, value: &Value) -> Result<(), String> {
     let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())? + "\n";
@@ -137,6 +195,27 @@ mod tests {
         let path = first.join("meta.json");
         write_json(&path, &json!({ "a": 1 })).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "{\n  \"a\": 1\n}\n");
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn log_writes_csv_lines_as_it_goes() {
+        let root = std::env::temp_dir().join(format!("horilab-log-test-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let mut log = Log::create(&root, &["present_position", "status"]).unwrap();
+        log.sample(0.0204, "boundary", &[3900, 0]).unwrap();
+        log.event(1.5, "boundary", "경계를 넘었다, \"한 바퀴\"")
+            .unwrap();
+        let samples = fs::read_to_string(root.join("samples.csv")).unwrap();
+        assert_eq!(
+            samples,
+            "t_s,step,present_position,status\n0.020,boundary,3900,0\n"
+        );
+        let events = fs::read_to_string(root.join("events.csv")).unwrap();
+        assert_eq!(
+            events,
+            "t_s,step,text\n1.500,boundary,\"경계를 넘었다, \"\"한 바퀴\"\"\"\n"
+        );
         fs::remove_dir_all(&root).unwrap();
     }
 }

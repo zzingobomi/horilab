@@ -29,8 +29,21 @@ from scservo_sdk import (
 from horilab_servo.feetech import registers as reg
 from horilab_servo.feetech.registers import Area, Fault, Register
 
-# 잠근 채 바꿔 볼 수 있는 레지스터: P·I·D와 응답 지연(7번) (docs/decisions/0024-servo-bus.md)
-TRIAL_REGISTERS = (reg.P_GAIN, reg.I_GAIN, reg.D_GAIN, reg.RESPONSE_DELAY)
+# 잠근 채 바꿔 볼 수 있는 레지스터: P·I·D, 응답 지연(7번), 그리고 맨 서보 확인에서 서보의 동작을 보려고
+# 잠깐 바꾸는 각도 한계, 전압 하한, 힘을 빼는 조건, 과부하 보호 설정 (docs/decisions/0024-servo-bus.md)
+TRIAL_REGISTERS = (
+    reg.P_GAIN,
+    reg.I_GAIN,
+    reg.D_GAIN,
+    reg.RESPONSE_DELAY,
+    reg.MIN_ANGLE_LIMIT,
+    reg.MAX_ANGLE_LIMIT,
+    reg.MIN_VOLTAGE,
+    reg.UNLOAD_CONDITION,
+    reg.HOLDING_TORQUE,
+    reg.PROTECTION_TIME,
+    reg.OVERLOAD_TORQUE,
+)
 
 # 한 번에 읽는 최대 바이트. SDK는 응답의 길이 칸(바이트 수 + 2)이 250을 넘으면 버린다.
 MAX_READ = 248
@@ -269,16 +282,14 @@ class Bus:
     def write_trial(self, servo_id: int, values: Mapping[Register, int]) -> None:
         """잠근 채 바꿔 보기: 바로 듣고, 전원을 끄면 사라진다. 토크가 켜져 있어도 된다.
 
-        P·I·D와 응답 지연(7번)만 받는다 (TRIAL_REGISTERS). 잠금이 풀린 채 쓰면 값이 남으므로
-        먼저 잠근다. 바꾼 값을 기록에 남기는 것은 부르는 쪽이 한다.
+        TRIAL_REGISTERS만 받는다. 잠금이 풀린 채 쓰면 값이 남으므로 먼저 잠근다. 바꾼 값을 기록에
+        남기는 것은 부르는 쪽이 한다.
         """
         if not values:
             return
         for register, value in values.items():
             if register not in TRIAL_REGISTERS:
-                raise ValueError(
-                    f"{register.name}은 잠근 채 바꿔 보지 않는다 (P·I·D와 응답 지연만)"
-                )
+                raise ValueError(f"{register.name}은 잠근 채 바꿔 보지 않는다 (TRIAL_REGISTERS만)")
             register.encode(value)
         self._write_bytes(servo_id, reg.LOCK.address, [1])
         for register, value in values.items():

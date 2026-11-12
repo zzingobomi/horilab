@@ -18,9 +18,21 @@ use std::time::{Duration, Instant};
 use crate::feetech::packet;
 use crate::feetech::registers::{self as reg, Area, Fault, OutOfRange, Register};
 
-/// 잠근 채 바꿔 볼 수 있는 레지스터: P·I·D와 응답 지연(7번).
-pub const TRIAL_REGISTERS: [Register; 4] =
-    [reg::P_GAIN, reg::I_GAIN, reg::D_GAIN, reg::RESPONSE_DELAY];
+/// 잠근 채 바꿔 볼 수 있는 레지스터: P·I·D, 응답 지연(7번), 그리고 맨 서보 확인에서 서보의 동작을 보려고
+/// 잠깐 바꾸는 각도 한계, 전압 하한, 힘을 빼는 조건, 과부하 보호 설정.
+pub const TRIAL_REGISTERS: [Register; 11] = [
+    reg::P_GAIN,
+    reg::I_GAIN,
+    reg::D_GAIN,
+    reg::RESPONSE_DELAY,
+    reg::MIN_ANGLE_LIMIT,
+    reg::MAX_ANGLE_LIMIT,
+    reg::MIN_VOLTAGE,
+    reg::UNLOAD_CONDITION,
+    reg::HOLDING_TORQUE,
+    reg::PROTECTION_TIME,
+    reg::OVERLOAD_TORQUE,
+];
 
 /// 서보 버스가 쓰는 포트. 실물은 [`SerialLink`], 시험용 가짜는 `fake::FakePort`다.
 pub trait Port {
@@ -365,7 +377,7 @@ impl<P: Port> Bus<P> {
 
     /// 잠근 채 바꿔 보기: 바로 듣고, 전원을 끄면 사라진다. 토크가 켜져 있어도 된다.
     ///
-    /// P·I·D와 응답 지연(7번)만 받는다 ([`TRIAL_REGISTERS`]). 잠금이 풀린 채 쓰면 값이 남으므로 먼저 잠근다.
+    /// [`TRIAL_REGISTERS`]만 받는다. 잠금이 풀린 채 쓰면 값이 남으므로 먼저 잠근다.
     /// 바꾼 값을 기록에 남기는 것은 부르는 쪽이 한다.
     pub fn write_trial(&mut self, id: u8, values: &[(Register, i32)]) -> Result<(), Error> {
         if values.is_empty() {
@@ -375,7 +387,7 @@ impl<P: Port> Bus<P> {
         for &(register, value) in values {
             if !TRIAL_REGISTERS.contains(&register) {
                 return Err(Error::Invalid(format!(
-                    "{}은 잠근 채 바꿔 보지 않는다 (P·I·D와 응답 지연만)",
+                    "{}은 잠근 채 바꿔 보지 않는다 (TRIAL_REGISTERS만)",
                     register.name
                 )));
             }
