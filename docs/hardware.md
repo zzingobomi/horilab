@@ -138,7 +138,7 @@ Feetech 공식 도면 기준이다: [STS3215](https://www.feetechrc.com/525603.h
 - 무게는 58 g(사양서), 60 g(제품 페이지)이다. IMU는 없다.
 - USB 2로 연결되면 깊이 영상이 크게 제한된다 (예: 1280×720은 30 fps → 5 fps, 848×480은 90 fps → 10 fps).
 - 펌웨어 업데이트는 짧은 기본 케이블로만 한다 (Intel 지원팀 권고).
-- 연결 구조는 [0005](decisions/0005-connection-architecture.md), 케이블 다루는 법은 [design.md](design.md#d405-케이블)에 있다.
+- 연결 구조는 [0025](decisions/0025-controller-on-pi.md), 케이블 다루는 법은 [design.md](design.md#d405-케이블)에 있다.
 
 ## 서보 설정 주의
 

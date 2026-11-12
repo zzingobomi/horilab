@@ -1,4 +1,4 @@
-"""관절 하나 시험(docs/decisions/0021-elbow-joint-test.md)의 시험대와 출력 목록, 검사.
+"""옛 관절 하나 시험의 시험대와 출력 목록, 검사 (0028에서 시험을 없애 다시 설계하며 지운다).
 
     uv run python -m horilab_design.parts.joint_test          # 검사 결과를 보이고 build/joint_test/에 STL
     uv run python -m horilab_design.parts.joint_test --check  # 검사만

@@ -54,7 +54,7 @@ URDF(`robot/so101_6dof/urdf/so101_6dof.urdf`)를 영점 자세에서 풀어 본 
 - 파이마다 SSH로 들어가 코드를 받고 실행해야 해서 배포가 번거로웠다.
 - PC에서 테스트나 시뮬레이션을 돌리면 같은 네트워크의 실제 모터가 움직일 수 있어서 격리가 필요했다.
 
-이 교훈을 반영한 새 연결 구조는 [0005](decisions/0005-connection-architecture.md)에 있다.
+이 교훈을 반영한 새 연결 구조는 [0025](decisions/0025-controller-on-pi.md)에 있다.
 
 ## 사지 않고 만드는 이유
 

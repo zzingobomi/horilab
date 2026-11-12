@@ -5,7 +5,7 @@
 
 ## 배경
 
-- [0001](0001-inherited-decisions.md)은 Windows 네이티브를 골랐다. 그 근거 중 "WSL에서 RealSense가 어렵다"는 D405를 파이에 연결하기로 하면서([0005](0005-connection-architecture.md)) 더는 해당하지 않아 다시 비교했다.
+- [0001](0001-inherited-decisions.md)은 Windows 네이티브를 골랐다. 그 근거 중 "WSL에서 RealSense가 어렵다"는 D405를 파이에 연결하기로 하면서([0025](0025-controller-on-pi.md)) 더는 해당하지 않아 다시 비교했다.
 - 버전 정보는 2026-11 조사 기준이다.
 
 ## 개발 환경
@@ -60,9 +60,3 @@ USB 지연과 WSLg 성능은 일반적으로 알려진 내용이고 따로 측�
 - IK는 골격 설계 때 생성한 모델로 다시 확인하고, EAIK와 mink의 해를 서로 대조하는 테스트를 둔다.
 - 서보 통신 속도는 서보 7개를 연결해 잰다. 한 주기(동기 쓰기 + 위치·부하·온도 동기 읽기)에 걸리는 시간과 흔들림을 보고 (조사로는 100~200 Hz 예상), 이 값으로 실행 루프의 주기를 정한다 ([0009](0009-control-architecture.md)). 컨트롤러는 Rust로 짜고 컨트롤러 파이에서 돌리므로, 통신 시간도 파이에서 잰다 ([0025](0025-controller-on-pi.md)).
 - 영상 압축과 시계 동기화는 카메라를 구현할 때 정한다. 848×480 30 fps면 깊이 영상은 압축 없이 기가비트 랜에 들어간다 (약 195 Mbit/s).
-
-## 바뀐 점
-
-- 2026-11-11: 컨트롤러가 파이(리눅스)로 가도([0025](0025-controller-on-pi.md)) Windows 네이티브를 유지하기로 하고, 리눅스에서만 도는 부분을 다루는 법을 결정에 더했다. Rust는 PC마다 Windows에 rustup으로 깐다 ([setup.md](../setup.md#8-rust)).
-- 2026-11-10: 모터 프로세스를 Rust로 짜면서([0025](0025-controller-on-pi.md)) 서보 프로토콜도 Rust로 직접 짠다. ftservo-python-sdk는 Python 기준 구현([0024](0024-servo-bus.md))에만 쓴다. PC마다 Rust(rustup)를 둔다 ([setup.md](../setup.md)).
-- 2026-11-07: IK를 골격 설계부터 해석적 IK(EAIK)와 수치 IK(mink)를 같이 쓰는 것으로 바꿨다. 처음에는 해석적 IK가 손목 형식마다 다르다고 보고 mink로 시작하려 했다. 그런데 Windows에서 시험해 보니 EAIK가 구형 손목과 UR형을 모두 풀었고, mink가 국소해 때문에 못 푼 목표도 모두 풀었다.
