@@ -1,2 +1,4 @@
 # 줄바꿈은 PC의 git 설정과 상관없이 LF로 맞춘다 (docs/decisions/0010-code-test-git-rules.md).
 * text=auto eol=lf
+# 메시 파일은 줄바꿈을 건드리지 않는다
+*.stl binary

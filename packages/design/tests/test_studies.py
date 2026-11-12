@@ -9,8 +9,18 @@ import numpy as np
 import pytest
 
 from horilab_design.ik import AnalyticIK
+from horilab_design.robot import flange_pose, link_poses
 from horilab_design.statics import PointMass, frame_poses
-from horilab_design.studies import cameras, covers, packaging, reach, skeleton
+from horilab_design.studies import (
+    cameras,
+    covers,
+    packaging,
+    reach,
+    skeleton,
+    ur3e,
+    ur_compare,
+    ur_joints,
+)
 from horilab_design.studies.common import (
     MASS_CASES,
     RATED_MARGIN,
@@ -278,3 +288,109 @@ def test_outward_wrist_keeps_j5_negative() -> None:
     solutions = task_solutions(robot, masses, 0.40, wrist=-1, r_min=0.16)
     assert all(q is not None for q in solutions)
     assert all(q[4] < 0 and q[2] > 0 for q in solutions if q is not None)
+
+
+def test_ur3e_model_follows_the_public_model() -> None:
+    # 공개 모형(URDF)의 관절 각 0 = 이 모델의 (180, 90, 0, 90, 0, 0)°, 축 방향은 모두 같다.
+    # 아무 관절 각에서도 링크 자리가 공개 모형과 같고, 관절 각 0의 플랜지는 DH 값 그대로다.
+    offset, signs = ur3e.correspondence()
+    np.testing.assert_allclose(np.degrees(offset), [180, 90, 0, 90, 0, 0], atol=1e-9)
+    assert signs == (1, 1, 1, 1, 1, 1)
+    robot = ur3e.ur_robot()
+    o0 = link_poses(robot, np.array(offset))
+    u0 = ur3e.urdf_link_poses(np.zeros(6))
+    rng = np.random.default_rng(3)
+    for _ in range(20):
+        qu = rng.uniform(-math.pi, math.pi, 6)
+        ours, urs = link_poses(robot, ur3e.to_ours(qu)), ur3e.urdf_link_poses(qu)
+        for i in range(6):
+            np.testing.assert_allclose(ours[i] @ np.linalg.inv(o0[i]) @ u0[i], urs[i], atol=1e-12)
+    flange = flange_pose(robot, np.array(offset))
+    np.testing.assert_allclose(flange[:3, 3], [-0.45675, -0.22315, 0.0665], atol=1e-12)
+    assert AnalyticIK(robot).family  # EAIK가 UR형으로 푼다
+
+
+def test_ur3e_elbow_folds_until_the_wrist_meets_the_upper_arm() -> None:
+    # 공개 형상으로는 팔을 세운 자세에서 팔꿈치가 약 155°까지 접히고, 손목 1이 위팔에 닿는다.
+    # 나머지 관절은 막힘 없이 돈다. 줄인 모델도 형상이 같은 비율로 줄어서 같다.
+    for s in (1.0, 0.8):
+        scene = ur3e.ur_scene(s)
+        upright = ur3e.to_ours([0.0, -math.pi / 2, 0.0, -math.pi / 2, 0.0, 0.0])
+        assert not packaging.collisions(packaging.hits(scene, upright))
+        for j, (_lo, hi, why_lo, why_hi) in enumerate(packaging.joint_ranges(scene, upright)):
+            if j == 2:
+                assert 150 < np.degrees(hi - upright[j]) < 160
+                assert why_hi == "UR3e 위팔 ↔ UR3e 손목 1"
+            else:
+                assert (why_lo, why_hi) == ("막힘 없음", "막힘 없음")
+
+
+def test_ur3e_tool_is_its_own_body_and_meets_the_desk() -> None:
+    # 도구는 손목 3에 붙은 따로 된 몸체라 손목 3하고만 부딪힘을 빼고, 책상과는 부딪힘을 본다.
+    tool = packaging.TOOLS["gripper"]
+    scene = ur3e.ur_scene(ur_compare.scale(), tool)
+    names = [scene.model.body(i).name for i in range(scene.model.nbody)]
+    assert "tool" in names
+    arm = ur_compare.Arm(scene.robot, AnalyticIK(scene.robot), scene)
+    low = ur_compare.flange_target(0.24, 0.0, 0.0, 0, 0.0, tool.length)  # 손가락 끝이 책상 아래
+    high = ur_compare.flange_target(0.24, 0.10, 0.0, 0, 0.0, tool.length)
+    assert ur_compare.ur_outcome(arm, high)[0] == "됨"
+    outcome, pair = ur_compare.ur_outcome(arm, low)
+    assert outcome == "부딪힘" and "책상" in pair
+
+
+def test_flange_target_tilts_the_tool_toward_the_direction() -> None:
+    # 기울기 0°는 아래, 180°는 위, 90°는 방향 쪽 수평이다. 방향 0은 바깥(TCP 자리의 방위)이다.
+    length = 0.1
+    down = ur_compare.flange_target(0.2, 0.1, 0.0, 0, 0.0, length)
+    up = ur_compare.flange_target(0.2, 0.1, math.pi, 0, 0.0, length)
+    out = ur_compare.flange_target(0.2, 0.1, math.pi / 2, 0, 0.0, length)
+    left = ur_compare.flange_target(0.2, 0.1, math.pi / 2, 2, 0.0, length)
+    az = ur_compare.AZIMUTH
+    radial = np.array([math.cos(az), math.sin(az), 0.0])
+    np.testing.assert_allclose(down[:3, 2], [0.0, 0.0, -1.0], atol=1e-12)
+    np.testing.assert_allclose(up[:3, 2], [0.0, 0.0, 1.0], atol=1e-12)
+    np.testing.assert_allclose(out[:3, 2], radial, atol=1e-12)
+    np.testing.assert_allclose(left[:3, 2], np.cross([0.0, 0.0, 1.0], radial), atol=1e-12)
+    for T in (down, up, out, left):
+        np.testing.assert_allclose(
+            T[:3, 3] + length * T[:3, 2], 0.2 * radial + [0, 0, 0.1], atol=1e-12
+        )
+
+
+def test_ur_joint_concept_stacks_and_turns() -> None:
+    # UR식 관절: 베어링은 서보 앞면에서 턱만큼 띄우고, 뚜껑은 베어링과 출력 혼 바깥에 둔다.
+    # 팔을 세운 자세에서 부딪히지 않고, 손목 1과 손목 3(J4, J6)은 막힘 없이 한 바퀴 돈다.
+    shape = packaging.shapes()["STS3215"]
+    s = ur_joints.stack(shape)
+    mm = packaging.MM
+    assert s.bearing[0] == pytest.approx(17.5 * mm + 2.0 * mm)
+    assert s.cap[0] >= max(s.bearing[1], shape.horn_out[1])
+    assert s.back < packaging.STS_BACK * mm - packaging.CONNECTOR_DEPTH * mm
+    c = ur_joints.Concept()
+    robot, prims = ur_joints.build(c, packaging.TOOLS["gripper"])
+    np.testing.assert_allclose(
+        [robot.joints[4].origin[1], robot.joints[5].origin[2], robot.T_last_flange[1, 3]],
+        [c.d4, c.d5, c.d6],
+    )
+    scene = packaging.build_scene(robot, prims)
+    q0 = np.radians([0.0, 0.0, 0.0, 180.0, 0.0, 0.0])
+    assert not packaging.collisions(packaging.hits(scene, q0))
+    ranges = packaging.joint_ranges(scene, q0)
+    for j in (0, 3, 5):
+        assert ranges[j][2:] == ("막힘 없음", "막힘 없음")
+    assert np.degrees(ranges[2][1]) > 150  # 팔꿈치가 UR3e(약 155°)만큼 접힌다
+    # 선 칸 예산은 원통 반지름과, 베어링과 뚜껑 사이를 그만큼 키운다 (베어링 자리는 그대로)
+    wide = ur_joints.stack(shape, 6 * mm, 6 * mm)
+    assert wide.radius == pytest.approx(s.radius + 6 * mm)
+    assert wide.bearing == s.bearing
+    assert wide.front == pytest.approx(s.bearing[1] + 6 * mm)
+    assert wide.cap[0] == pytest.approx(s.cap[0] + 6 * mm)
+
+
+def test_range_fit_counts_full_turns_and_the_gripper_flip() -> None:
+    lower, upper = np.radians([-135.0] * 6), np.radians([135.0] * 6)
+    q = np.radians([170.0, -200.0, 10.0, 0.0, 0.0, 170.0])
+    ok = ur_compare.fits(q, lower, upper)
+    # J1 170°는 밖, J2 -200° = 160°도 밖, J6 170°는 평행 그리퍼를 180° 돌린 -10°로 안
+    assert ok.tolist() == [False, False, True, True, True, True]

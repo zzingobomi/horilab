@@ -220,7 +220,7 @@ BY_NAME: dict[str, Register] = {r.name: r for r in ALL}
 # 메모리 표에 적힌 초기값 (2026-11-11 확인). 최대 입력 전압(14), Phase(18), 보호·알림 조건(19, 20),
 # P·D(21, 22), 최소 시작 토크(24), 속도 고리 게인(37, 39), 7번은 표가 비워 둬서 없다. RAM은 켰을 때의
 # 값이다. 덤프가 이 값과 다른 칸을 보여 주고, 값 적용(0024 만드는 순서 3번)이 robot.toml에 정하지
-# 않은 칸을 이 값으로 맞춘다. Rust 표에는 값 적용을 만들 때 넣는다.
+# 않은 칸을 이 값으로 맞춘다. Rust 표(registers.rs의 TABLE_INITIAL)와 같은지는 test_rust_table.py가 본다.
 TABLE_INITIAL: dict[Register, int] = {
     ENDIAN: 0,
     ID: 1,

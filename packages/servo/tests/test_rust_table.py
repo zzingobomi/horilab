@@ -34,18 +34,40 @@ ENCODINGS = {
     "Offset": Encoding.OFFSET,
 }
 
+# Rust 상수 이름 → 레지스터 이름, 그리고 초기값 표의 (상수 이름, 값) 쌍
+CONSTANT = re.compile(r'pub const (\w+): Register =\s*\w+\(\s*"(\w+)"')
+INITIAL_BLOCK = re.compile(
+    r"pub const TABLE_INITIAL: &\[\(Register, i32\)\] = &\[(.*?)\];", re.DOTALL
+)
+INITIAL_PAIR = re.compile(r"\((\w+),\s*(-?\d+)\)")
+
 Row = tuple[int, int, Area, bool, Encoding]
 
 
+def _rust_text() -> str:
+    return RUST_TABLE.read_text(encoding="utf-8")
+
+
 def _rust_table() -> dict[str, Row]:
-    text = RUST_TABLE.read_text(encoding="utf-8")
     table: dict[str, Row] = {}
-    for kind, name, address, size, encoding in DEFINITION.findall(text):
+    for kind, name, address, size, encoding in DEFINITION.findall(_rust_text()):
         area, writable = KINDS[kind]
         table[name] = (int(address), int(size), area, writable, ENCODINGS[encoding])
     return table
 
 
+def _rust_initial() -> dict[str, int]:
+    text = _rust_text()
+    names = dict(CONSTANT.findall(text))
+    block = INITIAL_BLOCK.search(text)
+    assert block, "registers.rs에 TABLE_INITIAL이 없다"
+    return {names[constant]: int(value) for constant, value in INITIAL_PAIR.findall(block.group(1))}
+
+
 def test_rust_table_matches() -> None:
     expected = {r.name: (r.address, r.size, r.area, r.writable, r.encoding) for r in reg.ALL}
     assert _rust_table() == expected
+
+
+def test_rust_initial_values_match() -> None:
+    assert _rust_initial() == {r.name: value for r, value in reg.TABLE_INITIAL.items()}

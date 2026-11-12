@@ -10,6 +10,33 @@
 # 밖으로 가장 많이 도는 관절이 J4의 38°라서(0017의 관절 범위) 45°로 둔다. 팔 부품을 그리면 다시 본다.
 boundary_clearance_deg = 45
 
+# 서보 모델마다 구울 EEPROM 값 (값 적용, 0024). 키는 메모리 표의 레지스터 이름이고 값은 레지스터 값
+# 그대로다 (단위는 crates/servo/src/feetech/registers.rs). 여기 없는 칸은 메모리 표의 초기값으로 맞추고,
+# 메모리 표가 초기값을 비워 둔 칸은 꼭 적는다. ID와 통신 속도는 값 적용이 바꾸지 않고, 위치 오프셋은 0,
+# 각도 한계는 소프트 한계에서 계산하므로 적지 않는다. 관절마다 다른 값(관절 시험에서 고른 게인 등)은
+# [joints.<이름>.registers]에 적는다. 확인과 쓰기: cargo run -p horilab-controller -- apply --port <포트>
+
+# STS3250: 첫 덤프(2026-11-11, ID 3) 값 그대로다. 가진 STS3250이 하나라 견줄 덤프가 없다. 보호 설정(보호·알림
+# 조건, 보호 전류, 과부하)은 첫 덤프 값으로 두고, 관절 시험에서 서보가 어떻게 하는지 본 뒤 다시 정한다 (status.md).
+[models.STS3250.registers]
+response_delay = 0 # 7: 2 µs 단위. 서보 7개면 500 µs가 동기 읽기마다 3.5 ms라서 0이다 (0024)
+max_voltage = 160 # 14: 16.0 V
+phase = 12 # 18: 특수 기능 비트, 바꾸지 않는다
+unload_condition = 45 # 19: 힘을 빼는 보호 = 전압, 과열, 과전류, 과부하
+led_alarm_condition = 45 # 20: LED로 알릴 것 = 위와 같다
+p_gain = 32 # 21: 관절 시험에서 재서 고른다
+d_gain = 32 # 22
+min_starting_torque = 0 # 24
+speed_p_gain = 10 # 37: 일정 속도 모드에서만 쓴다
+speed_i_gain = 200 # 39: 일정 속도 모드에서만 쓴다
+# 아래는 메모리 표의 초기값과 다른 칸이다
+max_temperature = 80 # 13: °C (표 70)
+min_voltage = 60 # 15: 6.0 V (표 4.0 V)
+dead_zone_positive = 0 # 26 (표 1)
+dead_zone_negative = 0 # 27 (표 1)
+protection_current = 310 # 28: 6.5 mA 단위로 약 2.0 A (표 511)
+overcurrent_protection_time = 250 # 38: 10 ms 단위로 2.5 s (표 200)
+
 [joints.j3]
 id = 3 # 서보 ID는 관절 번호다 (0024)
 model = "STS3250"

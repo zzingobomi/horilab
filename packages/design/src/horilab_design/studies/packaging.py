@@ -191,18 +191,19 @@ Material = Literal["pla", "servo", "metal", "camera", "tool"]
 
 @dataclass(frozen=True)
 class Prim:
-    """링크 좌표계에 둔 상자, 원기둥, 고리(속이 빈 원기둥) 하나. 원기둥과 고리의 축은 형상 좌표계의 z다."""
+    """링크 좌표계에 둔 상자, 원기둥, 고리(속이 빈 원기둥), 볼록 껍질 하나. 원기둥과 고리의 축은 형상 좌표계의 z다."""
 
     name: str
-    link: int  # 0 베이스, i 관절 i가 움직이는 링크, 7 도구(링크 6에 붙음)
-    shape: Literal["box", "cyl", "ring"]
+    link: int  # 0 베이스, i 관절 i가 움직이는 링크, 7 도구(링크 6에 붙은 따로 된 몸체)
+    shape: Literal["box", "cyl", "ring", "hull"]
     pos: np.ndarray
     rot: np.ndarray
-    # 상자: 반 크기 / 원기둥: (반지름, 반 길이, 0) / 고리: (바깥 반지름, 반 길이, 안쪽 반지름)
+    # 상자: 반 크기 / 원기둥: (반지름, 반 길이, 0) / 고리: (바깥 반지름, 반 길이, 안쪽 반지름) / 껍질: 쓰지 않음
     size: tuple[float, float, float]
     material: Material
     mass: float
     group: str  # 보고용 묶음 (예: "J4 서보")
+    verts: np.ndarray | None = None  # 볼록 껍질을 이루는 점들 (n × 3, 형상 좌표계)
 
 
 def _box_mass(half: np.ndarray, hollow: bool) -> float:
@@ -648,8 +649,17 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
     # 손목 3(6): 플랜지 판, 그다음 도구 (도구 좌표 z = 링크 6의 +y).
     yf = layout.d6f
     b.cyl(6, "flange", (0.0, yf - FLANGE_T / 2, 0.0), Y, 0.022, FLANGE_T, group="플랜지")
+    add_tool(b, 6, yf, tool)
+    return robot, b.prims, mods
+
+
+def add_tool(b: Builder, link: int, yf: float, tool: Tool) -> None:
+    """교체 어댑터와 도구. yf는 링크 6 좌표계에서 플랜지 면의 y이고, 도구는 +y로 나간다.
+
+    link가 7이면 링크 6에 붙은 따로 된 몸체에 둔다 (좌표계는 링크 6과 같다). 다른 팔(UR3e)에 같은 도구를 달 때 쓴다.
+    """
     b.cyl(
-        6,
+        link,
         "adapter",
         (0.0, yf + ADAPTER_T / 2, 0.0),
         Y,
@@ -661,7 +671,7 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
     tool_lo = yf + ADAPTER_T
     if tool.name == "포인터":
         b.cyl(
-            6,
+            link,
             "pointer",
             (0.0, tool_lo + 0.040, 0.0),
             Y,
@@ -673,7 +683,7 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
         )
     elif tool.name == "흡착":
         b.cyl(
-            6,
+            link,
             "suction",
             (0.0, tool_lo + 0.030, 0.0),
             Y,
@@ -687,7 +697,7 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
         # 링크 6 좌표계에서 플랜지 x는 +z, 플랜지 y는 +x다 (T_last_flange).
         bx, by = BOARD_HALF
         b.box(
-            6,
+            link,
             "board",
             (-by, tool_lo, -bx),
             (by, tool_lo + 0.004, bx),
@@ -699,7 +709,7 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
         bx, by = BOARD_HALF
         c = BOARD_SIDE_OFFSET
         b.box(
-            6,
+            link,
             "board_arm",
             (0.020, tool_lo - 0.004, -0.010),
             (c - by, tool_lo + 0.004, 0.010),
@@ -708,7 +718,7 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
             group="도구",
         )
         b.box(
-            6,
+            link,
             "board",
             (c - by, tool_lo, -bx),
             (c + by, tool_lo + 0.004, bx),
@@ -719,7 +729,7 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
     else:
         # STS3215 하나로 랙·피니언을 돌리는 몸통, 그 아래 손가락 두 개 (열린 폭 40 mm).
         b.box(
-            6,
+            link,
             "gripper_body",
             (-0.032, tool_lo, -0.018),
             (0.032, tool_lo + 0.050, 0.018),
@@ -730,7 +740,7 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
         for sign in (1, -1):
             x0, x1 = sorted((sign * 0.020, sign * 0.028))
             b.box(
-                6,
+                link,
                 f"finger{sign:+d}",
                 (x0, tool_lo + 0.050, -0.010),
                 (x1, tool_lo + 0.097, 0.010),
@@ -738,7 +748,6 @@ def build_arm(layout: Layout, tool: Tool) -> tuple[Robot, list[Prim], list[Modul
                 mass=tool.mass * 0.1,
                 group="도구",
             )
-    return robot, b.prims, mods
 
 
 # ----------------------------------------------------------------------------------------------------
@@ -776,8 +785,17 @@ def _geom_pieces(p: Prim) -> list[tuple[str, int, list[float], np.ndarray, np.nd
     return pieces
 
 
-def build_scene(robot: Robot, prims: list[Prim], fixed: list[Prim] | None = None) -> Scene:
-    """fixed는 책상에 고정된 물건(카메라 기둥 등)이다. 베이스와 따로 "fixture" 몸체에 둔다."""
+def build_scene(
+    robot: Robot,
+    prims: list[Prim],
+    fixed: list[Prim] | None = None,
+    *,
+    exclude: tuple[tuple[int, int], ...] = (),
+) -> Scene:
+    """fixed는 책상에 고정된 물건(카메라 기둥 등)이다. 베이스와 따로 "fixture" 몸체에 둔다.
+
+    이웃한 링크끼리도 부딪힘을 본다. exclude는 부딪힘을 보지 않을 링크 쌍이다 (0 베이스 ~ 6, 7은 도구 몸체).
+    """
     spec = mujoco.MjSpec()
     spec.compiler.degree = False
     spec.option.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_FILTERPARENT)
@@ -794,11 +812,29 @@ def build_scene(robot: Robot, prims: list[Prim], fixed: list[Prim] | None = None
         body = bodies[-1].add_body(name=f"link{i + 1}", pos=list(joint.origin))
         body.add_joint(name=joint.name, type=mujoco.mjtJoint.mjJNT_HINGE, axis=list(joint.axis))
         bodies.append(body)
+    if any(p.link == 7 for p in prims) or any(7 in pair for pair in exclude):
+        bodies.append(bodies[-1].add_body(name="tool"))
+    for a, b in exclude:
+        spec.add_exclude(bodyname1=bodies[a].name, bodyname2=bodies[b].name)
     fixture = world.add_body(name="fixture")
     fixed = fixed or []
     placed = [(p, bodies[p.link], p.link == 0) for p in prims] + [(p, fixture, True) for p in fixed]
     by_name: dict[str, Prim] = {}
     for p, body, static in placed:
+        if p.shape == "hull":
+            # MuJoCo는 면 없이 점만 준 메시를 볼록 껍질로 만든다.
+            assert p.verts is not None
+            spec.add_mesh(name=f"{p.name}@mesh", uservert=p.verts.flatten().tolist())
+            body.add_geom(
+                name=p.name,
+                type=mujoco.mjtGeom.mjGEOM_MESH,
+                meshname=f"{p.name}@mesh",
+                contype=1,
+                conaffinity=1 if static else 3,
+                margin=CONTACT_MARGIN,
+            )
+            by_name[p.name] = p
+            continue
         for name, gtype, size, pos, rot in _geom_pieces(p):
             quat = np.zeros(4)
             mujoco.mju_mat2Quat(quat, rot.flatten())

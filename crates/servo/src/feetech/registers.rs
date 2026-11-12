@@ -311,6 +311,45 @@ pub const ALL: &[Register] = &[
     PRESENT_CURRENT,
 ];
 
+/// 메모리 표에 적힌 초기값 (2026-11-11 확인). 최대 입력 전압(14), Phase(18), 보호·알림 조건(19, 20),
+/// P·D(21, 22), 최소 시작 토크(24), 속도 고리 게인(37, 39), 7번은 표가 비워 둬서 없다. RAM은 켰을 때의
+/// 값이다. 값 적용은 로봇 설정에 정하지 않은 칸을 이 값으로 맞춘다 (0024). Python 기준 구현의
+/// `TABLE_INITIAL`과 같은지는 그쪽 시험이 본다.
+pub const TABLE_INITIAL: &[(Register, i32)] = &[
+    (ENDIAN, 0),
+    (ID, 1),
+    (BAUD_RATE, 0),
+    (RESPONSE_LEVEL, 1),
+    (MIN_ANGLE_LIMIT, 0),
+    (MAX_ANGLE_LIMIT, 4095),
+    (MAX_TEMPERATURE, 70),
+    (MIN_VOLTAGE, 40),
+    (MAX_TORQUE, 1000),
+    (I_GAIN, 0),
+    (INTEGRAL_LIMIT, 0),
+    (DEAD_ZONE_POSITIVE, 1),
+    (DEAD_ZONE_NEGATIVE, 1),
+    (PROTECTION_CURRENT, 511),
+    (ANGLE_RESOLUTION, 1),
+    (POSITION_OFFSET, 0),
+    (MODE, 0),
+    (HOLDING_TORQUE, 20),
+    (PROTECTION_TIME, 200),
+    (OVERLOAD_TORQUE, 80),
+    (OVERCURRENT_PROTECTION_TIME, 200),
+    (TORQUE_ENABLE, 0),
+    (ACCELERATION, 0),
+    (LOCK, 1),
+];
+
+/// 메모리 표의 초기값. 표가 비워 둔 칸이면 없다.
+pub fn table_initial(register: Register) -> Option<i32> {
+    TABLE_INITIAL
+        .iter()
+        .find(|(known, _)| *known == register)
+        .map(|&(_, value)| value)
+}
+
 /// 덤프는 주소 0부터 마지막 레지스터 끝까지 한 번에 읽는다 (응답 최대 길이 안).
 pub const MEMORY_SIZE: usize = end_of(ALL, None);
 
@@ -474,6 +513,15 @@ mod tests {
         assert!(ALL.iter().all(|register| matches!(register.size, 1 | 2)));
         assert_eq!(MEMORY_SIZE, 71);
         assert_eq!(EEPROM_END, 40);
+    }
+
+    #[test]
+    fn table_initial_values_fit_their_registers() {
+        for &(register, value) in TABLE_INITIAL {
+            assert!(register.encode(value).is_ok(), "{}", register.name);
+        }
+        assert_eq!(table_initial(PROTECTION_CURRENT), Some(511));
+        assert_eq!(table_initial(P_GAIN), None); // 표가 비워 둔 칸
     }
 
     #[test]

@@ -1,4 +1,5 @@
-//! 로봇 설정 (`data/robot.toml`): 관절마다 서보 ID와 모델, 소프트 한계, 영점과 방향 (docs/decisions/0024-servo-bus.md).
+//! 로봇 설정 (`data/robot.toml`): 관절마다 서보 ID와 모델, 소프트 한계, 영점과 방향, 서보에 구울 EEPROM 값
+//! (docs/decisions/0024-servo-bus.md).
 //!
 //! 컨트롤러가 읽는 설정은 이 파일뿐이다 (docs/decisions/0009-control-architecture.md). 파일의 각도는 도이고
 //! 읽으면서 rad로 바꾼다. 모르는 키가 있으면(단위를 빠뜨린 키 이름 등) 읽을 때 실패하고, 문제가 여럿이면
@@ -10,7 +11,7 @@ use std::f64::consts::TAU;
 use std::fs;
 use std::path::Path;
 
-use horilab_servo::feetech::registers::{MODELS, STEPS_PER_TURN};
+use horilab_servo::feetech::registers::{self as reg, Area, MODELS, Register, STEPS_PER_TURN};
 use serde::Deserialize;
 
 /// 관절 이름. MJCF, URDF, 메시지와 같은 이름이고(docs/conventions.md), 서보 ID는 관절 번호다 (0024).
@@ -21,6 +22,16 @@ pub const RAD_PER_STEP: f64 = TAU / STEPS_PER_TURN as f64;
 
 /// 서보 값의 끝. 위치 모드는 0~4095 안에서 움직인다.
 const MAX_RAW: f64 = (STEPS_PER_TURN - 1) as f64;
+
+/// 로봇 설정에 적지 않는 EEPROM 칸. ID와 통신 속도는 값 적용이 바꾸지 않고(0024), 위치 오프셋은 늘 0이고,
+/// 각도 한계는 소프트 한계에서 계산한다.
+const NOT_IN_FILE: [Register; 5] = [
+    reg::ID,
+    reg::BAUD_RATE,
+    reg::POSITION_OFFSET,
+    reg::MIN_ANGLE_LIMIT,
+    reg::MAX_ANGLE_LIMIT,
+];
 
 /// 읽고 검사한 로봇 설정.
 #[derive(Debug, Clone, PartialEq)]
@@ -47,6 +58,8 @@ pub struct Joint {
     pub upper: f64,
     /// 영점과 방향. 관절 시험의 영점 단계에서 재기 전에는 없고, 없으면 이 관절은 움직이지 않는다
     pub calibration: Option<Calibration>,
+    /// 서보에 구울 EEPROM 값 (값 적용의 목표, 주소 순). ID와 통신 속도는 빠진다
+    pub eeprom: Vec<(Register, i32)>,
 }
 
 /// 서보 값과 관절 각 사이의 변환. 실물 백엔드 안에서만 쓴다 (0009).
@@ -111,6 +124,102 @@ fn zero_window(lower: f64, upper: f64, clearance: f64, direction: Direction) -> 
     (low <= high).then_some((low, high))
 }
 
+/// 서보 각도 한계(EEPROM 9, 11): 영점을 쟀으면 소프트 한계를 바깥쪽으로 반올림한 서보 값이고,
+/// 재기 전에는 한 바퀴 전체다. 서보는 이 밖의 목표로 가지 않아서 컨트롤러 다음의 막이 된다.
+fn angle_limits(lower: f64, upper: f64, calibration: Option<Calibration>) -> (i32, i32) {
+    match calibration {
+        Some(c) => {
+            let (a, b) = (c.raw_at(lower), c.raw_at(upper));
+            (a.min(b).floor() as i32, a.max(b).ceil() as i32)
+        }
+        None => (0, MAX_RAW as i32),
+    }
+}
+
+/// 서보에 구울 EEPROM 값: 관절의 값, 모델의 값, 메모리 표의 초기값 순으로 찾는다. 위치 오프셋은 0이고
+/// 각도 한계는 계산한 값이다. 어디에도 값이 없는 칸이 있으면 그 이름들을 돌려준다.
+fn eeprom_target(
+    model: &[(Register, i32)],
+    joint: &[(Register, i32)],
+    (min_raw, max_raw): (i32, i32),
+) -> Result<Vec<(Register, i32)>, Vec<&'static str>> {
+    let find = |values: &[(Register, i32)], register: Register| {
+        values
+            .iter()
+            .find(|(known, _)| *known == register)
+            .map(|&(_, value)| value)
+    };
+    let mut target = Vec::new();
+    let mut missing = Vec::new();
+    for &register in reg::ALL {
+        let settable = register.area == Area::Eeprom && register.writable;
+        if !settable || register == reg::ID || register == reg::BAUD_RATE {
+            continue;
+        }
+        let value = if register == reg::POSITION_OFFSET {
+            Some(0)
+        } else if register == reg::MIN_ANGLE_LIMIT {
+            Some(min_raw)
+        } else if register == reg::MAX_ANGLE_LIMIT {
+            Some(max_raw)
+        } else {
+            find(joint, register)
+                .or_else(|| find(model, register))
+                .or_else(|| reg::table_initial(register))
+        };
+        match value {
+            Some(value) => target.push((register, value)),
+            None => missing.push(register.name),
+        }
+    }
+    if missing.is_empty() {
+        Ok(target)
+    } else {
+        Err(missing)
+    }
+}
+
+/// `[... .registers]` 표: 레지스터 이름과 값이 맞는지 본다.
+fn check_registers(
+    context: &str,
+    values: &BTreeMap<String, i64>,
+) -> Result<Vec<(Register, i32)>, Vec<String>> {
+    let mut checked = Vec::new();
+    let mut problems = Vec::new();
+    for (name, &value) in values {
+        let Some(register) = reg::by_name(name) else {
+            problems.push(format!("{context}: 모르는 레지스터다: {name}"));
+            continue;
+        };
+        if register.area != Area::Eeprom || !register.writable {
+            problems.push(format!("{context}: {name}은 쓸 수 있는 EEPROM 칸이 아니다"));
+        } else if NOT_IN_FILE.contains(&register) {
+            problems.push(format!(
+                "{context}: {name}은 적지 않는다 (ID와 통신 속도는 바꾸지 않고, 위치 오프셋은 0, \
+                 각도 한계는 소프트 한계로 계산한다)"
+            ));
+        } else {
+            match i32::try_from(value)
+                .ok()
+                .filter(|&value| register.encode(value).is_ok())
+            {
+                Some(value) => checked.push((register, value)),
+                None => problems.push(format!("{context}: {name}에 담을 수 없는 값이다: {value}")),
+            }
+        }
+    }
+    if problems.is_empty() {
+        Ok(checked)
+    } else {
+        Err(problems)
+    }
+}
+
+fn model_names() -> String {
+    let names: Vec<&str> = MODELS.iter().map(|(_, name)| *name).collect();
+    names.join(", ")
+}
+
 impl Settings {
     /// 파일을 읽어 검사한다.
     pub fn load(path: &Path) -> Result<Self, String> {
@@ -130,12 +239,30 @@ impl Settings {
         }
         let clearance = clearance_deg.to_radians();
         let mut problems = Vec::new();
+
+        let mut models: BTreeMap<&str, Vec<(Register, i32)>> = BTreeMap::new();
+        for (name, model) in &file.models {
+            if !MODELS.iter().any(|(_, known)| *known == name.as_str()) {
+                problems.push(format!(
+                    "models.{name}: 모르는 서보 모델이다 ({})",
+                    model_names()
+                ));
+                continue;
+            }
+            match check_registers(&format!("models.{name}.registers"), &model.registers) {
+                Ok(values) => {
+                    models.insert(name.as_str(), values);
+                }
+                Err(found) => problems.extend(found),
+            }
+        }
+
         if file.joints.is_empty() {
             problems.push("관절이 하나도 없다".to_owned());
         }
         let mut joints = Vec::new();
         for (name, joint) in &file.joints {
-            match joint.check(name, clearance) {
+            match joint.check(name, clearance, &models) {
                 Ok(joint) => joints.push(joint),
                 Err(found) => problems.extend(found),
             }
@@ -202,7 +329,16 @@ fn deg(rad: f64) -> String {
 #[serde(deny_unknown_fields)]
 struct SettingsFile {
     boundary_clearance_deg: f64,
+    #[serde(default)]
+    models: BTreeMap<String, ModelFile>,
     joints: BTreeMap<String, JointFile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModelFile {
+    #[serde(default)]
+    registers: BTreeMap<String, i64>,
 }
 
 #[derive(Deserialize)]
@@ -213,10 +349,17 @@ struct JointFile {
     soft_limits_deg: [f64; 2],
     zero_raw: Option<u16>,
     direction: Option<i8>,
+    #[serde(default)]
+    registers: BTreeMap<String, i64>,
 }
 
 impl JointFile {
-    fn check(&self, name: &str, clearance: f64) -> Result<Joint, Vec<String>> {
+    fn check(
+        &self,
+        name: &str,
+        clearance: f64,
+        models: &BTreeMap<&str, Vec<(Register, i32)>>,
+    ) -> Result<Joint, Vec<String>> {
         let Some(index) = JOINT_NAMES.iter().position(|known| *known == name) else {
             return Err(vec![format!(
                 "{name}: 모르는 관절이다 ({})",
@@ -236,33 +379,32 @@ impl JointFile {
 
         let model = MODELS.iter().find(|(_, model)| *model == self.model);
         if model.is_none() {
-            let known: Vec<&str> = MODELS.iter().map(|(_, model)| *model).collect();
             problems.push(format!(
                 "{name}: 모르는 서보 모델이다: {} ({})",
                 self.model,
-                known.join(", ")
+                model_names()
             ));
         }
 
         let [lower_deg, upper_deg] = self.soft_limits_deg;
         let (lower, upper) = (lower_deg.to_radians(), upper_deg.to_radians());
-        let limits_ok =
-            if !(lower_deg.is_finite() && upper_deg.is_finite() && lower_deg < upper_deg) {
-                problems.push(format!(
-                "{name}: soft_limits_deg는 [아래, 위]이고 아래 < 위다: [{lower_deg}, {upper_deg}]"
+        let ordered = lower_deg.is_finite() && upper_deg.is_finite() && lower_deg < upper_deg;
+        let fits = ordered && zero_window(lower, upper, clearance, Direction::Same).is_some();
+        if !ordered {
+            problems.push(format!(
+                "{name}: soft_limits_deg는 [아래, 위]이고 아래 < 위다: \
+                 [{lower_deg}, {upper_deg}]"
             ));
-                false
-            } else if zero_window(lower, upper, clearance, Direction::Same).is_none() {
-                problems.push(format!(
-                    "{name}: 소프트 한계 {}~{}에 양쪽 경계 여유 {}를 더하면 한 바퀴(360°)를 넘는다",
-                    deg(lower),
-                    deg(upper),
-                    deg(clearance)
-                ));
-                false
-            } else {
-                true
-            };
+        } else if !fits {
+            problems.push(format!(
+                "{name}: 소프트 한계 {}~{}에 양쪽 경계 여유 {}를 더하면 \
+                 한 바퀴(360°)를 넘는다",
+                deg(lower),
+                deg(upper),
+                deg(clearance)
+            ));
+        }
+        let limits_ok = fits;
 
         let calibration = match (self.zero_raw, self.direction) {
             (None, None) => None,
@@ -315,34 +457,78 @@ impl JointFile {
             ));
         }
 
-        match model {
-            Some(&(model_number, model)) if problems.is_empty() => Ok(Joint {
-                name,
-                id: self.id,
-                model,
-                model_number,
-                lower,
-                upper,
-                calibration: calibration.map(|(c, _)| c),
-            }),
-            _ => Err(problems),
+        let joint_values = check_registers(&format!("joints.{name}.registers"), &self.registers)
+            .unwrap_or_else(|found| {
+                problems.extend(found);
+                Vec::new()
+            });
+
+        let Some(&(model_number, model)) = model else {
+            return Err(problems);
+        };
+        if !problems.is_empty() {
+            return Err(problems);
         }
+        let calibration = calibration.map(|(c, _)| c);
+        let model_values = models.get(model).map_or(&[][..], Vec::as_slice);
+        let eeprom = eeprom_target(
+            model_values,
+            &joint_values,
+            angle_limits(lower, upper, calibration),
+        )
+        .map_err(|missing| {
+            vec![format!(
+                "{name}: 메모리 표가 초기값을 비워 둔 칸은 [models.{model}.registers]에 적는다: {}",
+                missing.join(", ")
+            )]
+        })?;
+        Ok(Joint {
+            name,
+            id: self.id,
+            model,
+            model_number,
+            lower,
+            upper,
+            calibration,
+            eeprom,
+        })
     }
 }
 
+/// 시험용 로봇 설정: 관절 하나 시험의 J3 (data/robot.toml과 같은 값). 끝에 키를 붙이면 j3에 들어간다.
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 관절 하나 시험의 J3 (data/robot.toml과 같은 값). 끝에 키를 붙이면 j3에 들어간다.
-    const J3: &str = r#"
+pub(crate) const TEST_J3: &str = r#"
 boundary_clearance_deg = 45
+
+[models.STS3250.registers]
+response_delay = 0
+max_voltage = 160
+phase = 12
+unload_condition = 45
+led_alarm_condition = 45
+p_gain = 32
+d_gain = 32
+min_starting_torque = 0
+speed_p_gain = 10
+speed_i_gain = 200
+max_temperature = 80
+min_voltage = 60
+dead_zone_positive = 0
+dead_zone_negative = 0
+protection_current = 310
+overcurrent_protection_time = 250
 
 [joints.j3]
 id = 3
 model = "STS3250"
 soft_limits_deg = [-30, 118]
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const J3: &str = TEST_J3;
 
     fn j3_with(lines: &str) -> String {
         format!("{J3}{lines}\n")
@@ -453,10 +639,15 @@ soft_limits_deg = [-30, 118]
 
     #[test]
     fn model_and_joint_must_be_known() {
-        let message = error(&J3.replace("STS3250", "XL430"));
+        let message = error(&J3.replace(r#"model = "STS3250""#, r#"model = "XL430""#));
         assert!(message.contains("모르는 서보 모델이다: XL430"), "{message}");
         let message = error(&J3.replace("joints.j3", "joints.j7"));
         assert!(message.contains("j7: 모르는 관절이다"), "{message}");
+        let message = error(&J3.replace("[models.STS3250", "[models.XL430"));
+        assert!(
+            message.contains("models.XL430: 모르는 서보 모델이다"),
+            "{message}"
+        );
     }
 
     #[test]
@@ -485,18 +676,81 @@ soft_limits_deg = [-30, 118]
 
     #[test]
     fn clearance_must_not_be_negative() {
-        let message = error(&J3.replace("= 45", "= -1"));
+        let message =
+            error(&J3.replace("boundary_clearance_deg = 45", "boundary_clearance_deg = -1"));
         assert!(message.contains("0 이상"), "{message}");
     }
 
     #[test]
     fn every_problem_is_reported_at_once() {
-        let text = J3.replace("id = 3", "id = 4").replace("STS3250", "XL430");
+        let text = J3
+            .replace("id = 3", "id = 4")
+            .replace(r#"model = "STS3250""#, r#"model = "XL430""#);
         let message = error(&(text + "zero_raw = 3000\ndirection = 1\n"));
         assert!(message.starts_with("고칠 것 3가지"), "{message}");
         assert!(message.contains("영점이 854~2240여야 한다"), "{message}");
         let message = error("boundary_clearance_deg = 45\n[joints]\n");
         assert!(message.contains("관절이 하나도 없다"), "{message}");
+    }
+
+    #[test]
+    fn eeprom_target_takes_joint_then_model_then_table() {
+        let settings = Settings::parse(&j3_with("\n[joints.j3.registers]\np_gain = 40")).unwrap();
+        let eeprom = &settings.joint("j3").unwrap().eeprom;
+        let value = |register: Register| {
+            eeprom
+                .iter()
+                .find(|(known, _)| *known == register)
+                .map(|&(_, value)| value)
+        };
+        assert_eq!(value(reg::P_GAIN), Some(40)); // 관절
+        assert_eq!(value(reg::MAX_TEMPERATURE), Some(80)); // 모델
+        assert_eq!(value(reg::MAX_TORQUE), Some(1000)); // 메모리 표
+        assert_eq!(value(reg::POSITION_OFFSET), Some(0));
+        assert_eq!(value(reg::MIN_ANGLE_LIMIT), Some(0)); // 영점을 재기 전에는 한 바퀴
+        assert_eq!(value(reg::MAX_ANGLE_LIMIT), Some(4095));
+        assert_eq!((value(reg::ID), value(reg::BAUD_RATE)), (None, None));
+        let settable = reg::ALL
+            .iter()
+            .filter(|register| register.area == Area::Eeprom && register.writable)
+            .count();
+        assert_eq!(eeprom.len(), settable - 2);
+    }
+
+    #[test]
+    fn angle_limits_follow_the_soft_limits_after_calibration() {
+        let settings = Settings::parse(&j3_with("zero_raw = 1547\ndirection = 1")).unwrap();
+        let eeprom = &settings.joint("j3").unwrap().eeprom;
+        // -30° → 1205.7, 118° → 2889.6을 바깥쪽으로
+        assert!(eeprom.contains(&(reg::MIN_ANGLE_LIMIT, 1205)));
+        assert!(eeprom.contains(&(reg::MAX_ANGLE_LIMIT, 2890)));
+        let settings = Settings::parse(&j3_with("zero_raw = 2548\ndirection = -1")).unwrap();
+        let eeprom = &settings.joint("j3").unwrap().eeprom;
+        // 118° → 2548 - 1342.6 = 1205.4, -30° → 2548 + 341.3 = 2889.3
+        assert!(eeprom.contains(&(reg::MIN_ANGLE_LIMIT, 1205)));
+        assert!(eeprom.contains(&(reg::MAX_ANGLE_LIMIT, 2890)));
+    }
+
+    #[test]
+    fn cells_without_a_value_are_named() {
+        let message = error(&J3.replace("p_gain = 32\n", ""));
+        assert!(
+            message.contains("[models.STS3250.registers]에 적는다: p_gain"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn register_values_are_checked() {
+        for (line, expected) in [
+            ("torque_limit = 500", "쓸 수 있는 EEPROM 칸이 아니다"),
+            ("position_offset = 0", "적지 않는다"),
+            ("goal = 1", "모르는 레지스터다: goal"),
+            ("p_gain = 300", "담을 수 없는 값이다: 300"),
+        ] {
+            let message = error(&j3_with(&format!("\n[joints.j3.registers]\n{line}")));
+            assert!(message.contains(expected), "{line}: {message}");
+        }
     }
 
     #[test]

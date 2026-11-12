@@ -8,8 +8,10 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 horilab-servo = { version = "0.1.0", path = "../servo" }
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 toml = { version = "1.2.1", default-features = false, features = ["std", "parse", "serde"] }
 
 [lints]
