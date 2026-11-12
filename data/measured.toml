@@ -38,9 +38,20 @@ elbow_ring = 11.31
 # 서보 몸통 실측 [mm] (디지털 캘리퍼스, 2026-11-08). 출력 혼은 단 채로, 뒷면 혼은 빼고 쟀다.
 # - far_thickness: 라벨 쪽 끝 두께. 앞면과 뒷면의 볼록한 판을 물었다
 # - horn_to_back: 출력 혼 윗면 ~ 뒷면. 축에서 라벨 쪽으로 약 7 mm, 혼 나사와 뒷면 보스를 피한 자리다
+# 뒷면 커넥터에 선을 꽂고 잰 값 (2026-11-12). 선을 라벨 쪽으로 눕히고, 한쪽 턱은 출력 혼 윗면에,
+# 다른 턱은 꽂은 선에 대고 살짝 눌렀다.
+# - horn_to_wire: 출력 혼 윗면 ~ 꽂아 눕힌 선. STS3250은 턱이 선에 닿았다 (선이 뒷면에서 5.62)
+# - horn_to_boss: 출력 혼 윗면 ~ 뒷면 보스 끝. STS3215는 턱이 선보다 먼저 보스에 닿았다 (보스가 뒷면에서 4.11).
+#   선은 그보다 낮다
 [servo_body]
-STS3215 = { far_thickness_mm = 35.01, horn_to_back_mm = 33.21 }
-STS3250 = { far_thickness_mm = 35.01, horn_to_back_mm = 33.38 }
+STS3215 = { far_thickness_mm = 35.01, horn_to_back_mm = 33.21, horn_to_boss_mm = 37.32 }
+STS3250 = { far_thickness_mm = 35.01, horn_to_back_mm = 33.38, horn_to_wire_mm = 39.00 }
+
+# 서보 선 플러그(5264 3핀) 몸통 [mm] (디지털 캘리퍼스, 2026-11-12). 구멍으로 지나가려면 9.6 × 5.4 넘는 틈이 필요하다
+[servo_plug]
+length_mm = 9.58 # 꽂는 방향
+width_mm = 9.01
+thickness_mm = 4.75
 
 # 공차 시험편으로 고른 설계 치수 [mm]. 필라멘트마다 적는다 (docs/manufacturing.md의 "공차").
 # 1차 시험편(M3 볼트 구멍, 너트 홈): uv run python -m horilab_design.coupons

@@ -133,6 +133,16 @@ class ServoBody(_Values):
 
     far_thickness_mm: float = Field(gt=0)  # 라벨 쪽 끝 두께: 앞면 ~ 뒷면의 볼록한 판
     horn_to_back_mm: float = Field(gt=0)  # 출력 혼 윗면 ~ 뒷면 (축 가까운 쪽)
+    horn_to_wire_mm: float | None = Field(default=None, gt=0)  # 출력 혼 윗면 ~ 뒷면에 꽂아 눕힌 선
+    horn_to_boss_mm: float | None = Field(default=None, gt=0)  # 출력 혼 윗면 ~ 뒷면 보스 끝
+
+
+class ServoPlug(_Values):
+    """서보 선 플러그(5264 3핀) 몸통 치수 [mm]."""
+
+    length_mm: float = Field(gt=0)  # 꽂는 방향
+    width_mm: float = Field(gt=0)
+    thickness_mm: float = Field(gt=0)
 
 
 class Measured(_Values):
@@ -142,6 +152,7 @@ class Measured(_Values):
         str, float
     ] = {}  # 출력물 무게 (STL 파일 이름 → g). 무게 어림을 맞춰 보는 데 쓴다
     servo_body: dict[ServoModel, ServoBody] = {}
+    servo_plug: ServoPlug | None = None
     fit: dict[Filament, PrintFit] = {}
 
 

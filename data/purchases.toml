@@ -230,6 +230,18 @@ priced = "2026-11"
 why = "어깨 서보 (0011)"
 
 [[item]]
+name = "뱀부랩 PLA Basic 흰색"
+qty = 1
+stage = 3
+ordered = 2026-11-13
+arrive = [2026-11-15, 2026-11-17]
+vendor = "뱀부랩"
+lead_days = [2, 4]
+unit_price_krw = 25000
+priced = "2026-11-13"
+why = "덮개색 (manufacturing.md). 팔의 흰 몸통(위팔, 아래팔, 손목 몸통 둘, 어깨 몸통)에 약 340 g이 들고, 실패분까지 500 g쯤 잡는다 (어림). 쓰던 흰색 롤은 얼마 남지 않았고, 보이는 몸통은 한 롤로 뽑아 색을 맞춘다. 첫 관절의 흰 몸통부터 쓴다"
+
+[[item]]
 name = "뱀부랩 PLA Basic 검정"
 qty = 1
 stage = 0
