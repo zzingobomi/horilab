@@ -8,6 +8,8 @@
 //!   쪽이 정한다.
 //! - 토크를 켤 때는 목표를 현재 위치로 맞추고 토크 한도·속도·가속을 쓴 뒤 켠다. 이미 켜져 있으면 서보에
 //!   남은 목표와 설정을 이어받고 다시 쓰지 않는다 (0009의 "컨트롤러만 다시 켜짐").
+//! - 서보 보호 비트가 켜져 있거나 로봇 관절의 위치 오프셋이 로봇 설정과 다르면 토크를 켜지도 이어받지도
+//!   않는다 (0024의 서보 보호와 영점).
 //! - 한 서보와의 통신이 정한 횟수만큼 잇달아 실패하면 멈춤이 되고, 사람이 풀기 전에는 목표를 쓰지 않는다.
 
 use std::time::Duration;
@@ -304,10 +306,29 @@ impl<P: Port> Joints<P> {
     }
 
     /// 토크를 켠다 (0009). 꺼져 있으면 목표를 현재 위치로 맞추고 상한을 쓴 뒤 켠다. 이미 켜져 있으면 아무것도
-    /// 쓰지 않고 이어받는다.
+    /// 쓰지 않고 이어받는다. 서보 보호 비트가 켜져 있거나(보호가 걸려도 토크 스위치는 켜진 채다), 로봇 관절의
+    /// 위치 오프셋이 로봇 설정과 다르면(읽는 위치가 그만큼 틀어진다) 켜지도 이어받지도 않는다 (0024).
     pub fn enable(&mut self, id: u8) -> Result<Enabled, String> {
         self.require_running()?;
         let state = self.snapshot(id)?;
+        let servo = self.servo(id)?.clone();
+        if !state.status.is_none() {
+            return Err(format!(
+                "{}: 서보 보호가 걸려 있다 ({}). 토크를 켜지도 이어받지도 않는다. 원인을 없앤 뒤 사람이 \
+                 토크를 껐다 다시 켠다",
+                servo.name, state.status
+            ));
+        }
+        if let Some(calibration) = servo.calibration {
+            let offset = self.read(id, &[reg::POSITION_OFFSET])?[0].1;
+            if offset != calibration.position_offset {
+                return Err(format!(
+                    "{}: 서보의 위치 오프셋 {offset}이 로봇 설정의 {}와 달라 읽는 위치가 틀어진다. \
+                     값 적용으로 맞추거나 영점을 다시 잰다",
+                    servo.name, calibration.position_offset
+                ));
+            }
+        }
         if state.torque_on() {
             return Ok(Enabled::AlreadyOn);
         }
@@ -472,6 +493,69 @@ mod tests {
         assert_eq!(joints.enable(20).unwrap(), Enabled::AlreadyOn);
         let state = joints.snapshot(20).unwrap();
         assert_eq!((state.goal_position, state.torque_limit), (1200, 700));
+    }
+
+    #[test]
+    fn a_servo_weakened_by_overload_is_not_taken_over() {
+        let mut joints = bench(FakeServo::with(20, 2825, 2048));
+        joints.enable(20).unwrap();
+        joints.wire().servos[0].held = true;
+        joints.move_raw(20, 2600).unwrap();
+        joints.wire().servos[0].overload(); // 붙잡힌 채 보호 시간이 지났다
+        let state = joints.snapshot(20).unwrap();
+        assert!(state.torque_on() && state.status.contains(Fault::OVERLOAD));
+        let message = joints.enable(20).unwrap_err();
+        assert!(
+            message.contains("서보 보호가 걸려 있다 (과부하)"),
+            "{message}"
+        );
+        // 놓아도 묶인 채 목표로 가지 않는다. 사람이 토크를 껐다 켜면 풀린다
+        joints.wire().servos[0].release();
+        assert_eq!(joints.snapshot(20).unwrap().position, 2048);
+        joints.disable(20).unwrap();
+        assert_eq!(joints.enable(20).unwrap(), Enabled::TurnedOn);
+        let state = joints.snapshot(20).unwrap();
+        assert!(state.status.is_none() && state.position == 2048);
+    }
+
+    #[test]
+    fn low_voltage_blocks_enable() {
+        let mut servo = FakeServo::with(20, 2825, 2048);
+        servo.set(reg::MIN_VOLTAGE, 100);
+        servo.set_voltage(96);
+        let mut joints = bench(servo);
+        assert!(joints.enable(20).unwrap_err().contains("(전압)"));
+        joints.wire().servos[0].set_voltage(120);
+        assert_eq!(joints.enable(20).unwrap(), Enabled::TurnedOn);
+    }
+
+    #[test]
+    fn robot_joint_offset_must_match_the_settings() {
+        let mut joint = Settings::parse(TEST_J3)
+            .unwrap()
+            .joint("j3")
+            .unwrap()
+            .clone();
+        joint.calibration = Some(Calibration {
+            pin: 0.0,
+            zero_raw: 1500,
+            direction: Direction::Same,
+            position_offset: 300,
+        });
+        let servo = Servo::from_joint(&joint).unwrap();
+        let mut joints = Joints::open(
+            open_fake_bus([FakeServo::with(3, 2825, 1500)]),
+            vec![servo],
+            BENCH_CAPS,
+        )
+        .unwrap();
+        let message = joints.enable(3).unwrap_err();
+        assert!(
+            message.contains("위치 오프셋 0이 로봇 설정의 300와"),
+            "{message}"
+        );
+        joints.wire().servos[0].set(reg::POSITION_OFFSET, 300);
+        assert_eq!(joints.enable(3).unwrap(), Enabled::TurnedOn);
     }
 
     #[test]

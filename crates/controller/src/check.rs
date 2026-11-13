@@ -1467,10 +1467,15 @@ mod tests {
         }
         assert_eq!(run.results["enable"]["enabled"], "turned_on");
         assert_eq!(run.results["lock"]["applied"], true);
-        assert_eq!(run.results["multi_turn"]["beyond_one_turn"], true); // 가짜는 한계를 지키지 않는다
-        assert_eq!(run.results["limit_enable"]["moved_by"], 0); // 가짜는 한계 밖에서도 그 자리에 있는다
+        // 가짜 서보도 실물처럼 읽는 위치가 0~4095로 돌아오고, 한계 밖에서 토크를 켜면 한계까지 가고,
+        // 위치 오프셋이 읽는 위치를 옮긴다 (2026-11-13 맨 서보 확인)
+        assert_eq!(run.results["multi_turn"]["beyond_one_turn"], false);
+        assert_eq!(
+            run.results["limit_enable"]["moved_by"],
+            OUTSIDE_LIMITS.0 - CENTER
+        );
         assert_eq!(run.results["limit_enable"]["torque_on"], true);
-        assert_eq!(run.results["offset"]["applied"], false); // 가짜는 따로 켜지 않으면 읽는 위치를 옮기지 않는다
+        assert_eq!(run.results["offset"]["applied"], true);
         assert_eq!(run.results["current"]["sign"], "unknown"); // 가짜는 전류가 0이다
         let state = run.joints.snapshot(20).unwrap();
         assert!(state.torque_on());
@@ -1543,6 +1548,7 @@ mod tests {
     fn trace_stops_when_the_servo_stops_short_of_the_goal() {
         let folder = temp_dir("check-short");
         let mut servo = FakeServo::new(20);
+        servo.set(reg::GOAL_POSITION, 2048); // 목표가 지금 자리에 남아 있다 (전원 직후의 0이 아니라)
         servo.faults.ignored_writes_to.extend([42, 43]); // 목표 쓰기를 무시해 제자리에 선다
         let mut run = check(servo, &[], &folder);
         run.joints.enable(20).unwrap();

@@ -1,18 +1,26 @@
 //! 가짜 Feetech 서보 버스. 실물 없이 버스 층과 그 위를 시험한다.
 //!
 //! 0009의 "실물 백엔드의 오류 처리를 가짜 서보 버스로 시험한다"에 쓴다. 포트 자리에 끼워서
-//! 패킷 처리까지 그대로 지나가게 한다. Python 기준 구현의 fake.py와 같은 동작이다.
+//! 패킷 처리까지 그대로 지나가게 한다. Python 기준 구현의 fake.py에서 시작했고, 맨 서보 확인(2026-11-13,
+//! docs/decisions/0024-servo-bus.md)의 실물 동작에 맞춘 것은 이쪽에만 있다.
 //!
 //! - 서보 메모리는 메모리 표를 따른다. 기본값은 시험용이고 실물의 기본값이 아니다.
 //! - EEPROM은 잠금(55)을 푼 채 쓴 값만 전원을 다시 켜도 남는다 (`power_cycle`).
-//! - 토크를 켜거나 토크가 켜진 채 목표를 쓰면 현재 위치가 곧바로 목표가 된다.
+//! - 토크를 켜거나 토크가 켜진 채 목표를 쓰면 현재 위치가 곧바로 목표가 된다. 목표는 각도 한계 안으로
+//!   잘리고(위치 모드는 0/4095 경계를 넘지 않는다), 각도 한계가 0과 0이면 경계를 넘어 돈다. 지금 위치가 한계
+//!   밖인 채 토크를 켜면 한계까지 간다. 전원을 넣은 직후의 목표는 0이다.
+//! - 붙잡힌 혼(`held`)은 목표로 가지 못한다. [`FakeServo::overload`]는 붙잡힌 채 보호 시간이 지난 것이다:
+//!   과부하 비트가 켜지고, 힘을 빼는 조건(19)에 과부하가 있으면 힘(부하)이 보호 뒤 토크(34)로 줄어 토크를
+//!   껐다 켤 때까지 목표로 가지 않는다. 토크 스위치와 토크 한도 값은 그대로다. [`FakeServo::set_voltage`]는
+//!   입력 전압 범위 밖에서 전압 비트를 켠다 (토크와 통신은 그대로다).
 //! - 응답 없음, 깨진 응답, 잘린 응답, 상태 바이트의 오류 비트, 같은 ID 둘, 포트 오류를 일부러 낸다.
 //! - 가짜 포트는 기다리지 않아서, 응답 없음 시험도 바로 끝난다.
-//! - `offset_moves_reading`을 켜면 위치 오프셋을 쓸 때 읽는 위치가 그만큼 옮겨진다 (Rust 쪽에만 있다).
-//!   맨 서보 확인의 오프셋 단계를 시험할 때 쓴다. 실물(STS3215, 2026-11-13)도 그렇게 옮겨지는데, 쓴 값이
-//!   몇 ms 뒤에야 읽는 위치에 반영된다. `offset_lag_reads`로 그 늦음을 흉내 낸다.
+//! - 위치 오프셋을 쓰면 읽는 위치가 그만큼 옮겨진다 (`offset_moves_reading`, 기본으로 켜져 있다). 실물
+//!   (STS3215)도 그렇게 옮겨지는데, 쓴 값이 몇 ms 뒤에야 읽는 위치에 반영된다. `offset_lag_reads`로 그
+//!   늦음을 흉내 낸다.
 //!
-//! 각도 한계, 보호, 0/4095 경계는 흉내 내지 않는다. 맨 서보 확인 결과가 나오면 실물의 동작으로 맞춘다.
+//! 흉내 내지 않는 것: 움직이는 데 걸리는 시간(속도, 가속), 과열과 과전류 보호(실물로 보지 않았다), 전원을 넣고
+//! 처음 토크를 켤 때 속도 상한이 먹지 않던 것(원인을 모른다, 관절 층의 `CAPS_SETTLE`).
 
 use std::collections::BTreeSet;
 use std::io;
@@ -57,6 +65,10 @@ pub struct FakeServo {
     offset_pending: i32,
     /// 반영하기까지 남은 읽기 횟수
     offset_wait: Option<u32>,
+    /// 혼이 붙잡혀 있다 (손이나 걸린 물체). 토크를 켜도 목표로 가지 못한다. [`FakeServo::release`]로 놓는다
+    pub held: bool,
+    /// 과부하 보호로 힘이 줄어 묶인 상태. 토크를 껐다 켜야 풀린다
+    overload_latched: bool,
 }
 
 impl FakeServo {
@@ -71,10 +83,12 @@ impl FakeServo {
             flash: [0; EEPROM_END],
             eeprom_saves: 0,
             faults: Faults::default(),
-            offset_moves_reading: false,
+            offset_moves_reading: true,
             offset_lag_reads: 0,
             offset_pending: 0,
             offset_wait: None,
+            held: false,
+            overload_latched: false,
         };
         let defaults = [
             (reg::FIRMWARE_MAJOR, 3),
@@ -146,6 +160,7 @@ impl FakeServo {
         self.memory[EEPROM_END..].fill(0);
         self.offset_pending = 0;
         self.offset_wait = None;
+        self.overload_latched = false;
         self.power_on(position);
     }
 
@@ -153,7 +168,7 @@ impl FakeServo {
         self.set(reg::TORQUE_LIMIT, self.get(reg::MAX_TORQUE));
         self.set(reg::LOCK, 1);
         self.set(reg::PRESENT_POSITION, position);
-        self.set(reg::GOAL_POSITION, position);
+        self.set(reg::GOAL_POSITION, 0); // 실물은 전원을 넣은 직후 목표가 0이다
         self.set(reg::PRESENT_GOAL, position);
         self.set(reg::PRESENT_VOLTAGE, 120);
         self.set(reg::PRESENT_TEMPERATURE, 25);
@@ -192,13 +207,50 @@ impl FakeServo {
         let touched = |register: Register| {
             (start..start + data.len()).contains(&usize::from(register.address))
         };
-        let torque_on =
-            i32::from(self.memory[usize::from(reg::TORQUE_ENABLE.address)]) == reg::TORQUE_ON;
-        if (touched(reg::TORQUE_ENABLE) || touched(reg::GOAL_POSITION)) && torque_on {
-            let goal = self.get(reg::GOAL_POSITION);
-            self.set(reg::PRESENT_POSITION, goal);
-            self.set(reg::PRESENT_GOAL, goal);
+        if touched(reg::TORQUE_ENABLE) && !self.torque_on() {
+            // 토크를 끄면 과부하 보호가 풀린다
+            self.overload_latched = false;
+            self.set_status(reg::Fault::OVERLOAD, false);
+            self.set(reg::PRESENT_LOAD, 0);
         }
+        if touched(reg::TORQUE_ENABLE) || touched(reg::GOAL_POSITION) {
+            self.follow_goal();
+        }
+    }
+
+    /// 붙잡힌 채 보호 시간이 지났다: 과부하 비트를 켠다. 힘을 빼는 조건(19)에 과부하가 있으면 힘이 보호 뒤
+    /// 토크(34)로 줄고 토크를 껐다 켤 때까지 목표로 가지 않는다. 없으면 힘은 그대로이고, 놓으면 비트가 꺼진다.
+    pub fn overload(&mut self) {
+        if !self.torque_on() {
+            return;
+        }
+        self.set_status(reg::Fault::OVERLOAD, true);
+        let unload = reg::Fault(u8::try_from(self.get(reg::UNLOAD_CONDITION)).unwrap_or(0));
+        if unload.contains(reg::Fault::OVERLOAD) {
+            self.overload_latched = true;
+            self.set(reg::PRESENT_LOAD, self.get(reg::HOLDING_TORQUE) * 10);
+        } else {
+            self.set(reg::PRESENT_LOAD, self.get(reg::TORQUE_LIMIT));
+        }
+    }
+
+    /// 붙잡은 혼을 놓는다. 과부하 보호에 묶이지 않았으면 과부하 비트가 꺼지고 목표로 간다.
+    pub fn release(&mut self) {
+        self.held = false;
+        if !self.overload_latched {
+            self.set_status(reg::Fault::OVERLOAD, false);
+            self.set(reg::PRESENT_LOAD, 0);
+            self.follow_goal();
+        }
+    }
+
+    /// 입력 전압을 바꾼다 [0.1 V]. 최소·최대 입력 전압 밖이면 전압 비트가 켜진다 (실물: 하한 10.0 V에서 9.6 V에
+    /// 켜지고 10.0 V에 꺼졌다). 토크와 통신은 그대로다.
+    pub fn set_voltage(&mut self, decivolts: i32) {
+        self.set(reg::PRESENT_VOLTAGE, decivolts);
+        let outside =
+            decivolts < self.get(reg::MIN_VOLTAGE) || decivolts > self.get(reg::MAX_VOLTAGE);
+        self.set_status(reg::Fault::VOLTAGE, outside);
     }
 }
 
@@ -219,6 +271,40 @@ impl FakeServo {
             Some(left) => self.offset_wait = Some(left - 1),
             None => {}
         }
+    }
+
+    fn torque_on(&self) -> bool {
+        self.get(reg::TORQUE_ENABLE) == reg::TORQUE_ON
+    }
+
+    /// 서보가 실제로 서는 자리. 각도 한계가 0과 0이면 경계를 넘어 돌고(읽는 위치는 0~4095로 돌아온다), 아니면
+    /// 각도 한계 안에서 선다. 위치 모드는 0/4095 경계를 넘지 않는다 (실물은 끝에서 한두 칸 앞에 선다).
+    fn reachable(&self, goal: i32) -> i32 {
+        let turn = reg::STEPS_PER_TURN as i32;
+        let (min, max) = (
+            self.get(reg::MIN_ANGLE_LIMIT),
+            self.get(reg::MAX_ANGLE_LIMIT),
+        );
+        if min == 0 && max == 0 {
+            goal.rem_euclid(turn)
+        } else {
+            goal.max(min).min(max).clamp(0, turn - 1)
+        }
+    }
+
+    /// 토크가 켜져 있고 붙잡히거나 과부하 보호에 묶이지 않았으면 목표로 곧바로 간다.
+    fn follow_goal(&mut self) {
+        if self.torque_on() && !self.held && !self.overload_latched {
+            let at = self.reachable(self.get(reg::GOAL_POSITION));
+            self.set(reg::PRESENT_POSITION, at);
+            self.set(reg::PRESENT_GOAL, at);
+        }
+    }
+
+    fn set_status(&mut self, bit: reg::Fault, on: bool) {
+        let status = u8::try_from(self.get(reg::STATUS)).unwrap_or(0);
+        let status = if on { status | bit.0 } else { status & !bit.0 };
+        self.set(reg::STATUS, i32::from(status));
     }
 }
 
