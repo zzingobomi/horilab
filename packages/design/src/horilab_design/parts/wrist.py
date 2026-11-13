@@ -122,7 +122,7 @@ def clearances(model: ServoModel, q_deg: float, limit: float = 2.5) -> dict[tupl
         shape = j.turned(a.shape, q_deg)
         for b in static:
             if b.name == "서보 몸통" and (name.startswith("혼") or name.startswith("허브")):
-                continue  # 혼과 혼 볼트 끝은 서보 앞면과 0.3 (서보 자체의 틈), 허브 판은 앞면 판과 0.9 ~ 1.0
+                continue  # 혼과 혼 볼트 끝은 서보 앞면과 0.3 (서보 자체의 틈), 허브 판은 앞면 판과 1.7 ~ 1.8
             d = shape.distance_to(b.shape)
             if d < limit:
                 out[(name, b.name)] = min(d, out.get((name, b.name), limit))

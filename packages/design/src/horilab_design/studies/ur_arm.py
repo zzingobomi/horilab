@@ -1,7 +1,7 @@
 """UR식 관절 팔의 검토 모델: 관절 부품(parts/joint.py)의 쌓임과 무게로 팔 전체를 세워 본다 (0029, 0017).
 
 개념 형상(studies/ur_joints.py)과 달리, 축 방향 쌓임은 관절 CAD의 값이고 무게는 뽑아서 잰 부품에 맞춘 어림이다
-(printcheck.printed_mass_g). 어깨(ST-3120)만 서보가 오기 전이라 도면 치수로 어림했다.
+(printcheck.printed_mass_g). 어깨(parts/shoulder.py)는 서보가 오기 전이라 서보 치수가 공식 도면 값이다.
 
 짜임 (영점 자세, 링크 좌표는 베이스와 같은 방향):
 - 자식은 출력 원판 윗면에 앉는다. 링크의 납작한 면과 그 링크 끝 집의 원통 앞 끝이 한 평면이다.
@@ -28,6 +28,7 @@ import numpy as np
 
 from horilab_design.parts import joint as jp
 from horilab_design.parts import links as lp
+from horilab_design.parts import shoulder as sp
 from horilab_design.parts import wrist as wp
 from horilab_design.robot import Joint, Robot, rotation
 from horilab_design.statics import FLANGE, GRAVITY, PointMass, frame_poses, holding_torques
@@ -63,26 +64,39 @@ BEARING_MASS: dict[ServoModel, float] = {
 # 원통 속 부품과 나사: 누름 틀 4.1, 서보 받침 3.3, 뒷덮개 5.3, 벽 나사 3.9, 너트 1.5, 서보 뒷면 나사 0.8, 덮개 나사 1.8
 INNER_MASS = 21.0 * G
 WRIST_BODY_MASS = 24.9 * G  # 손목 몸통
-# 자식 쪽: 출력 원판 11.1, 허브 판 1.8, 혼(가운데 나사 포함, 실측) 2.0, 혼 볼트 넷 5.4, 몸통 나사 넷 3.4, 너트 1.3,
+# 자식 쪽: 출력 원판 11.1, 허브 판 1.4, 혼(가운데 나사 포함, 실측) 2.0, 혼 볼트 넷 5.4, 몸통 나사 넷 3.4, 너트 1.3,
 # 멈춤 나사와 너트 1.2
-OUT_MASS = 26.2 * G
-# 어깨(ST-3120)는 그리기 전이라 어림이다: 부모 쪽 75 g(집과 속 부품), 자식 쪽 49 g(출력 원판, 혼, 볼트 여덟)
-SHOULDER_HOUSE_MASS, SHOULDER_OUT_MASS = 75.0 * G, 49.0 * G
-# 링크 한 부품을 세 덩어리로 나눈 값: 끝 집 쪽 22.8 g(끝 관절 축에서 10 mm 앞 관절 쪽), 관(길이당 무게 ×
-# (길이 - 66.8 mm), 가운데는 끝 관절 축에서 (길이 + 13.2)/2), 발(앞 관절 축). 220 mm 위팔 89.9 g · 부피 중심 110.6 mm,
+OUT_MASS = 25.8 * G
+# 어깨 (uv run python -m horilab_design.parts.shoulder).
+# 부모 쪽: 집(J1 몸통의 윗부분) 54.7, 누름 틀 4.2, 서보 받침 9.2, 뒷덮개 12.3, 벽 나사 여섯 4.6, 너트 여섯 1.8,
+# 서보 뒷면 나사 여섯 2.9, 덮개 나사 둘 2.0
+SHOULDER_HOUSE_MASS = 91.7 * G
+# 자식 쪽: 출력 원판 16.7, 허브 판 2.5, 혼 FT110M과 가운데 나사 6.9(도면 부피로 어림), 혼 볼트 여덟 11.5,
+# 위팔 나사 여섯 5.3, 너트 여섯 2.1, 멈춤 나사와 너트 1.2
+SHOULDER_OUT_MASS = 46.2 * G
+# 위팔의 납작한 면(어깨 출력 원판 윗면)이 J1 축에서 떨어진 거리. 어깨 쌓임이 길어진 만큼 서보를 출력 반대쪽으로
+# 물려서 이 값을 지킨다 (0029: 골격과 손목 오프셋이 그대로이고, 어깨 원통이 J1 축을 가운데로 거의 대칭이다)
+SHOULDER_PLANE = 41.5 * MM
+# 링크 한 부품을 세 덩어리로 나눈 값: 끝 집 쪽 22.8 g(끝 관절 축에서 10 mm 앞 관절 쪽), 관(길이당 무게 × 관 길이.
+# 관은 발 상자 끝에서 끝 집의 목(축에서 40 mm)까지다), 발(앞 관절 축). 220 mm 위팔 92.9 g · 부피 중심 114.7 mm,
 # 180 mm 아래팔 72.2 g · 88.3 mm와 맞는다. 길이 후보를 견줄 때 관만 길어진다.
 LINK_HOUSE_MASS = 22.8 * G
 LINK_TUBE: dict[
     str, tuple[float, float, float]
 ] = {  # (관 kg/m, 발 kg, 부피 중심의 서보 좌표 y [m])
-    "upper": (0.320, 18.2 * G, 0.0126),
+    "upper": (0.320, 22.7 * G, 0.0129),
     "fore": (0.287, 16.7 * G, 0.0134),
 }
 D405_PLATE_MASS = 8.0 * G
 SHELL = 1.008e3 * 2.6e-3  # 벽 2.6 mm 껍데기의 넓이당 무게 [kg/m²] (J1 몸통 기둥의 어림에만 쓴다)
 HEAD = wp.HEAD * MM  # 출력 원판 윗면에서 다음 서보 먼 끝까지
 FLANGE_T = 6.0 * MM  # 플랜지 원판 (도구 교체부는 그리퍼와 같이 그린다)
-FOOT_HX, FOOT_HW = lp.FOOT_HX * MM, jp.NECK_HW * MM
+# 발 상자의 (반 길이, 반폭, 윗모서리를 깎은 깊이): 위팔은 어깨 출력 원판에, 아래팔은 STS 출력 원판에 앉는다
+FEET = {
+    key: (f.hx * MM, f.hw * MM, f.chamfer * MM)
+    for key, f in (("upper", lp.SHOULDER_FOOT), ("fore", lp.STS_FOOT))
+}
+NECK_HW = jp.NECK_HW * MM  # STS 집의 목 반폭
 LINK_NAMES = ("J1 몸통", "위팔", "아래팔", "손목 1", "손목 2", "손목 3")
 DEFAULT_RANGES = (
     (0.0, 165.0),
@@ -116,14 +130,15 @@ def stack(shape: ServoShape) -> Stack:
             jp.SEAM * MM,
             jp.ATOP * MM,
         )
-    # 어깨: 6808이 혼 둘레에 든다 (혼이 앞면에서 9.9 나온다). 뒷면은 보스 4.4 + 틈 1 + 덮개 2
-    front = max(z[3] for z in shape.zones)
-    back_face = min(z[2] for z in shape.zones if z[0] <= 0.0 <= z[1])
-    b1 = max(front + (0.9 + 2.0 + 7.0) * MM, shape.horn_out[1])
-    rim = b1 + jp.LIP_T * MM
-    seam = rim + jp.GAP * MM
+    # 어깨: parts/shoulder.py의 쌓임. 그 좌표의 원점은 몸체 두께의 가운데다
+    mid = _body_mid(shape)
     return Stack(
-        28.6 * MM, back_face - 7.4 * MM, (b1 - 7.0 * MM, b1), rim, seam, seam + jp.BRIM_T * MM
+        sp.R_DRUM * MM,
+        mid + sp.BACK_OUT * MM,
+        (mid + sp.B0 * MM, mid + (sp.B0 + sp.BRG_B) * MM),
+        mid + sp.FRONT * MM,
+        mid + sp.SEAM * MM,
+        mid + sp.ATOP * MM,
     )
 
 
@@ -167,7 +182,8 @@ class Concept:
 
     @property
     def c2(self) -> float:
-        return -_body_mid(self.shapes["ST-3120"])
+        """J2 서보 원점의 y: 출력 원판 윗면이 SHOULDER_PLANE에 오게 서보를 출력 반대쪽으로 물린다."""
+        return SHOULDER_PLANE - self.st("ST-3120").atop
 
     @property
     def ya2(self) -> float:
@@ -272,6 +288,8 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
         house_mass: float,
         wrist: bool = False,
         out_t: float = jp.BRIM_T * MM,
+        neck_hw: float = NECK_HW,
+        neck_x: float | None = None,
     ) -> None:
         shape = sh[model]
         m = pk.Module(j, shape, origin, axis, near, out, mid)
@@ -301,13 +319,13 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
             frame=f,
             group=f"J{j} 집",
         )
-        x0 = -(shape.far + (HEAD if wrist else 3.5 * MM))
-        x1 = -math.sqrt(max(s.radius**2 - FOOT_HW**2, 0.0))
+        x0 = -(shape.far + (HEAD if wrist else 3.5 * MM)) if neck_x is None else neck_x
+        x1 = -math.sqrt(max(s.radius**2 - neck_hw**2, 0.0))
         b.box(
             j - 1,
             f"J{j}/far_house",
-            (x0, s.back, -FOOT_HW),
-            (x1, s.rim, FOOT_HW),
+            (x0, s.back, -neck_hw),
+            (x1, s.rim, neck_hw),
             mass=0.0,
             frame=f,
             group=f"J{j} 집",
@@ -359,20 +377,38 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
         """링크 한 부품: 발 상자의 형상과, 세 덩어리로 나눈 무게 (끝 집, 관, 발)."""
         k, m_foot, y_s = LINK_TUBE[key]
         y = c_y + out * y_s
+        hx = FEET[key][0]
+        tube_len = length - hx - 0.040
         lumps = (
             (LINK_HOUSE_MASS, length - 0.010),
-            (k * (length - 0.0668) * c.tube_scale, length - (length + 0.0132) / 2),
+            (k * tube_len * c.tube_scale, hx + tube_len / 2),
             (m_foot, 0.0),
         )
         for i, (m, z) in enumerate(lumps):
             lo, hi = (-0.002, y - 0.002, z - 0.002), (0.002, y + 0.002, z + 0.002)
             b.box(link, f"{key}_mass_{i}", lo, hi, mass=m, group=group)
 
-    def foot(link: int, name: str, y0: float, y1: float, group: str) -> None:
-        lo, hi = (-FOOT_HW, min(y0, y1), -FOOT_HX), (FOOT_HW, max(y0, y1), FOOT_HX)
-        b.box(link, name, lo, hi, mass=0.0, group=group)
+    def foot(
+        link: int, key: str, name: str, flat: float, out: int, height: float, group: str
+    ) -> None:
+        """발 상자: 납작한 면(flat)에서 out 쪽으로 height만큼 선다. 윗모서리 둘은 45°로 깎여 있다 (볼록 껍질)."""
+        hx, hw, ch = FEET[key]
+        top = flat + out * height
+        section = [
+            (-hw, flat),
+            (hw, flat),
+            (hw, top - out * ch),
+            (hw - ch, top),
+            (ch - hw, top),
+            (-hw, top - out * ch),
+        ]
+        verts = np.array([(x, y, z) for z in (-hx, hx) for x, y in section])
+        center = np.array([0.0, (flat + top) / 2, 0.0])
+        b.prims.append(
+            Prim(name, link, "hull", center, np.eye(3), (0.0, 0.0, 0.0), "pla", 0.0, group, verts)
+        )
 
-    st2, st4 = c.st("ST-3120"), c.st("STS3215")
+    st4 = c.st("STS3215")
     h, a2, a3 = c.shoulder, c.upper, c.fore
 
     base_h = TURNTABLE_TOP - TURNTABLE_T - 0.5 * MM
@@ -386,7 +422,9 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
         TURNTABLE_T,
         group="돌림판",
     )
-    col_top = h - st2.radius - MOVING_GAP
+    # 어깨 집의 목은 서보 먼 끝 아래까지 내려오고, 어깨가 낮으면 돌림판 윗면에서 끝난다. 그 아래가 기둥이다
+    neck_x = -min(-sp.NECK_X * MM, h - TURNTABLE_TOP)
+    col_top = h + neck_x
     if col_top > TURNTABLE_TOP:
         col_h = col_top - TURNTABLE_TOP
         b.cyl(
@@ -401,14 +439,25 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
         )
 
     # J2: 서보 출력이 +y. 위팔 = 발 + 납작한 관 + J3 집
-    joint(2, "ST-3120", (0.0, 0.0, h), Y, Z, 1, c.c2, house_mass=SHOULDER_HOUSE_MASS)
-    foot(2, "upper_foot", c.ya2, c.ya2 + 2 * c.upper_r - c.embed, "위팔")
-    d_tube(2, "upper_tube", c.s2, c.upper_r, FOOT_HX, a2 - 0.036, c.ya2)
+    joint(
+        2,
+        "ST-3120",
+        (0.0, 0.0, h),
+        Y,
+        Z,
+        1,
+        c.c2,
+        house_mass=SHOULDER_HOUSE_MASS,
+        neck_hw=sp.NECK_HW * MM,
+        neck_x=neck_x,
+    )
+    foot(2, "upper", "upper_foot", c.ya2, 1, 2 * c.upper_r - c.embed, "위팔")
+    d_tube(2, "upper_tube", c.s2, c.upper_r, FEET["upper"][0], a2 - 0.036, c.ya2)
     link_body(2, "upper", a2, c.c3, -1, "위팔")
     # J3: 위팔 끝, 출력이 -y. 원통 앞 끝이 위팔의 납작한 면과 한 평면
     joint(3, "STS3250", (0.0, 0.0, a2), Y, Z, -1, c.c3, house_mass=INNER_MASS)
-    foot(3, "fore_foot", c.yb3 - (2 * c.fore_r - c.embed), c.yb3, "아래팔")
-    d_tube(3, "fore_tube", c.s3, c.fore_r, FOOT_HX, a3 - 0.036, c.yb3)
+    foot(3, "fore", "fore_foot", c.yb3, -1, 2 * c.fore_r - c.embed, "아래팔")
+    d_tube(3, "fore_tube", c.s3, c.fore_r, FEET["fore"][0], a3 - 0.036, c.yb3)
     link_body(3, "fore", a3, c.c4, c.sign4, "아래팔")
     # J4: 아래팔 끝. J5, J6은 손목 몸통 (서보 먼 끝이 앞 관절 쪽)
     joint(4, "STS3215", (0.0, 0.0, a3), Y, Z, c.sign4, c.c4, house_mass=INNER_MASS)
@@ -785,6 +834,11 @@ LENGTHS = (
 )
 
 
+def shoulder_room(c: Concept) -> float:
+    """어깨 서보의 먼 끝과 돌림판 윗면 사이 [m]. 음수면 서보가 돌림판에 닿아 그 어깨 높이로는 만들 수 없다."""
+    return c.shoulder - TURNTABLE_TOP - c.shapes["ST-3120"].far
+
+
 def print_lengths(c: Concept) -> None:
     print(
         "| 어깨 / 위팔 / 아래팔 [mm] | 작업 갈래 칸 | 버팀 토크 J2 · J3 | 가장 펴진 팔꿈치 | 30° 8방향 | 45° 8방향 |"
@@ -792,6 +846,12 @@ def print_lengths(c: Concept) -> None:
     print("|---|---|---|---|---|---|")
     for s, u, f in LENGTHS:
         ci = replace(c, shoulder=s * MM, upper=u * MM, fore=f * MM)
+        if shoulder_room(ci) < MOVING_GAP:
+            room = shoulder_room(ci) / MM
+            print(
+                f"| {s} / {u} / {f} | 어깨 서보의 먼 끝이 돌림판에 닿는다 (틈 {room:.1f} mm) | | | | |"
+            )
+            continue
         z, t = zone(ci), tilts(ci)
         n = z["branches"][z["best"]]
         print(

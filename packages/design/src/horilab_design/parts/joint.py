@@ -77,8 +77,15 @@ BRG_D, BRG_OD, BRG_B = 30.0, 42.0, 7.0
 SEAT = max(
     HORN_TOP.values()
 )  # 허브 판이 혼 윗면에 앉는 높이 (STS3250 기준. STS3215는 몸통이 0.17 앞으로 온다)
-RELIEF = 0.8  # 허브 판 밑면을 혼 바깥에서 들어 올리는 높이 (앞면 라벨 판과 0.9 ~ 1.0 띄운다)
-FLANGE_T = 2.0  # 허브 판의 테 (안쪽 링 뒤)
+RELIEF = 1.6  # 허브 판 밑면을 혼 바깥에서 들어 올리는 높이 (앞면 라벨 판과 1.7 ~ 1.8 띄운다)
+HUB_SEAT_R = 9.8  # 허브 판이 혼 윗면에 앉는 돋움의 반지름 (테는 이 가장자리에서 휜다)
+# 허브 판의 테 (안쪽 링 뒤). 혼 볼트를 조이면 이 테가 CLAMP_GAP만큼 휘면서 안쪽 링을 누르고, 그 뒤에는
+# 저널 끝이 허브 판에 닿아 볼트 힘이 저널로 간다. 테가 스프링이라 온도와 크리프에도 누르는 힘이 남는다.
+# 두께 1.2, 틈 0.2면 누르는 힘 80 ~ 110 N, 휨 응력 28 ~ 38 MPa다 (탄성 계수 2.0 ~ 2.75 GPa, 고리 판 계산:
+# studies/clamp_plate.py). 두께 2.0, 틈 0.3이면 69 ~ 104 MPa로 PLA의 굽힘 강도(약 76 MPa)에 닿는다
+FLANGE_T = 1.2
+# 조이기 전에 저널 끝과 허브 판 사이에 남는 틈. 출력 원판을 뽑을 때 저널 끝이 층에 맞는 값이다
+CLAMP_GAP = 0.2
 B0 = SEAT + RELIEF + FLANGE_T  # 베어링 뒷면
 LIP_T = 1.8
 FRONT = B0 + BRG_B + LIP_T  # 원통 앞 끝 (몸통을 뽑을 때 바닥)
@@ -293,7 +300,7 @@ def bolt_xz() -> list[tuple[float, float]]:
 
 def hub_plate() -> Compound:
     """허브 판: 혼 윗면에 앉고(가운데 r 9.8), 넓은 테가 안쪽 링 뒤를 받친다. 테 윗면을 바닥에 두고 뽑는다."""
-    h = cyl_y(9.8, SEAT, SEAT + RELIEF + 0.01) + cyl_y(R_STEP, SEAT + RELIEF, B0)
+    h = cyl_y(HUB_SEAT_R, SEAT, SEAT + RELIEF + 0.01) + cyl_y(R_STEP, SEAT + RELIEF, B0)
     h -= cyl_y(3.6, SEAT - 0.01, SEAT + 1.6)  # 혼 가운데 나사 머리
     for x, z in bolt_xz():
         h -= cyl_y(M3_FREE / 2, SEAT - 1, B0 + 1, x, z)
@@ -305,9 +312,8 @@ def out_disc() -> Compound:
 
     테 윗면을 바닥에 두고 뽑는다. 혼 볼트 머리는 그 면(바닥에 닿아 평평한 면)에 앉는다.
     """
-    a = cyl_y(
-        R_JOURNAL, B0 + 0.3, B0 + BRG_B + 0.01
-    )  # 허브 판과 0.3 띄운다 (안쪽 링을 사이에 두고 조인다)
+    # 허브 판과 CLAMP_GAP만큼 띄운다 (안쪽 링을 사이에 두고 조인다)
+    a = cyl_y(R_JOURNAL, B0 + CLAMP_GAP, B0 + BRG_B + 0.01)
     a += cyl_y(R_STEP, B0 + BRG_B, SEAM + 0.01)
     a += cyl_y(R_DRUM, SEAM, ATOP)
     a += box(20.0, R_POST, SEAM, ATOP, -4.6, 4.6) + cyl_y(4.6, SEAM, ATOP, R_POST, 0.0)  # 귀

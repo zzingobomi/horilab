@@ -19,8 +19,8 @@ def test_printed_parts_are_single_valid_solids_that_fit_the_bed() -> None:
         assert len(shape.solids()) == 1, name
         bb = shape.bounding_box()
         assert max(bb.size.X, bb.size.Y, bb.size.Z) < BED, name
-    for name, (length, tube_r, pin_r) in links.LINKS.items():
-        part = links.link(length, tube_r, pin_r)
+    for name, (length, tube_r, foot) in links.LINKS.items():
+        part = links.link(length, tube_r, foot)
         assert part.is_valid, name
         assert len(part.solids()) == 1, name
         assert part.bounding_box().size.Y < BED, name
@@ -32,8 +32,8 @@ def test_printed_parts_have_no_steep_overhang() -> None:
     # 바닥에 닿지 않고 아래를 보는 면은 양쪽이 붙은 다리(거의 수평)와 작은 가로 구멍 윗변뿐이어야 한다.
     # 비스듬히(45° ~ 70°) 걸친 면은 서포트 없이 처진다
     parts = {name: (shape, up) for name, (shape, up, _c, _p) in wrist.printed().items()}
-    for name, (length, tube_r, pin_r) in links.LINKS.items():
-        parts[name] = (links.link(length, tube_r, pin_r), (0.0, -1.0, 0.0))
+    for name, (length, tube_r, foot) in links.LINKS.items():
+        parts[name] = (links.link(length, tube_r, foot), (0.0, -1.0, 0.0))
     for name, (shape, up) in parts.items():
         over = overhangs(shape, up)
         # 45°로 깎은 면은 삼각형으로 나눌 때 45°를 조금 넘는 조각이 생긴다 (누름 틀의 원뿔 면 70 mm²)

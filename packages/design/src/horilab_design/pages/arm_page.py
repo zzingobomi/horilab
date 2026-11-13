@@ -66,7 +66,14 @@ def _prim(p: pk.Prim) -> dict | None:
         "c": role,
         "n": name,
     }
-    if p.shape == "hull":  # 납작한 관
+    if p.shape == "hull" and name.endswith(
+        "_foot"
+    ):  # 발 상자: 윗모서리를 깎은 껍질을 상자로 그린다
+        assert p.verts is not None
+        v = p.verts / MM
+        lo, hi = v.min(axis=0), v.max(axis=0)
+        d.update(s="box", p=_r3((lo + hi) / 2), z=_r3((hi - lo) / 2))
+    elif p.shape == "hull":  # 납작한 관
         assert p.verts is not None
         v = p.verts / MM
         z0, z1 = float(v[:, 2].min()), float(v[:, 2].max())

@@ -8,15 +8,33 @@ from horilab_design.pages import HERE, arm_page, joint_page
 
 
 def test_templates_have_one_data_slot() -> None:
-    assert (HERE / "joint_page.html").read_text(encoding="utf-8").count("__MESH_JSON__") == 1
+    joint = (HERE / "joint_page.html").read_text(encoding="utf-8")
+    assert joint.count("__MESH_JSON__") == 1
+    assert joint.count("__TITLE__") == 1
     assert (HERE / "arm_page.html").read_text(encoding="utf-8").count("__DATA__") == 1
+
+
+def _check_joint_page(data: dict, names: tuple[str, ...]) -> None:
+    """부품 메시가 온전하고, 조립 단계가 이름으로 모든 부품을 찾는다."""
+    found = {p["n"] for p in data["parts"]}
+    for name in names:
+        assert name in found
+    page = data["page"]
+    steps = len(page["steps"])
+    for p in data["parts"]:
+        assert len(p["v"]) % 3 == 0 and len(p["i"]) % 3 == 0, p["n"]
+        assert max(p["i"]) < len(p["v"]) // 3, p["n"]
+        roles = [
+            r for r in page["roles"] if p["n"] == r["n"] or (r["pre"] and p["n"].startswith(r["n"]))
+        ]
+        assert roles, f"조립 단계가 없는 부품: {p['n']}"
+        assert 0 <= roles[0]["step"] < steps, p["n"]
+    assert page["frame"]["y1"] > page["frame"]["y0"]
 
 
 @pytest.mark.slow
 def test_joint_page_has_every_part_of_the_first_joint() -> None:
-    data = joint_page.mesh_data()
-    names = {p["n"] for p in data["parts"]}
-    for name in (
+    names = (
         "손목 몸통 (부모)",
         "손목 몸통 (자식)",
         "출력 원판",
@@ -24,23 +42,14 @@ def test_joint_page_has_every_part_of_the_first_joint() -> None:
         "누름 틀",
         "서보 받침",
         "뒷덮개",
-    ):
-        assert name in names
-    for p in data["parts"]:
-        assert len(p["v"]) % 3 == 0 and len(p["i"]) % 3 == 0, p["n"]
-        assert max(p["i"]) < len(p["v"]) // 3, p["n"]
-    # 틀의 조립 단계가 이름으로 부품을 찾는다
-    template = (HERE / "joint_page.html").read_text(encoding="utf-8")
-    for name in (
-        "손목 몸통 (부모)",
-        "손목 몸통 (자식)",
-        "출력 원판",
-        "허브 판",
-        "누름 틀",
-        "서보 받침",
-        "뒷덮개",
-    ):
-        assert name in template, name
+    )
+    _check_joint_page(joint_page.mesh_data(), names)
+
+
+@pytest.mark.slow
+def test_shoulder_page_has_every_part_of_the_shoulder() -> None:
+    names = ("어깨 집", "위팔", "출력 원판", "허브 판", "누름 틀", "서보 받침", "뒷덮개")
+    _check_joint_page(joint_page.shoulder_data(), names)
 
 
 @pytest.mark.slow

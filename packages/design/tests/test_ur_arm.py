@@ -62,9 +62,9 @@ def test_mass_constants_match_the_cad() -> None:
     )
     assert out + 13.3 == pytest.approx(ur_arm.OUT_MASS * 1000, abs=1.5)  # 혼 2.0, 볼트와 너트 11.3
     for key, name in (("upper", "upper_arm"), ("fore", "forearm")):
-        length, tube_r, pin_r = links.LINKS[name]
+        length, tube_r, foot = links.LINKS[name]
         k, m_foot, _y = ur_arm.LINK_TUBE[key]
-        model = ur_arm.LINK_HOUSE_MASS + k * (length * MM - 0.0668) + m_foot
-        assert printed_mass_g(links.link(length, tube_r, pin_r), UP) == pytest.approx(
+        model = ur_arm.LINK_HOUSE_MASS + k * (length - foot.hx - 40.0) * MM + m_foot
+        assert printed_mass_g(links.link(length, tube_r, foot), UP) == pytest.approx(
             model * 1000, abs=2.0
         )
