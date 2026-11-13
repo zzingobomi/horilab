@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from horilab_design.pages import HERE, arm_page, joint_page
-from horilab_design.parts import camera_mount
+from horilab_design.parts import camera_mount, gripper
 
 
 def test_templates_have_one_data_slot() -> None:
@@ -74,6 +74,24 @@ def test_wrist_end_page_has_every_part_of_the_flange_and_camera_mount() -> None:
     names = tuple(p.name for p in camera_mount.assembly())
     assert "D405 받침" in names and "플랜지 원판" in names and "도구 어댑터 판" in names
     _check_joint_page(joint_page.wrist_end_data(), names)
+
+
+@pytest.mark.slow
+def test_gripper_page_has_every_part_and_moves_the_fingers() -> None:
+    names = tuple(p.name for p in gripper.gripper_parts())
+    assert "그리퍼 몸통" in names and "피니언" in names and "손가락 받침 2" in names
+    data = joint_page.gripper_data()
+    _check_joint_page(data, names)
+    page = data["page"]
+    assert page["grip"]["max"] == gripper.OPEN_MAX and page["flip"] is True
+    # 손가락과 받침, 그 나사는 양쪽이 반대로 가고, 피니언과 그 나사는 돈다
+    slide = {r["n"]: r.get("slide") for r in page["roles"]}
+    for k, sign in ((1, 1), (2, -1)):
+        assert slide[f"손가락 {k}"] == sign and slide[f"손가락 받침 {k}"] == sign
+        assert slide[f"손가락 나사 M3x12 {k}"] == sign and slide[f"너트 (손가락) {k}"] == sign
+    assert all(r.get("gear") for r in page["roles"] if r["n"].startswith("피니언"))
+    # 그리퍼를 단 그림에는 도구 어댑터 판이 없다 (몸통의 윗판이 그 구실이다)
+    assert "도구 어댑터 판" not in {p["n"] for p in data["parts"]}
 
 
 @pytest.mark.slow

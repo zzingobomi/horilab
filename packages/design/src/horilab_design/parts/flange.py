@@ -4,13 +4,13 @@
 - 도구 자리를 잡는 강철 핀 둘 (MSH3-20, 눌러 박는다. 윗면 위로 6 mm 나온다).
 - J6의 영점 핀 귀. 다른 관절은 영점 핀 구멍이 자식 몸통에 있지만, J6의 자식은 갈아 끼우는 도구라서 원판에 둔다.
 
-도구는 어댑터 판(두께 6.2 mm)으로 플랜지 윗면에 앉는다. 핀 둘이 자리와 돌림을 잡고(하나는 둥근 구멍, 하나는
-핀 사이 방향으로 긴 구멍), 손나사 둘이 원판 밑면의 너트에 물린다. 기울기는 맞닿은 두 면이 정한다.
-어댑터 판은 도구마다 그 도구의 몸통과 한 부품으로 뽑는다 (여기서는 판만 그린다).
+도구는 어댑터 판(두께 6.2 mm)으로 플랜지 윗면에 앉는다. 핀 둘(±z)이 자리와 돌림을 잡고(하나는 둥근 구멍,
+하나는 핀 사이 방향으로 긴 구멍), 손나사 둘이 원판 밑면의 너트에 물린다. 기울기는 맞닿은 두 면이 정한다.
+어댑터 판은 도구마다 그 도구의 몸통과 한 부품으로 뽑는다 (여기서는 판만 그린다. 구멍은 adapter_cuts가 낸다).
 
-도구의 방향: 손가락이 벌어지는 쪽을 핀 둘을 잇는 방향(x)으로 둔다. 멈춤 기둥의 귀(0°)와 영점 핀 귀(180°)도
-이 방향이라, J6 각이 0° 근처일 때 두 귀가 D405(옆, ±90°)의 화면에 들지 않는다 (0017: 물체를 볼 때는 손가락이
-벌어지는 방향을 카메라 쪽과 직각으로 둔다).
+도구의 방향: 손가락이 벌어지는 쪽을 멈춤 기둥의 귀(0°)와 영점 핀 귀(180°)를 잇는 방향(x)으로 둔다. J6 각이 0°
+근처일 때 두 귀가 D405(옆, ±90°)의 화면에 들지 않는다 (0017: 물체를 볼 때는 손가락이 벌어지는 방향을 카메라
+쪽과 직각으로 둔다). 도구 핀 둘은 그와 직각인 z 위에 있다.
 
 좌표는 joint.py의 서보 좌표다 (y가 J6 축, 원판 윗면이 y = ATOP).
 
@@ -27,9 +27,13 @@ from horilab_design.parts.shapes import box, cyl_y, solid
 from horilab_design.printcheck import overhangs, printed_mass_g
 from horilab_design.values import ServoModel
 
-TOOL_PIN_X = (
-    11.5  # 도구 핀 둘의 자리 (±x). 핀 구멍이 혼 볼트 머리와 3.7, 저널 바깥 면과 1.8 떨어진다
-)
+TOOL_PIN_R = 11.5  # 도구 핀 둘이 축에서 떨어진 거리. 핀 구멍이 혼 볼트 머리와 3.7, 저널 바깥 면과 1.8 떨어진다
+# 핀 둘은 ±z에 둔다 (멈춤 기둥 귀와 영점 핀 귀를 잇는 x와 직각). 평행 그리퍼는 서보 선을 꽂을 틈을 어댑터 판의
+# -x 쪽에 내는데, 핀이 x 위에 있으면 그 틈과 겹친다 (parts/gripper.py)
+TOOL_PINS = (
+    (0.0, TOOL_PIN_R),
+    (0.0, -TOOL_PIN_R),
+)  # (x, z): 앞의 것이 둥근 구멍, 뒤의 것이 긴 구멍
 TOOL_PIN_DEPTH = 14.0  # 핀을 박는 깊이 (테 3.8 + 단 3.8 + 저널 속 6.4)
 TOOL_PIN_UP = 20.0 - TOOL_PIN_DEPTH  # 윗면 위로 나온 길이 6.0 (어댑터 판 윗면보다 0.2 낮다)
 PIN_PRESS = 3.30  # 핀을 눌러 박는 세로 구멍 (임시: 흰색에서 뻑뻑했던 값. 검정 시험편 값으로 바꾼다)
@@ -53,29 +57,38 @@ def flange_disc() -> Compound:
     ear += cyl_y(EAR_HW, j.SEAM, j.ATOP, -j.R_PIN, 0.0)
     a = solid(a + ear)
     a = solid(a - cyl_y(j.PIN_HOLE / 2, j.SEAM - 1, j.ATOP + 1, -j.R_PIN, 0.0))
-    for sx in (1, -1):
-        hole = cyl_y(PIN_PRESS / 2, j.ATOP - TOOL_PIN_DEPTH, j.ATOP + 1, sx * TOOL_PIN_X, 0.0)
-        a = solid(a - hole)
+    for x, z in TOOL_PINS:
+        a = solid(a - cyl_y(PIN_PRESS / 2, j.ATOP - TOOL_PIN_DEPTH, j.ATOP + 1, x, z))
     if not a.is_valid:
         raise RuntimeError("플랜지 원판 형상이 깨졌다")
     return a
 
 
-def tool_adapter() -> Compound:
-    """도구 어댑터 판 (도구 몸통의 밑부분). 플랜지에 닿는 밑면을 바닥에 두고 뽑는다."""
+def adapter_cuts(t: Compound) -> Compound:
+    """도구 쪽 판(두께 ADAPTER_T)에 핀 구멍 둘, 손나사 구멍 둘, 혼 볼트 머리 자리를 낸다.
+
+    도구마다 판의 윤곽이 달라서(평행 그리퍼는 판이 몸통의 윗부분이다) 구멍만 따로 낸다.
+    """
     y0, y1 = j.ATOP, j.ATOP + ADAPTER_T
-    t = solid(Rot(0, 45, 0) * cyl_y(ADAPTER_R, y0, y1))
     r = j.PIN_HOLE / 2
-    t = solid(t - cyl_y(r, y0 - 1, y1 + 1, TOOL_PIN_X, 0.0))  # 둥근 구멍: 자리를 잡는다
-    slot = cyl_y(r, y0 - 1, y1 + 1, -TOOL_PIN_X - SLOT_HALF, 0.0)
-    slot += cyl_y(r, y0 - 1, y1 + 1, -TOOL_PIN_X + SLOT_HALF, 0.0)
-    slot += box(-TOOL_PIN_X - SLOT_HALF, -TOOL_PIN_X + SLOT_HALF, y0 - 1, y1 + 1, -r, r)
+    (x0, z0), (x1, z1) = TOOL_PINS
+    t = solid(t - cyl_y(r, y0 - 1, y1 + 1, x0, z0))  # 둥근 구멍: 자리를 잡는다
+    slot = cyl_y(r, y0 - 1, y1 + 1, x1, z1 - SLOT_HALF) + cyl_y(
+        r, y0 - 1, y1 + 1, x1, z1 + SLOT_HALF
+    )
+    slot += box(x1 - r, x1 + r, y0 - 1, y1 + 1, z1 - SLOT_HALF, z1 + SLOT_HALF)
     t = solid(t - solid(slot))  # 긴 구멍: 돌림만 잡는다
     for x, z in TOOL_SCREWS:
         t = solid(t - cyl_y(j.M3_FREE / 2, y0 - 1, y1 + 1, x, z))
     for x, z in j.bolt_xz():
         t = solid(t - cyl_y(HEAD_POCKET[0], y0 - 1, y0 + HEAD_POCKET[1], x, z))
     return t
+
+
+def tool_adapter() -> Compound:
+    """도구 어댑터 판 (도구 몸통의 밑부분). 플랜지에 닿는 밑면을 바닥에 두고 뽑는다."""
+    disc = solid(Rot(0, 45, 0) * cyl_y(ADAPTER_R, j.ATOP, j.ATOP + ADAPTER_T))
+    return adapter_cuts(disc)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -85,8 +98,8 @@ def tool_adapter() -> Compound:
 def hardware() -> list[j.Part]:
     """도구 핀 둘, 손나사 둘과 손잡이, J6 영점 핀."""
     out: list[j.Part] = []
-    for k, sx in enumerate((1, -1), start=1):
-        pin = cyl_y(1.5, j.ATOP - TOOL_PIN_DEPTH, j.ATOP + TOOL_PIN_UP, sx * TOOL_PIN_X, 0.0)
+    for k, (x, z) in enumerate(TOOL_PINS, start=1):
+        pin = cyl_y(1.5, j.ATOP - TOOL_PIN_DEPTH, j.ATOP + TOOL_PIN_UP, x, z)
         out.append(j.Part(f"도구 핀 MSH3-20 {k}", solid(pin), j.STEEL, True, "pin"))
     top = j.ATOP + ADAPTER_T
     for k, (x, z) in enumerate(TOOL_SCREWS, start=1):
@@ -156,7 +169,7 @@ def report(model: ServoModel = "STS3215") -> None:
     parts = assembly(model)
     print(
         f"J6 플랜지 ({model}): 플랜지 면 y {j.ATOP:.1f}, 어댑터 판 윗면 {j.ATOP + ADAPTER_T:.1f}, "
-        f"도구 핀 ±{TOOL_PIN_X} (윗면 위로 {TOOL_PIN_UP:.1f}), 영점 핀 귀 축에서 {j.R_PIN:.0f}"
+        f"도구 핀 z ±{TOOL_PIN_R} (윗면 위로 {TOOL_PIN_UP:.1f}), 영점 핀 귀 축에서 {j.R_PIN:.0f}"
     )
     print(f"임시 값: {', '.join(PROVISIONAL)}")
     print("\n뽑는 부품 (무게는 뽑아서 잰 부품에 맞춘 어림, 걸침은 바닥에 닿지 않고 아래를 보는 면)")

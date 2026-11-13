@@ -60,9 +60,13 @@ def test_tool_pins_and_screws_fit_the_disc() -> None:
     assert j.ATOP - f.TOOL_PIN_DEPTH > j.B0 + j.CLAMP_GAP
     assert f.TOOL_PIN_UP <= f.ADAPTER_T
     # 도구 핀 구멍이 혼 볼트 머리(반지름 2.85)와 저널 바깥 면에서 떨어져 있다
-    for x, z in j.bolt_xz():
-        assert math.hypot(x - f.TOOL_PIN_X, z) - 2.85 - f.PIN_PRESS / 2 > 0.8
-    assert j.R_JOURNAL - f.TOOL_PIN_X - f.PIN_PRESS / 2 > 1.5
+    for px, pz in f.TOOL_PINS:
+        for x, z in j.bolt_xz():
+            assert math.hypot(x - px, z - pz) - 2.85 - f.PIN_PRESS / 2 > 0.8
+        # 원판 밑면의 너트 자리(맞변 5.6)와도 떨어져 있다
+        for x, z in j.RIM:
+            assert math.hypot(x - px, z - pz) - 3.3 - f.PIN_PRESS / 2 > 2.0
+    assert j.R_JOURNAL - f.TOOL_PIN_R - f.PIN_PRESS / 2 > 1.5
     # 손나사 M3 × 10이 원판 밑면의 너트에 다 물리고, 원통 앞 끝 쪽 틈으로 0.2 넘게 나오지 않는다
     tip = j.ATOP + f.ADAPTER_T - j.BODY_SCREW
     assert j.SEAM - 0.2 <= tip <= j.SEAM + 0.3

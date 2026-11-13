@@ -17,7 +17,7 @@ from build123d import Compound
 
 from horilab_design.pages import HERE, OUT_DIR
 from horilab_design.parts import base as bs
-from horilab_design.parts import camera_mount, flange, links, wrist
+from horilab_design.parts import camera_mount, flange, gripper, links, wrist
 from horilab_design.parts import joint as j
 from horilab_design.parts import shoulder as sh
 from horilab_design.parts.shapes import box, solid
@@ -50,6 +50,16 @@ WRIST_END_PRINTED = {
     "뒷덮개": "wrist_cover",
     "도구 어댑터 판": "tool_adapter",
     "D405 받침": "d405_mount",
+}
+GRIPPER_PRINTED = {
+    "그리퍼 몸통": "gripper_frame",
+    "바닥판": "gripper_floor",
+    "랙 집": "gripper_tub",
+    "피니언": "gripper_pinion",
+    "손가락 받침 1": "gripper_slider",
+    "손가락 받침 2": "gripper_slider",
+    "손가락 1": "gripper_finger",
+    "손가락 2": "gripper_finger",
 }
 BASE_PRINTED = {
     "베이스 몸통": "base_core",
@@ -689,7 +699,10 @@ def wrist_end_data(model: ServoModel = "STS3215") -> dict:
         ],
         ["카메라 나사", "M3 × 6 둘 (카메라에 3.0 mm)"],
         ["받침 나사", "M3 × 8 둘 (돋움 속 너트)"],
-        ["도구 핀", f"축에서 ±{flange.TOOL_PIN_X:.1f} mm, 위로 {flange.TOOL_PIN_UP:.0f} mm"],
+        [
+            "도구 핀",
+            f"축에서 ±{flange.TOOL_PIN_R:.1f} mm (멈춤 귀와 직각 방향), 위로 {flange.TOOL_PIN_UP:.0f} mm",
+        ],
         ["도구 어댑터 판", f"지름 {2 * flange.ADAPTER_R:.0f}, 두께 {flange.ADAPTER_T:.1f} mm"],
     ]
     page = {
@@ -716,8 +729,8 @@ def wrist_end_data(model: ServoModel = "STS3215") -> dict:
         ],
         "todo": [
             "플러그 크기는 가정입니다. 가진 선의 플러그를 재서 확인합니다.",
-            "평행 그리퍼를 달면 그리퍼가 화면을 가립니다 (지금의 자리표시 모양으로는 잡기 전 높이에서 69%만 보입니다). "
-            "그리퍼를 그릴 때 80% 넘게 맞춥니다.",
+            "평행 그리퍼를 달면 그리퍼가 화면을 조금 가립니다. 그린 그리퍼로는 손가락을 벌린 채 잡기 전 높이에서 "
+            "86%가 보입니다 (평행 그리퍼 구조 페이지).",
             "D405를 켜 두었을 때의 몸통 온도를 보고, 받침을 PLA로 뽑을지 PETG-CF로 뽑을지 정합니다.",
             "선이 지나가는 길과 묶는 자리는 배선을 그릴 때 정합니다.",
         ],
@@ -732,9 +745,181 @@ def wrist_end_data(model: ServoModel = "STS3215") -> dict:
     }
 
 
+def gripper_data() -> dict:
+    """평행 그리퍼: 손목 끝(플랜지, D405)에 단 모습과 조립 순서."""
+    g = gripper
+    by_file = {
+        name: printed_mass_g(s, up, preset)
+        for printed in (wrist.printed(), flange.printed(), camera_mount.printed())
+        for name, (s, up, _c, preset) in printed.items()
+    }
+    grip_file = {
+        name: printed_mass_g(s, up, preset) for name, (s, up, _c, preset, _n) in g.printed().items()
+    }
+    masses = {name: by_file[file] for name, file in WRIST_END_PRINTED.items() if file in by_file}
+    masses |= {name: grip_file[file] for name, file in GRIPPER_PRINTED.items()}
+    masses |= {"D405": 60.0, "그리퍼 서보": 57.2, "그리퍼 혼": 1.45}
+    base = [
+        p
+        for p in camera_mount.assembly(g.MODEL)
+        if p.name != "도구 어댑터 판" and not p.name.startswith("영점 핀")
+    ]
+    parts = base + g.gripper_parts(0.0)
+    low = [5, 46]  # 랙 집 묶음: 5단계에서 몸통 묶음과 합친다 (hold)
+    roles = [
+        _role("그리퍼 몸통", 1, 0, shell=True),
+        _role("그리퍼 서보", 1, 46),
+        _role("그리퍼 혼", 1, 46),
+        _role("너트 (몸통 돋움)", 2, 0, pre=True, rad=[1.4, 0, 0]),
+        _role("바닥판 나사", 2, 44, pre=True),
+        _role("바닥판", 2, 26, shell=True),
+        _role("피니언 나사", 3, 46, pre=True, gear=True),
+        _role("피니언", 3, 30, gear=True),
+        _role("랙 집", 4, 0, shell=True, hold=low),
+        _role("손가락 받침 1", 4, -24, slide=1, hold=low),
+        _role("손가락 받침 2", 4, -24, slide=-1, hold=low),
+        _role("손가락 1", 4, 30, slide=1, hold=low),
+        _role("손가락 2", 4, 30, slide=-1, hold=low),
+        _role("손가락 나사 M3x12 1", 4, -44, slide=1, hold=low),
+        _role("손가락 나사 M3x12 2", 4, -44, slide=-1, hold=low),
+        _role("너트 (손가락) 1", 4, 30, slide=1, rad=[1.2, 0, 0], hold=low),
+        _role("너트 (손가락) 2", 4, 30, slide=-1, rad=[-1.2, 0, 0], hold=low),
+        _role("귀 나사", 5, -34, pre=True),
+        _role("끝벽 나사", 5, -34, pre=True),
+        _role("그리퍼 플러그", 6, -26, hideUntil=6),
+        _role("손나사", 6, 30, pre=True),
+        _role("손잡이", 6, 30, pre=True),
+    ]
+    # 손목과 플랜지, 카메라는 맨 나중 단계에서 그리퍼 쪽으로 온다
+    for p in parts:
+        if not any(p.name == r["n"] or (r["pre"] and p.name.startswith(r["n"])) for r in roles):
+            roles.append(_role(p.name, 6, -40))
+    length, bite = g.pinion_screw()
+    steps = [
+        _step(
+            "다 조립한 모습",
+            "다 조립한 모습",
+            "평행 그리퍼를 손목 끝에 단 모습입니다. 그림은 손가락이 아래로 가게 그렸습니다. '손가락 벌리기' 막대를 "
+            "움직이면 가운데 피니언이 돌면서 랙 둘이 반대로 가고, 손가락 둘이 똑같이 벌어집니다. 다 벌리면 "
+            f"{g.OPEN_MAX:.0f} mm입니다. 뒤에 보이는 어두운 상자가 D405 카메라입니다.",
+        ),
+        _step(
+            "서보",
+            "1. 서보를 몸통에 넣기",
+            "그리퍼 서보(STS3215, 혼을 단 채)를 몸통의 틀에 밑에서 밀어 넣습니다. 커넥터가 있는 뒷면이 위(플랜지 "
+            "쪽)로 가고, 커넥터가 몸통 윗판을 튼 자리로 보입니다. 힘을 주지 않아도 들어갑니다.",
+        ),
+        _step(
+            "바닥판",
+            "2. 바닥판",
+            "몸통 옆의 돋움 둘에 너트를 옆에서 밀어 넣습니다. 바닥판을 서보 앞면에 대고, 밑에서 M3 × 8 나사 둘을 "
+            "조입니다 (2 mm 육각렌치). 서보가 몸통과 바닥판 사이에 물립니다.",
+        ),
+        _step(
+            "피니언",
+            "3. 피니언",
+            f"피니언의 목을 바닥판 구멍으로 넣어 혼 윗면에 앉히고, M3 × {length:.0f} 나사 넷을 조입니다. "
+            "나사 머리는 피니언 속으로 들어가 면 밖으로 나오지 않습니다.",
+        ),
+        _step(
+            "손가락",
+            "4. 랙 집에 받침과 손가락",
+            "랙 집을 덮개가 아래로 가게 놓고, 받침 둘을 통로에 넣어 가운데에서 서로 닿게 둡니다. 손가락 옆 홈에 "
+            "너트를 넣고, 손가락의 목을 덮개의 긴 틈으로 밑에서 올려 받침 판에 댑니다. 받침 위에서 M3 × 12 나사를 "
+            "하나씩 조입니다.",
+        ),
+        _step(
+            "합치기",
+            "5. 두 묶음 합치기",
+            "손가락을 닫은 채로 랙 집을 바닥판 밑에 맞춥니다. 피니언의 이가 랙 둘에 같이 물리게, 안 들어가면 "
+            "피니언을 손으로 조금 돌립니다. 위에서 나사 넷을 조입니다: 몸통의 귀 쪽은 M3 × 12 둘, 반대쪽 끝은 "
+            "M3 × 8 둘입니다. 끝벽의 플라스틱에 바로 조이므로 세게 조이지 않습니다.",
+        ),
+        _step(
+            "달기",
+            "6. 플랜지에 달기",
+            "먼저 서보 선을 꽂습니다 (몸통 윗판을 튼 자리로 커넥터가 보입니다). 그다음 플랜지의 핀 둘에 몸통을 "
+            "끼우고 손나사 둘을 조입니다. 뗄 때는 손나사를 풀고 그리퍼를 핀에서 뺀 뒤에 선을 뽑습니다.",
+        ),
+    ]
+    t = g.travel()
+    dims = [
+        ["열림 폭", f"0 ~ {g.OPEN_MAX:.0f} mm"],
+        ["박스를 잡을 때의 열림 폭", f"{2 * g.grasp_x():.1f} mm"],
+        ["플랜지 면에서 손가락 끝까지", f"{g.H_TIP:.1f} mm"],
+        ["플랜지 면에서 도구 끝점(TCP)까지", f"{g.H_TCP:.1f} mm"],
+        ["몸통 밑면에서 손가락 끝까지", f"{g.FINGER_LEN:.0f} mm"],
+        ["랙 집 (길이 × 폭)", f"{2 * g.HOUSE_HL:.1f} × {2 * g.HOUSE_HW:.1f} mm"],
+        ["무게 (서보, 나사, 선까지)", f"{sum(g.mass_g().values()):.0f} g"],
+        ["이", f"모듈 {g.MODULE}, 피니언 {g.TEETH}개"],
+        ["다 벌릴 때 서보가 도는 각", f"{t['피니언이 도는 각 [°]']:.0f}°"],
+        ["서보 한 칸에 바뀌는 열림 폭", f"{t['서보 한 칸에 바뀌는 열림 폭 [mm]']:.3f} mm"],
+        ["받침과 통로 사이 위아래 틈", f"{2 * g.SLIDE_GAP:.1f} mm"],
+        ["박스 구멍 입구", f"지름 {2 * g.BOX_LIP_R:.0f}, 깊이 {g.BOX_LIP_T:.0f} mm"],
+        ["박스 구멍 속", f"지름 {2 * g.BOX_CAVITY_R:.1f}, 깊이 {g.BOX_HOLE_DEPTH:.0f} mm"],
+        ["피니언 나사", f"M3 × {length:.0f} 넷 (혼에 {bite:.1f} mm)"],
+        ["그 밖의 나사", "M3 × 8 넷, M3 × 12 넷"],
+        ["너트", "넷"],
+        ["뽑는 파일 (검정, Strength)", "gripper_frame"],
+        ["", "gripper_floor"],
+        ["", "gripper_tub"],
+        ["", "gripper_pinion"],
+        ["", "gripper_slider × 2"],
+        ["", "gripper_finger × 2"],
+    ]
+    page = {
+        "title": "평행 그리퍼 구조",
+        "h1": "평행 그리퍼 구조",
+        "sub": "첫 그리퍼입니다. 서보 하나가 손가락 둘을 대칭으로 벌리고 오므립니다. 박스는 윗면 구멍 안에서 벌려 잡고, "
+        "가벼운 물체는 바깥에서 오므려 잡습니다. 플랜지의 핀 둘과 손나사 둘로 갈아 끼웁니다.",
+        "steps": steps,
+        "roles": roles,
+        "dims": dims,
+        "mass_note": "뽑는 부품의 무게는 전에 뽑아서 잰 부품에 맞춘 어림입니다. 서보와 혼은 잰 값입니다.",
+        "why": [
+            "서보를 세워 두고 랙을 그 밑에 납작하게 넣었습니다. 손가락 끝까지의 거리가 짧아서 손가락이 받는 힘에 "
+            "받침이 덜 기울고, 양쪽 손가락이 똑같이 움직입니다.",
+            "받침은 긴 랙 팔과 넓은 판이 한 부품입니다. 바닥판과 덮개 사이에 끼여 옆으로만 미끄러지고, 틈은 "
+            "층 높이로 정해져서(0.1 mm씩) 프린터가 달라도 잘 맞습니다.",
+            "이는 통로 속에 숨어 있어 선이나 물체가 끼지 않습니다.",
+            "박스 구멍은 입구 밑이 45°로 넓어집니다. 손가락 끝의 턱이 그 경사에 걸리면서 박스를 손가락 어깨 쪽으로 "
+            "당겨 붙입니다. 박스가 흔들리지 않고, 놓을 때 위에서 눌러 줄 수 있습니다.",
+            f"손가락 길이 {g.FINGER_LEN:.0f} mm는 D405가 잡기 전 높이(6 cm 위)에서 도구 끝 둘레를 80% 넘게 보는 "
+            "길이입니다. 랙 집의 밑 모서리를 깎은 것도 카메라가 그 너머로 보게 하려는 것입니다.",
+            "서보 선은 몸통 윗판을 튼 자리로 꽂습니다. 서보를 그만큼 플랜지 가까이 올려서 그리퍼가 약 15 mm "
+            "짧아졌습니다.",
+            "손가락은 나사 하나로 달려 있어 다른 모양으로 바꿀 수 있습니다 (끝벽 나사 넷을 풀고 랙 집을 뗀 뒤에 "
+            "바꿉니다).",
+        ],
+        "todo": [
+            "혼 높이를 잰 값이 오면 피니언의 목 길이와 나사 길이를 맞춥니다.",
+            "검정 공차 시험편 값(너트 홈, 구멍)을 넣은 뒤에 뽑을 파일을 냅니다.",
+            "쥐는 힘의 한도(서보 토크 한도)는 그리퍼 서보의 전류를 잰 뒤에 정합니다. 한도 없이 끝까지 밀면 "
+            "이가 상할 수 있습니다.",
+            "바깥에서 잡을 때 미끄러우면 손가락 끝에 씌우는 TPU 패드를 더합니다 (필라멘트를 사야 합니다).",
+            "서보 선이 플랜지 둘레를 감는 길과 묶는 자리는 배선을 그릴 때 정합니다.",
+        ],
+        "frame": {"y0": -134, "y1": 27, "w": 170, "cx": 0},
+        "pin_pose": 0,
+        "axis": "아래가 손가락 끝, 위가 플랜지와 손목",
+        "flip": True,
+        "grip": {"max": g.OPEN_MAX, "rp": g.RP, "start": 0},
+    }
+    return {
+        "meta": {"model": g.MODEL, "stop": j.STOP_DEG},
+        "parts": _meshes(parts, masses),
+        "page": page,
+    }
+
+
 def render(kind: str = "first") -> str:
-    """kind가 "first"면 첫 관절, "shoulder"면 어깨, "base"면 J1, "wrist_end"면 손목 끝."""
-    makers = {"shoulder": shoulder_data, "base": base_data, "wrist_end": wrist_end_data}
+    """kind가 "first"면 첫 관절, "shoulder"면 어깨, "base"면 J1, "wrist_end"면 손목 끝, "gripper"면 그리퍼."""
+    makers = {
+        "shoulder": shoulder_data,
+        "base": base_data,
+        "wrist_end": wrist_end_data,
+        "gripper": gripper_data,
+    }
     data = makers.get(kind, mesh_data)()
     template = (HERE / "joint_page.html").read_text(encoding="utf-8")
     body = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
@@ -750,6 +935,7 @@ def main() -> None:
         ("shoulder", "shoulder.html"),
         ("base", "base.html"),
         ("wrist_end", "wrist_end.html"),
+        ("gripper", "gripper.html"),
     ):
         out = OUT_DIR / name
         out.write_text(render(kind), encoding="utf-8", newline="\n")

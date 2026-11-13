@@ -90,6 +90,7 @@ ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 7
   <div class="ctl">
     <label><span id="slideName">펼치기</span><input type="range" id="slide" min="0" max="100" value="0"></label>
     <label><span>관절 돌리기 <b id="angText">0°</b></span><input type="range" id="ang" min="-163" max="163" value="0"></label>
+    <label id="gripCtl" hidden><span>손가락 벌리기 <b id="gripText">0 mm</b></span><input type="range" id="grip" min="0" max="60" value="0"></label>
     <label><input type="checkbox" id="cut" checked>집을 반으로 잘라 속 보기</label>
     <label><input type="checkbox" id="cutAll">속 부품도 자르기</label>
     <button type="button" id="reset" class="step" style="padding:5px 12px"><span class="t">처음 시점</span></button>
@@ -162,6 +163,9 @@ ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 7
     b.appendChild(n); b.appendChild(tx); nav.appendChild(b);
   });
   $('ang').min = String(-META.stop); $('ang').max = String(META.stop);
+  // 그리퍼 페이지: 손가락을 벌리는 막대 (받침과 손가락은 x로 가고 피니언은 돈다)
+  const GRIP = PAGE.grip || null;
+  if (GRIP) { $('gripCtl').hidden = false; $('grip').max = String(GRIP.max); $('grip').value = String(GRIP.start || 0); }
   const COLORS = { body: 0xf1f1ee, cap: 0x2b2e33, frame: 0x3a4250, metal: 0xb7bec7, servo: 0x30343a, plug: 0xf3efe4, wire: 0xd03a2c, wire2: 0xd03a2c, pin: 0xe0a030 };
   const COLOR_NAME = { body: '흰색 PLA', cap: '검정 PLA', frame: '검정 PLA', metal: '금속', servo: '서보', plug: '플러그', wire: '선 자리', wire2: '서보 선', pin: '강철 핀' };
 
@@ -236,6 +240,10 @@ ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 7
     if (window.matchMedia) { const mq = window.matchMedia('(prefers-color-scheme: dark)'); if (mq.addEventListener) mq.addEventListener('change', applyTheme); }
     new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
+    // flip이면 그림을 뒤집어 도구 끝이 아래로 오게 한다 (그리퍼 페이지)
+    const FLIP = !!PAGE.flip;
+    const root = new T.Group(); scene.add(root);
+    if (FLIP) root.rotation.z = Math.PI;
     const items = DATA.parts.map((p) => {
       const geo = new T.BufferGeometry();
       geo.setAttribute('position', new T.BufferAttribute(new Float32Array(p.v), 3));
@@ -248,16 +256,18 @@ ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 7
       const mesh = new T.Mesh(geo, mat);
       const edges = new T.LineSegments(new T.EdgesGeometry(geo, 28), edgeMat);
       mesh.add(edges);
-      scene.add(mesh);
+      root.add(mesh);
       return { p: p, mesh: mesh, edges: edges, mat: mat, role: role(p.n), key: p.n.replace(/ \d+$/, ''), base: mat.color.clone() };
     });
 
     const STEP_SCALE = 0.5;
-    const spin = new T.Group(); scene.add(spin);
-    items.forEach((it) => { if (it.p.m) { scene.remove(it.mesh); spin.add(it.mesh); } });
+    const spin = new T.Group(); root.add(spin);
+    items.forEach((it) => { if (it.p.m) { root.remove(it.mesh); spin.add(it.mesh); } });
     let lo = 0, hi = 0;
     function update(keepView) {
       const k = Number($('slide').value) / 100;
+      const open = GRIP ? Number($('grip').value) : 0;
+      if (GRIP) $('gripText').textContent = open + ' mm';
       lo = 0; hi = 0;
       const cut = $('cut').checked, cutAll = $('cutAll').checked;
       items.forEach((it) => {
@@ -279,8 +289,12 @@ ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 7
           x = r.rad[0] * 16 * f; z = r.rad[2] * 16 * f;
           if (cur === 0) y = 0;
         }
+        // hold: [단계, 거리]. 그 단계 전에는 묶음째 떨어져 있다가 그 단계에서 들어온다 (따로 조립해 합치는 묶음)
+        if (r.hold && cur !== 0) y += cur < r.hold[0] ? r.hold[1] : (cur === r.hold[0] ? r.hold[1] * (1 - k) : 0);
+        if (r.slide) x += r.slide * open / 2;
+        it.mesh.rotation.y = r.gear && GRIP ? open / 2 / GRIP.rp : 0;
         it.mesh.position.set(x, y, z);
-        if (show) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+        if (show) { lo = Math.min(lo, FLIP ? -y : y); hi = Math.max(hi, FLIP ? -y : y); }
         const isShell = !!r.shell;
         const clipped = (cut && isShell) || (cutAll && it.p.c !== 'metal' && it.p.n.indexOf('벽 나사') !== 0);
         it.mat.clippingPlanes = clipped ? [clip] : [];
@@ -299,6 +313,7 @@ ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 7
     on3d = () => update();
     $('slide').addEventListener('input', () => update());
     $('ang').addEventListener('input', () => update(true));
+    $('grip').addEventListener('input', () => update(true));
     $('cut').addEventListener('change', () => update(true));
     $('cutAll').addEventListener('change', () => update(true));
 
