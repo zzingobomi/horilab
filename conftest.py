@@ -12,6 +12,15 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    # 실물 테스트는 한 프로세스에서만 돈다. 여러 프로세스가 같은 포트를 열어 서보를 같이 움직이지 않게 한다
+    workers = getattr(config.option, "numprocesses", None)
+    if config.getoption("--hardware") and workers not in (None, 0):
+        raise pytest.UsageError(
+            "--hardware는 -n 0과 같이 준다 (실물 테스트는 한 프로세스에서만 돈다)"
+        )
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     if config.getoption("--hardware"):
         return

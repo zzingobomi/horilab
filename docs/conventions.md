@@ -79,7 +79,7 @@
 ## 테스트
 
 - pytest를 쓴다. 테스트는 패키지마다 `packages/<이름>/tests/`에 두고, 패키지를 넘나드는 검사(의존 방향 등)와 패키지 밖 도구(`tools/`)의 테스트는 루트 `tests/`에 둔다.
-- 표시는 없음(빠른 것), `slow`(CAD 생성처럼 느린 것), `hardware`(실물 서보·카메라)다. 기본 실행은 `hardware`를 뺀 전부다. `hardware`는 `--hardware`를 줘야 돌고, Claude는 확인을 받은 뒤에만 돌린다. 실물 백엔드는 `hardware` 테스트에서만 만든다.
+- 표시는 없음(빠른 것), `slow`(CAD 생성처럼 느린 것), `hardware`(실물 서보·카메라)다. 기본 실행은 `hardware`를 뺀 전부다. `hardware`는 `--hardware -n 0`을 줘야 돌고(한 프로세스로만 돈다), Claude는 확인을 받은 뒤에만 돌린다. 기본 실행은 CPU 수만큼의 프로세스로 나눠 돈다 (pytest-xdist). 틈 검사처럼 부품 쌍마다 거리를 재는 검사는 바깥 상자끼리 먼 쌍을 거르고 잰다 (`parts/shapes.py`의 `far_apart`). 실물 백엔드는 `hardware` 테스트에서만 만든다.
 - Rust 테스트는 `cargo test`로 돈다. 단위 테스트는 모듈 안(`#[cfg(test)]`)에, 여러 모듈을 묶는 테스트는 `crates/<이름>/tests/`에 둔다.
 - 패키지와 크레이트 사이의 의존 방향은 `tests/test_structure.py`가 확인한다.
 - 커밋 전에 포맷, 린트, 타입, 테스트를 돌린다. 명령은 [CLAUDE.md](../CLAUDE.md#자주-쓰는-명령)에 있다. CI는 두지 않는다.

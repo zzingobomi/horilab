@@ -136,3 +136,20 @@ def teardrop_y(diameter: float, y0: float, y1: float, x: float, z: float, roof: 
     rx, _, rz = roof
     x_dir = (-rz, 0.0, rx)  # roof × (0, 1, 0): 이 틀에서 지역 y가 roof, 지역 z가 세계 y다
     return solid(body.moved(Location(Plane(origin=(x, y0, z), x_dir=x_dir, z_dir=(0.0, 1.0, 0.0)))))
+
+
+# 바깥 상자는 빠른 어림이라 곡면에서 실제보다 조금 작을 수 있다. 이만큼 더 떨어진 쌍만 건너뛴다
+BOX_MARGIN = 1.0
+
+
+def far_apart(a: Compound, b: Compound, limit: float) -> bool:
+    """두 형상의 바깥 상자가 limit + BOX_MARGIN보다 멀리 떨어져 있다.
+
+    두 형상 사이의 실제 틈은 바깥 상자 사이 거리보다 작지 않아서, 그런 쌍은 틈이 limit보다 크다. 틈 검사에서 먼 쌍의
+    거리 계산(부품 하나에 0.1 ~ 0.5초)을 건너뛰는 데 쓴다. 결과는 거르지 않을 때와 같다.
+    """
+    ba, bb = a.bounding_box(optimal=False), b.bounding_box(optimal=False)
+    dx = max(0.0, bb.min.X - ba.max.X, ba.min.X - bb.max.X)
+    dy = max(0.0, bb.min.Y - ba.max.Y, ba.min.Y - bb.max.Y)
+    dz = max(0.0, bb.min.Z - ba.max.Z, ba.min.Z - bb.max.Z)
+    return math.sqrt(dx * dx + dy * dy + dz * dz) > limit + BOX_MARGIN

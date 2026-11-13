@@ -51,7 +51,7 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
   - `uv run ruff format --check .`
   - `uv run ruff check .`
   - `uv run pyright`
-  - `uv run pytest`
+  - `uv run pytest` (CPU 수만큼의 프로세스로 나눠 돌린다, 1분 40초쯤. 파일 하나만 볼 때는 `-n 0`을 붙인다)
   - `cargo fmt --all --check`
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
@@ -62,7 +62,7 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
   - `uv run python -m horilab_design.studies.wiring` (배선: 관절을 넘는 선 길이, 구간마다 쓸 선, D405 선, [0031](docs/decisions/0031-wiring.md))
   - `uv run python -m horilab_design.pages.joint_page`, `... pages.arm_page` (`build/pages/`에 3D 페이지를 만든다: `joint.html`, `shoulder.html`, `base.html`, `wrist_end.html`, `gripper.html`, `arm.html`. 올려 둔 페이지 "STS 관절 구조", "어깨 관절 구조", "J1 관절 구조", "손목 끝 구조", "평행 그리퍼 구조", "horilab 팔 전체"를 고칠 때는 아티팩트 목록에서 제목으로 찾아 같은 주소에 다시 올린다)
 - 파이용 실행 파일 만들기 ([0026](docs/decisions/0026-pi-runtime-deploy-records.md)): `uv run tools/pi_build.py -p <크레이트> --bin <실행 파일>`
-- 실물 서보·카메라 테스트는 `uv run pytest --hardware`다. 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
+- 실물 서보·카메라 테스트는 `uv run pytest --hardware -n 0`이다 (한 프로세스로만 돈다). 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
 - 서보 첫 연결(찾기, 덤프, 통신 시간, ID 바꾸기): `uv run python -m horilab_servo ports|scan|dump|timing|set-id` ([docs/servo-setup.md](docs/servo-setup.md)). `timing`과 `set-id`는 서보에 값을 쓰므로(움직이지는 않는다) 확인을 받은 뒤 `--yes`로 돌린다.
 - 로봇 설정 확인과 값 적용: `cargo run -p horilab-controller -- settings|ports|apply` ([docs/servo-setup.md](docs/servo-setup.md#값-적용)). `apply --yes`는 서보 EEPROM에 쓰므로(움직이지는 않는다) 확인을 받은 뒤에 돌린다.
 - 맨 서보 확인: `cargo run -p horilab-controller -- check|check-state --port <포트> --id 20` ([docs/servo-setup.md](docs/servo-setup.md#맨-서보-확인)). `check --yes`는 서보를 움직이므로 확인을 받은 뒤, 사용자가 보는 창으로 띄운다 (손으로 하는 단계에서 사용자가 Enter를 누른다). `check-state`는 `--situation <번호>`로 Claude가 돌린다. 한 단계만 다시 할 때는 `--only <단계>`다.

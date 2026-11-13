@@ -20,7 +20,7 @@ from build123d import Compound, Location, Plane
 
 from horilab_design.parts import flange, wrist
 from horilab_design.parts import joint as j
-from horilab_design.parts.shapes import box, cyl_z, solid
+from horilab_design.parts.shapes import box, cyl_z, far_apart, solid
 from horilab_design.printcheck import overhangs, printed_mass_g
 from horilab_design.values import ServoModel
 
@@ -214,8 +214,10 @@ def sweep_gaps(parts: list[j.Part]) -> dict[str, float]:
         for a in moving:
             shape = j.turned(a.shape, float(max(-j.STOP_DEG, min(j.STOP_DEG, q))))
             for b in fixed:
-                d = shape.distance_to(b.shape)
                 key = f"{a.name.rstrip('0123456789 ').strip()} ↔ {b.name}"
+                if far_apart(shape, b.shape, out.get(key, 6.0)):
+                    continue
+                d = shape.distance_to(b.shape)
                 if d < out.get(key, 6.0):
                     out[key] = d
     return out

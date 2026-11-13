@@ -15,7 +15,7 @@ import math
 from build123d import Compound, Location, Pos, Rot
 
 from horilab_design.parts import joint as j
-from horilab_design.parts.shapes import box, cyl_x, cyl_y, cyl_z, nut_trap, solid
+from horilab_design.parts.shapes import box, cyl_x, cyl_y, cyl_z, far_apart, nut_trap, solid
 from horilab_design.printcheck import overhangs, printed_mass_g
 from horilab_design.values import ServoModel
 
@@ -196,6 +196,8 @@ def clearances(model: ServoModel, q_deg: float, limit: float = 2.5) -> dict[tupl
         for b in static:
             if b.name == "서보 몸통" and (name.startswith("혼") or name.startswith("허브")):
                 continue  # 혼과 혼 볼트 끝은 서보 앞면과 0.3 (서보 자체의 틈), 허브 판은 앞면 판과 1.7 ~ 1.8
+            if far_apart(shape, b.shape, limit):
+                continue
             d = shape.distance_to(b.shape)
             if d < limit:
                 out[(name, b.name)] = min(d, out.get((name, b.name), limit))

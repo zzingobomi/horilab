@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from build123d import Compound, Cone, Polygon, Pos, RegularPolygon, Rot, extrude
 
-from horilab_design.parts.shapes import box, cyl_x, cyl_y, cyl_z, solid
+from horilab_design.parts.shapes import box, cyl_x, cyl_y, cyl_z, far_apart, solid
 from horilab_design.values import ServoModel, load_measured
 
 PLA = 1.24e-3  # [g/mm³] 나사와 너트의 무게를 어림할 때만 쓴다. 출력 무게는 printcheck.printed_mass_g가 낸다
@@ -572,6 +572,8 @@ def overlaps(parts: list[Part], tol: float = 0.05) -> dict[tuple[str, str], floa
     for i, a in enumerate(solids):
         for b in solids[i + 1 :]:
             if frozenset((a.name, b.name)) in _SAME_BODY:
+                continue
+            if far_apart(a.shape, b.shape, 0.0):
                 continue
             v = solid(a.shape & b.shape).volume if a.shape.distance_to(b.shape) < 1e-6 else 0.0
             if v > tol:

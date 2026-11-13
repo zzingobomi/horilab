@@ -163,18 +163,6 @@ priced = "2026-11-08 어림, 배송비 포함"
 why = "흡착 그리퍼는 나중이다. 첫 그리퍼는 평행 그리퍼다 (design.md 도구 순서). 흡착을 달 때 0020의 구성과 확인 항목(펌프 노즐, 센서 입구, 밸브 이음, OpenRB-150 USB, 밸브 재고)을 다시 보고 산다"
 
 [[item]]
-name = "D405 나사 고정 USB 3 케이블 2 m (Newnex U3S7AS1MCI-020)"
-qty = 1
-stage = 4
-when = "pick"
-vendor = "Newnex (국내 대리점 CYLOD 또는 해외 NTC)"
-url = "https://newnex.com/documents/drawings/U3S7AS1MCI-XX.PDF"
-search = "U3S7AS1MCI-020"
-unit_price_usd = 50
-priced = "2026-11-08"
-why = "손목 D405 연결 (design.md D405 케이블). 두께 3.2 mm로 후보 중 가장 얇고, 나사(M2, 간격 18 mm)가 D405와 맞는 것을 도면으로 확인했다. 값은 해외 판매 값이고, 국내 대리점 값을 알아본 뒤 산다. 배선을 그려 보니(0031) 카메라에서 베이스까지 약 1,025 mm라 2 m면 약 97 cm가 남고, 가진 기본 선(1 m)은 닿지 않는다. 두 몸통 사이 층(5.8 mm)에 감기려면 지름이 3.8 mm 이하여야 한다. 기본 선을 잰 뒤 0031의 순서로 살지 정한다"
-
-[[item]]
 name = "서보 케이블 300 mm 6개 묶음 (Waveshare 5264-3핀)"
 qty = 1
 stage = 5

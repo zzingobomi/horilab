@@ -9,6 +9,7 @@ import pytest
 from horilab_design.parts import flange as f
 from horilab_design.parts import joint as j
 from horilab_design.parts import wrist
+from horilab_design.parts.shapes import far_apart
 from horilab_design.printcheck import overhangs
 
 
@@ -50,14 +51,17 @@ def test_flange_clears_the_stop_ear_of_the_joint_before(parts: list[j.Part]) -> 
     ear = next(p for p in before if p.name == "앞 관절의 출력 원판")
     tip = ear.shape.bounding_box().max.Y
     assert tip == pytest.approx(j.ATOP, abs=0.05)
-    gap = min(
-        j.turned(a.shape, float(q)).distance_to(b.shape)
+    # 바깥 상자끼리 3 mm 넘게 떨어진 쌍은 틈이 2 mm를 넘으니 재지 않는다 (지금은 모든 쌍이 그렇다)
+    gaps = [
+        shape.distance_to(b.shape)
         for q in range(-160, 161, 10)
         for a in parts
         if a.moving
+        for shape in [j.turned(a.shape, float(q))]
         for b in before
-    )
-    assert gap >= 2.0
+        if not far_apart(shape, b.shape, 2.0)
+    ]
+    assert all(d >= 2.0 for d in gaps), gaps
 
 
 @pytest.mark.slow

@@ -27,6 +27,7 @@ dev = [
     "cargo-zigbuild>=0.24.1",
     "pyright[nodejs]>=1.1.414",
     "pytest>=8",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.17.4",
     "yourdfpy>=0.0.60",
 ]
@@ -74,7 +75,8 @@ executionEnvironments = [
 [tool.pytest.ini_options]
 testpaths = ["tests", "packages"]
 python_files = ["test_*.py"]  # 소스의 joint_test.py 같은 이름을 테스트로 읽지 않는다
-addopts = ["--import-mode=importlib"]
+# 테스트를 CPU 수만큼의 프로세스로 나눠 돌린다 (2026-11-13: 9분 16초 → 1분 37초). 파일 하나만 볼 때는 -n 0
+addopts = ["--import-mode=importlib", "-n", "auto", "--dist", "worksteal"]
 pythonpath = ["."]  # 테스트가 tools/의 스크립트를 불러온다
 markers = [
     "slow: CAD 생성처럼 느린 테스트",

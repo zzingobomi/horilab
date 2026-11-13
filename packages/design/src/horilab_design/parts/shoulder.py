@@ -28,7 +28,7 @@ import math
 from build123d import Compound, Cone, Pos, Rot
 
 from horilab_design.parts import joint as j
-from horilab_design.parts.shapes import box, cyl_x, cyl_y, cyl_z, solid
+from horilab_design.parts.shapes import box, cyl_x, cyl_y, cyl_z, far_apart, solid
 from horilab_design.printcheck import overhangs, printed_mass_g
 
 # ---- 서보 ST-3120 (공식 도면) ----
@@ -522,6 +522,8 @@ def clearances(
         for b in static:
             if b.name == "서보 몸통" and name.startswith("혼"):
                 continue  # 혼과 서보는 한 몸이다
+            if far_apart(shape, b.shape, limit):
+                continue
             d = shape.distance_to(b.shape)
             if d < limit:
                 out[(name, b.name)] = min(d, out.get((name, b.name), limit))

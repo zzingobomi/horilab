@@ -28,7 +28,7 @@ from build123d import Axis, Compound, Cone, Polygon, Pos, Rot, extrude
 
 from horilab_design.parts import flange, wrist
 from horilab_design.parts import joint as j
-from horilab_design.parts.shapes import box, cyl_y, nut_trap, solid
+from horilab_design.parts.shapes import box, cyl_y, far_apart, nut_trap, solid
 from horilab_design.printcheck import overhangs, printed_mass_g
 from horilab_design.values import ServoModel
 
@@ -565,7 +565,7 @@ def overlaps(parts: list[j.Part], tol: float = 0.05) -> dict[tuple[str, str], fl
         for b in solids[i + 1 :]:
             if frozenset((a.name, b.name)) in _SAME:
                 continue
-            if a.shape.distance_to(b.shape) > 1e-6:
+            if far_apart(a.shape, b.shape, 0.0) or a.shape.distance_to(b.shape) > 1e-6:
                 continue
             v = solid(a.shape & b.shape).volume
             if v > tol:
@@ -616,6 +616,8 @@ def sweep_gaps() -> dict[str, float]:
             shape = j.turned(a.shape, turn)
             for b in fixed:
                 key = f"{a.name} ↔ {b.name}"
+                if far_apart(shape, b.shape, out.get(key, 99.0)):
+                    continue  # 이 각에서는 지금까지의 가장 좁은 틈보다 멀다
                 out[key] = min(out.get(key, 99.0), shape.distance_to(b.shape))
     return out
 

@@ -27,7 +27,7 @@ from build123d import Compound, Rot
 
 from horilab_design.parts import joint as j
 from horilab_design.parts import wrist
-from horilab_design.parts.shapes import box, cyl_y, solid
+from horilab_design.parts.shapes import box, cyl_y, far_apart, solid
 from horilab_design.printcheck import overhangs, printed_mass_g
 from horilab_design.values import ServoModel
 
@@ -155,6 +155,8 @@ def clearances(
         for b in static:
             if b.name == "서보 몸통" and (name.startswith("혼") or name.startswith("허브")):
                 continue  # 혼과 혼 볼트 끝, 허브 판은 서보 앞면과 가깝다 (parts/wrist.py와 같다)
+            if far_apart(shape, b.shape, limit):
+                continue
             d = shape.distance_to(b.shape)
             if d < limit:
                 out[(name, b.name)] = min(d, out.get((name, b.name), limit))

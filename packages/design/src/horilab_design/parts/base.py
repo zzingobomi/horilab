@@ -34,7 +34,17 @@ from build123d import Compound, Cone, Location, Plane, Pos, Rot
 
 from horilab_design.parts import joint as j
 from horilab_design.parts import shoulder as sh
-from horilab_design.parts.shapes import box, cyl_x, cyl_y, cyl_z, nut_trap, rod, solid, teardrop
+from horilab_design.parts.shapes import (
+    box,
+    cyl_x,
+    cyl_y,
+    cyl_z,
+    far_apart,
+    nut_trap,
+    rod,
+    solid,
+    teardrop,
+)
 from horilab_design.printcheck import overhangs, printed_mass_g
 from horilab_design.values import ServoModel
 
@@ -621,6 +631,8 @@ def overlaps(parts: list[j.Part], tol: float = 0.05) -> dict[tuple[str, str], fl
         for b in solids[i + 1 :]:
             if frozenset((a.name, b.name)) in _TOUCHING:
                 continue
+            if far_apart(a.shape, b.shape, 0.0):
+                continue
             v = solid(a.shape & b.shape).volume if a.shape.distance_to(b.shape) < 1e-6 else 0.0
             if v > tol:
                 out[(a.name, b.name)] = v
@@ -646,6 +658,8 @@ def clearances(
         for b in static:
             if b.name == "서보 몸통" and name.startswith("혼"):
                 continue  # 혼과 서보는 한 몸이다
+            if far_apart(shape, b.shape, limit):
+                continue
             d = shape.distance_to(b.shape)
             if d < limit:
                 out[(name, b.name)] = min(d, out.get((name, b.name), limit))
