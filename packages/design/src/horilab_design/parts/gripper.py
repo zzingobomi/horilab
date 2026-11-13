@@ -5,7 +5,8 @@ STS3215 하나가 피니언을 돌려 랙 둘을 반대로 밀고, 손가락 둘
 
 짜임 (플랜지 면에서 도구 쪽으로):
 - 몸통: 플랜지에 앉는 판(도구 어댑터 판과 같은 구멍)과 서보를 품는 틀이 한 부품이다. 판의 -x 쪽을 터서
-  서보 뒷면 커넥터에 선을 꽂는다 (도구를 플랜지에 달기 전에 꽂는다).
+  서보 뒷면 커넥터에 선을 꽂는다 (도구를 플랜지에 달기 전에 꽂는다). 틀의 -x 쪽 밑은 45°로 깎여 있다:
+  J6가 돌 때 그 밑이 앞 관절(J5) 출력 원판의 멈춤 귀 끝 위를 지나간다 (RELIEF_X).
 - 서보는 세워 둔다 (출력축이 도구 축, 혼이 손가락 쪽). 몸통의 누름 자리와 바닥판 사이에 물린다.
 - 바닥판 밑이 통로다. 통로의 위층에 피니언과 랙의 이가 있고, 아래층에 손가락 받침의 판이 있다.
   받침(랙 팔 + 판)은 바닥판과 덮개 사이에 끼여 x로만 미끄러진다. 랙 팔이 길어서 손가락이 받는 힘에 받침이
@@ -25,7 +26,7 @@ import math
 
 from build123d import Axis, Compound, Cone, Polygon, Pos, Rot, extrude
 
-from horilab_design.parts import flange
+from horilab_design.parts import flange, wrist
 from horilab_design.parts import joint as j
 from horilab_design.parts.shapes import box, cyl_y, nut_trap, solid
 from horilab_design.printcheck import overhangs, printed_mass_g
@@ -124,6 +125,9 @@ SERVO_GAP = 0.3  # 서보 둘레 여유
 CRADLE_X = (-j.FAR - SERVO_GAP, j.NEAR + SERVO_GAP)  # 틀 안쪽 (-35.41, 10.41)
 CRADLE_Z = j.HW + SERVO_GAP  # 12.66
 WALL = 2.0
+# 틀의 서보 먼 끝 쪽 밑을 45°로 깎기 시작하는 자리 (축에서). 앞 관절(J5) 출력 원판의 멈춤 귀 끝이 플랜지 면과
+# 같은 높이까지, 축에서 37.7 mm부터 온다. J6가 돌 때 틀의 밑이 그 위를 2 mm 넘게 띄우고 지나가게 한다
+RELIEF_X = 31.0
 NOTCH_X = -10.8  # 판을 튼 자리의 안쪽 끝 (커넥터 구멍은 x -16.3 ~ -11.7)
 NOTCH_HW = 10.5
 PAD_X = (-18.5, -6.3)  # 서보 뒷면(두께 32인 면)을 누르는 자리
@@ -247,9 +251,20 @@ def frame() -> Compound:
     ya, yd, yf = _y(0.0), _y(ADAPTER_T), _y(H_FRONT)
     x0, x1 = CRADLE_X[0] - WALL, CRADLE_X[1] + WALL
     zo = CRADLE_Z + WALL
-    walls = box(x0, x1, ya, yf, -zo, zo) - box(
-        CRADLE_X[0], CRADLE_X[1], ya - 1, yf + 1, -CRADLE_Z, CRADLE_Z
+
+    def under(start: float) -> Compound:
+        """x = -start에서 시작해 서보 먼 끝 쪽으로 45° 올라가는 면의 아래."""
+        far = x0 - 1
+        return _prism_z(
+            [(-start + 1, ya - 1), (far, ya - start - far), (far, ya - 1)], -zo - 1, zo + 1
+        )
+
+    # 서보 먼 끝 쪽의 밑은 45°로 깎고(RELIEF_X), 끝벽은 그 경사를 따라 눕힌다. 바닥에서부터 이어져 걸치지 않는다
+    hollow = solid(
+        box(CRADLE_X[0], CRADLE_X[1], ya - 1, yf + 1, -CRADLE_Z, CRADLE_Z)
+        - under(RELIEF_X - WALL * math.sqrt(2))
     )
+    walls = solid(solid(box(x0, x1, ya, yf, -zo, zo) - under(RELIEF_X)) - hollow)
     deck = solid(Rot(0, 45, 0) * cyl_y(flange.ADAPTER_R, ya, yd))
     pads = box(PAD_X[0], PAD_X[1], yd - 0.01, _y(H_BACK), -CRADLE_Z - 0.01, CRADLE_Z + 0.01)
     f = solid(walls + deck + pads)
@@ -580,7 +595,10 @@ def slide_gaps(opening: float) -> dict[tuple[str, str], float]:
 
 
 def sweep_gaps() -> dict[str, float]:
-    """J6를 멈춤 각까지 돌릴 때, 그리퍼의 윗부분과 서 있는 것(손목 몸통, D405와 받침, 플러그) 사이의 가장 좁은 틈."""
+    """J6를 멈춤 각까지 돌릴 때, 그리퍼의 윗부분과 서 있는 것 사이의 가장 좁은 틈.
+
+    서 있는 것은 손목 몸통, D405와 받침과 플러그, 그리고 손목 몸통이 앉은 앞 관절(J5)의 출력 원판이다.
+    """
     from horilab_design.parts import camera_mount
 
     fixed = [
@@ -588,10 +606,11 @@ def sweep_gaps() -> dict[str, float]:
         for p in camera_mount.assembly(MODEL)
         if p.name in ("손목 몸통", "D405", "D405 받침", "D405 플러그")
     ]
+    fixed += wrist.parent_disc(MODEL)
     names = ("그리퍼 몸통", "그리퍼 서보", "바닥판", "랙 집")
     moving = [p for p in gripper_parts(OPEN_MAX) if p.name in names]
     out: dict[str, float] = {}
-    for q in range(-165, 166, 15):
+    for q in range(-165, 166, 5):
         turn = float(max(-j.STOP_DEG, min(j.STOP_DEG, q)))
         for a in moving:
             shape = j.turned(a.shape, turn)
@@ -700,6 +719,42 @@ def mass_g() -> dict[str, float]:
     return out
 
 
+Lump = tuple[float, tuple[float, float, float]]
+
+
+def mass_centers() -> dict[str, Lump]:
+    """덩어리 넷의 (무게 [g], 무게 중심 (x, H, z) [mm]). 팔 전체 모델(studies/ur_arm.py)의 무게 자리와 견준다.
+
+    뽑는 부품은 그 부품의 무게를 부피 중심에 둔다. 선은 꽂는 자리에 둔다. 받침과 손가락은 둘이 축을 가운데로
+    마주 보므로 열림 폭이 바뀌어도 중심이 그대로다.
+    """
+    made = printed()
+    grams = {name: printed_mass_g(s, up, preset) for name, (s, up, _c, preset, _n) in made.items()}
+
+    def at(shape: Compound) -> tuple[float, float, float]:
+        c = shape.center()
+        return (c.X, c.Y - j.ATOP, c.Z)
+
+    def lump(items: list[Lump]) -> Lump:
+        total = sum(m for m, _ in items)
+        x, h, z = (sum(m * c[k] for m, c in items) / total for k in range(3))
+        return total, (x, h, z)
+
+    sv = servo_parts()
+    car, fin = carriage(), finger()
+    hand = [p for p in flange.hardware() if p.name.startswith(("손나사", "손잡이"))]
+    plug_at = (-14.2, H_BACK - 4.2, (PLUG_Z[0] + PLUG_Z[1]) / 2)
+    body = [(grams["gripper_frame"], at(made["gripper_frame"][0])), (CABLE_G, plug_at)]
+    house = [(grams[n], at(made[n][0])) for n in ("gripper_floor", "gripper_tub", "gripper_pinion")]
+    house += [(grams["gripper_slider"], at(c)) for c in (car, _flip(car))]
+    return {
+        "몸통, 손나사, 선": lump(body + [(p.mass_g, at(p.shape)) for p in hand]),
+        "서보와 혼": lump([(SERVO_G - 1.45, at(sv["body"])), (1.45, at(sv["horn"]))]),
+        "랙 집과 속 부품, 나사": lump(house + [(p.mass_g, at(p.shape)) for p in hardware()]),
+        "손가락": lump([(grams["gripper_finger"], at(f)) for f in (fin, _flip(fin))]),
+    }
+
+
 def report() -> None:
     print(
         f"평행 그리퍼: 서보 뒷면 H {H_BACK:.1f}, 바닥판 {H_FRONT:.1f} ~ {H_FLOOR:.1f}, 통로 ~ {H_COVER:.1f}, "
@@ -722,6 +777,13 @@ def report() -> None:
         + ", ".join(f"{k} {v:.1f}" for k, v in m.items())
         + f" | 합 {sum(m.values()):.1f}"
     )
+    lumps = mass_centers()
+    total = sum(g for g, _ in lumps.values())
+    cx, ch = (sum(g * c[k] for g, c in lumps.values()) / total for k in (0, 1))
+    print(
+        f"무게 중심: 플랜지 면에서 {ch:.1f} mm, 축에서 서보 먼 끝 쪽으로 {-cx:.1f} mm | "
+        + ", ".join(f"{k} {g:.1f} g (x {c[0]:.1f}, H {c[1]:.1f})" for k, (g, c) in lumps.items())
+    )
     for name, value in {**travel(), **screw_checks()}.items():
         print(f"  {name}: {value:.2f}")
     for opening in (0.0, 2 * grasp_x(), 30.0, OPEN_MAX):
@@ -737,7 +799,7 @@ def report() -> None:
     print(
         "J6를 돌릴 때 가장 좁은 틈 [mm]: "
         + ", ".join(
-            f"{k} {d:.1f}" for k, d in sorted(sweep_gaps().items(), key=lambda kv: kv[1])[:4]
+            f"{k} {d:.1f}" for k, d in sorted(sweep_gaps().items(), key=lambda kv: kv[1])[:6]
         )
     )
     print(

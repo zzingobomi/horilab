@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from typing import Literal
@@ -187,6 +188,7 @@ def shapes() -> dict[ServoModel, ServoShape]:
 
 
 Material = Literal["pla", "servo", "metal", "camera", "tool"]
+Axis = Literal["x", "y", "z"]
 
 
 @dataclass(frozen=True)
@@ -272,6 +274,43 @@ class Builder:
         self.prims.append(
             Prim(
                 name, link, shape, pos, rot, (radius, length / 2, inner), material, m, group or name
+            )
+        )
+
+    def prism(
+        self,
+        link: int,
+        name: str,
+        pts: Sequence[tuple[float, float]],
+        axis: Axis,
+        a0: float,
+        a1: float,
+        *,
+        material: Material = "pla",
+        mass: float = 0.0,
+        group: str = "",
+        frame: tuple[np.ndarray, np.ndarray] | None = None,
+    ) -> None:
+        """볼록한 다각형 pts를 axis 방향으로 a0 ~ a1까지 뽑은 기둥 (볼록 껍질).
+
+        pts는 axis가 x면 (y, z), y면 (x, z), z면 (x, y)다. 무게는 꼭짓점들의 가운데에 둔다.
+        """
+        origin, R = frame if frame is not None else (np.zeros(3), np.eye(3))
+        k = "xyz".index(axis)
+        local = np.array([np.insert(np.asarray(p, float), k, a) for a in (a0, a1) for p in pts])
+        verts = origin + local @ R.T
+        self.prims.append(
+            Prim(
+                name,
+                link,
+                "hull",
+                verts.mean(axis=0),
+                np.eye(3),
+                (0.0, 0.0, 0.0),
+                material,
+                mass,
+                group or name,
+                verts,
             )
         )
 
@@ -456,6 +495,8 @@ class Tool:
     box_depth는 박스를 잡을 때 TCP가 박스 윗면 아래로 들어가는 깊이다. 평행 그리퍼는 박스 윗면 구멍
     (어림 지름 16, 깊이 12 mm, 0014)에 손가락 끝을 넣고 바깥으로 벌려 잡는다. 구멍이 둥글어서 도구 축 둘레
     돌림은 흡착처럼 자유롭다.
+    draw가 있으면 그 함수가 도구의 형상과 무게를 넣는다 (builder, 링크, 플랜지 면의 y). 그린 도구에 쓴다.
+    없으면 add_tool이 이름으로 고른 자리표시 형상을 넣는다.
     """
 
     name: str
@@ -464,6 +505,7 @@ class Tool:
     payload: float
     symmetric: bool
     box_depth: float = 0.0
+    draw: Callable[[Builder, int, float], None] | None = None
 
 
 TOOLS = {
@@ -658,6 +700,9 @@ def add_tool(b: Builder, link: int, yf: float, tool: Tool) -> None:
 
     link가 7이면 링크 6에 붙은 따로 된 몸체에 둔다 (좌표계는 링크 6과 같다). 다른 팔(UR3e)에 같은 도구를 달 때 쓴다.
     """
+    if tool.draw is not None:
+        tool.draw(b, link, yf)
+        return
     b.cyl(
         link,
         "adapter",

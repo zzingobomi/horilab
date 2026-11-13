@@ -472,17 +472,32 @@ class WristResult:
 def eye_in_hand_calibration(
     layout: pk.Layout, tool: pk.Tool, fixed: list[Prim] | None = None
 ) -> WristResult:
-    """보드 칸 모서리의 3/4 이상이 시야 안에 들고 가리지 않으면 된 것으로 본다. fixed는 책상의 기둥."""
+    """UR식 외형(covers.py)의 팔로 본 손목 카메라 캘리브레이션. fixed는 책상의 기둥."""
     robot, prims, cam = arm_shapes(layout, tool)
+    return wrist_calibration(robot, prims, cam, fixed)
+
+
+def wrist_calibration(
+    robot: Robot,
+    prims: list[Prim],
+    cam: pk.Camera,
+    fixed: list[Prim] | None = None,
+    seeds: list[Mat] | None = None,
+) -> WristResult:
+    """보드 칸 모서리의 3/4 이상이 시야 안에 들고 가리지 않으면 된 것으로 본다.
+
+    seeds는 자세를 찾을 때의 시작 각이다 (J6는 그 값 그대로 쓴다).
+    """
     scene = pk.build_scene(robot, prims, fixed)
     b = np.array([*CAL_BOARD, 0.002])
     corners = board_corners_on_desk()
-    seeds = [
-        np.array(s, float) * DEG
-        for s in itertools.product(
-            (-30, 0, 30), (-20, 20, 50), (40, 80, 115), (140, 190), (60, 110), (10, 100)
-        )
-    ]
+    if seeds is None:
+        seeds = [
+            np.array(s, float) * DEG
+            for s in itertools.product(
+                (-30, 0, 30), (-20, 20, 50), (40, 80, 115), (140, 190), (60, 110), (10, 100)
+            )
+        ]
     res = WristResult([], [], [], [])
     for label, eye in wrist_views():
         sols = aim(robot, cam, eye, b, seeds)

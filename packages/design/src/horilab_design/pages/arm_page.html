@@ -196,7 +196,7 @@ h1 { margin: 0; font-size: var(--fs-xl); font-weight: 600; line-height: 1.15; le
   <header class="head">
     <p class="eyebrow">HORILAB · UR식 관절 · 2026-11</p>
     <h1>팔 전체 모습</h1>
-    <p class="lede">UR식 관절로 다시 그린 팔의 대략적인 모습이에요. 서보는 부모 링크의 원통 안에 들어가고, 자식 링크는 출력 쪽의 검정 원판에만 붙어요. 그래서 위팔, 아래팔, 손목이 옆으로 한 칸씩 비켜 있고, 관절마다 양쪽 160°까지 돌아요. 원통과 손목의 크기는 관절 하나를 실제 치수로 그린 CAD의 값이고, 이 형상으로 부딪힘과 버팀 토크를 확인했어요. 이 그림의 링크와 손목 몸통은 검토용으로 원통과 상자로 줄인 모양이라, 실제 부품(관절 그림)과 이음매와 모서리가 달라요. 어깨(J2)는 서보가 오면 재서 고쳐요. 도구는 평행 그리퍼예요. 박스 윗면의 구멍에 손가락을 넣고 벌려 잡아서, 박스를 틈 없이 붙여 쌓아요. 그리퍼는 아직 설계 전이라 모양이 대략이에요. 베이스 몸통과 돌림판은 J1 관절을 그린 치수이고, 책상에 무는 날개는 아직 그리기 전이에요 (얇은 금속 C 클램프 두 개로 책상 뒤 가장자리에 물려요). D405는 J6 원통 옆에 달아요. 오른쪽 위의 "손목 가까이"를 누르면 손목을 따라가며 보여 줘요. 책상 위의 옅은 반원과 점선은 로봇의 작업 범위(반지름 16~30 cm)예요.</p>
+    <p class="lede">UR식 관절로 다시 그린 팔의 대략적인 모습이에요. 서보는 부모 링크의 원통 안에 들어가고, 자식 링크는 출력 쪽의 검정 원판에만 붙어요. 그래서 위팔, 아래팔, 손목이 옆으로 한 칸씩 비켜 있고, 관절마다 양쪽 160°까지 돌아요. 원통과 손목의 크기는 관절 하나를 실제 치수로 그린 CAD의 값이고, 이 형상으로 부딪힘과 버팀 토크를 확인했어요. 이 그림의 링크와 손목 몸통은 검토용으로 원통과 상자로 줄인 모양이라, 실제 부품(관절 그림)과 이음매와 모서리가 달라요. 어깨(J2)는 서보가 오면 재서 고쳐요. 도구는 평행 그리퍼예요. 박스 윗면의 구멍에 손가락을 넣고 벌려 잡아서, 박스를 틈 없이 붙여 쌓아요. 그리퍼도 그린 치수이고, 여기서는 상자와 기둥으로 줄인 모양이에요 (자세한 모양은 평행 그리퍼 그림에 있어요). 베이스 몸통과 돌림판은 J1 관절을 그린 치수예요. 책상에는 날개 둘을 금속 C 클램프 두 개로 책상 뒤 가장자리에 물려요. D405는 J6 원통 옆에 20° 기울여 달아요. 오른쪽 위의 "손목 가까이"를 누르면 손목을 따라가며 보여 줘요. 책상 위의 옅은 반원과 점선은 로봇의 작업 범위(반지름 16~30 cm)예요.</p>
   </header>
 
   <div class="main">
@@ -208,7 +208,7 @@ h1 { margin: 0; font-size: var(--fs-xl); font-weight: 600; line-height: 1.15; le
           <button type="button" id="view-all" data-view="all" aria-pressed="true">전체</button>
           <button type="button" id="view-wrist" data-view="wrist" aria-pressed="false">손목 가까이</button>
         </div>
-        <div class="titleblock"><span id="title-dims">개념도 · 어깨 높이 160 · 위팔 220 · 아래팔 180 · 손목 79 · 70 · 35</span><span>단위 mm · <b>UR식 관절</b></span></div>
+        <div class="titleblock"><span id="title-dims">개념도 · 어깨 높이 160 · 위팔 220 · 아래팔 180 · 손목 79 · 70 · 33</span><span>단위 mm · <b>UR식 관절</b></span></div>
         <p class="gl-error" id="gl-error" hidden>이 브라우저에서 3D를 그리지 못했어요. 다른 브라우저로 열거나 하드웨어 가속을 켜 보세요.</p>
       </div>
       <ul class="legend" aria-label="색 구분" id="legend"></ul>
@@ -249,16 +249,16 @@ h1 { margin: 0; font-size: var(--fs-xl); font-weight: 600; line-height: 1.15; le
       <section class="block" aria-labelledby="h-checks">
         <h2 id="h-checks">새 관절로 확인한 것</h2>
         <dl class="spec">
-          <dt>UR3e가 되는 자세 중</dt><dd>77.1% (6,363개 중 4,906개)</dd>
+          <dt>UR3e가 되는 자세 중</dt><dd>79.9% (6,512개 중 5,205개)</dd>
           <dt>못 하는 까닭</dt><dd>거의 다 버팀 토크 (어깨, 팔꿈치)</dd>
           <dt>주 작업 범위</dt><dd>40칸 모두 됨 (그리퍼 + 짐 150 g)</dd>
-          <dt>버팀 토크 / 정격</dt><dd>어깨 0.78 · 팔꿈치 0.72 (목표 0.8 안)</dd>
+          <dt>버팀 토크 / 정격</dt><dd>어깨 0.77 · 팔꿈치 0.70 (목표 0.8 안)</dd>
           <dt>관절 범위</dt><dd>양쪽 160° (기계 멈춤 163°)</dd>
-          <dt>어깨가 드는 무게</dt><dd>1,023 g (선과 자잘한 것은 빼고)</dd>
+          <dt>어깨가 드는 무게</dt><dd>996 g (선과 자잘한 것은 빼고)</dd>
           <dt>포인터 기울이기</dt><dd>30°는 40칸 중 39칸 · 45°는 32칸이 8방향</dd>
           <dt>박스 쌓기</dt><dd>자세 246개 모두 됨, 부딪힘 없음</dd>
         </dl>
-        <p class="note">무게는 전에 뽑아서 잰 부품에 맞춘 어림이에요. 형상에 없는 무게를 플랜지에 30 g 더 달면 UR3e 비교가 74.0%로 내려가요. 그래서 가볍게 만드는 것이 중요해요.</p>
+        <p class="note">무게는 전에 뽑아서 잰 부품에 맞춘 어림이에요. 형상에 없는 무게를 플랜지에 30 g 더 달면 UR3e 비교가 75.7%로 내려가요. 그래서 가볍게 만드는 것이 중요해요.</p>
       </section>
 
       <section class="block" aria-labelledby="h-dims">
@@ -267,13 +267,13 @@ h1 { margin: 0; font-size: var(--fs-xl); font-weight: 600; line-height: 1.15; le
           <dt>어깨 높이</dt><dd>160 mm (책상 → J2 축)</dd>
           <dt>베이스</dt><dd>몸통 지름 81 mm, 돌림판 윗면 96 mm (J1 관절을 그린 값)</dd>
           <dt>위팔 · 아래팔</dt><dd>220 · 180 mm</dd>
-          <dt>손목 오프셋</dt><dd>79 · 70 · 35 mm</dd>
+          <dt>손목 오프셋</dt><dd>79 · 70 · 33 mm</dd>
           <dt>관절 원통 지름</dt><dd>어깨 57 · 팔꿈치와 손목 47 mm</dd>
           <dt>관절 길이</dt><dd>뒷덮개 ~ 자식이 앉는 면 59 mm (팔꿈치, 손목), 83 mm (어깨)</dd>
           <dt>관 링크</dt><dd>위팔 40 · 아래팔 36 mm, 관절 쪽 면이 납작</dd>
           <dt>옆으로 비킨 자리</dt><dd>위팔 가운데 56 · 아래팔 24 · 손목 79 mm</dd>
           <dt>작업 범위</dt><dd>반지름 16~30 cm, 높이 2~18 cm</dd>
-          <dt>평행 그리퍼</dt><dd>105 mm (플랜지 → 잡는 점, 교체부 포함)</dd>
+          <dt>평행 그리퍼</dt><dd>90 mm (플랜지 면 → 도구 끝점), 약 130 g</dd>
           <dt>서보</dt><dd>J1 STS3215 · J2 ST-3120 · J3 STS3250 · J4~J6 STS3215</dd>
           <dt>베어링</dt><dd>J2 6808 · J3~J6 6806 (가진 것)</dd>
         </dl>
@@ -427,9 +427,16 @@ const DATA = __DATA__;
     return g;
   }
 
-  // One shape from the design check (box, cylinder or ring), placed in its link frame.
+  // One shape from the design check (box, cylinder, ring, flat-sided tube or prism), placed in its link frame.
   function primGeom(p) {
     if (p.s === 'box') return new THREE.BoxGeometry(2 * p.z[0], 2 * p.z[1], 2 * p.z[2]);
+    if (p.s === 'prism') {
+      // A convex section (p.pts) extruded along the shape's z by 2 * p.z[0], centred on the origin.
+      const sh = new THREE.Shape(p.pts.map(([x, y]) => new THREE.Vector2(x, y)));
+      const g = new THREE.ExtrudeGeometry(sh, { depth: 2 * p.z[0], bevelEnabled: false });
+      g.translate(0, 0, -p.z[0]);
+      return g;
+    }
     if (p.s === 'cyl') {
       const g = new THREE.CylinderGeometry(p.z[0], p.z[0], 2 * p.z[1], 56);
       g.rotateX(Math.PI / 2);

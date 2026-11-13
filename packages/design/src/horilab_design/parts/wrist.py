@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 
-from build123d import Compound, Pos, Rot
+from build123d import Compound, Location, Pos, Rot
 
 from horilab_design.parts import joint as j
 from horilab_design.parts.shapes import box, cyl_x, cyl_y, cyl_z, nut_trap, solid
@@ -134,8 +134,28 @@ def as_child(shape: Compound, q_deg: float = 0.0) -> Compound:
     자식의 x → 부모의 +y(출력축), 자식의 y → 부모의 +x (관절 각 0에서 자식의 앞이 부모의 가까운 끝 쪽), z → -z.
     자식의 발 바닥이 부모 출력 원판 윗면(ATOP)에 앉고, 자식의 (y, z) = (AX_Y, 0) 선이 부모 축이다.
     """
-    placed = Pos(-AX_Y, j.ATOP - X_FOOT, 0) * (Rot(0, 180, 0) * (Rot(0, 0, 90) * shape))
-    return j.turned(solid(placed), q_deg)
+    return j.turned(solid(_child_at() * shape), q_deg)
+
+
+def _child_at() -> Location:
+    """자식 손목 몸통의 좌표를 부모 관절의 서보 좌표로 옮기는 자리 (관절 각 0)."""
+    return Pos(-AX_Y, j.ATOP - X_FOOT, 0) * (Rot(0, 180, 0) * Rot(0, 0, 90))
+
+
+def parent_disc(model: ServoModel = "STS3215") -> list[j.Part]:
+    """이 몸통이 앉은 앞 관절의 출력 원판과 멈춤 나사, 너트를 이 몸통의 서보 좌표로 옮긴 것 (이 몸통과 함께 서 있다).
+
+    앞 관절의 멈춤 귀는 이 몸통의 출력 쪽(+y)을 보고, 그 끝이 이 몸통의 출력 원판 윗면과 같은 높이까지 온다
+    (손목 2에 단 도구가 J6를 따라 돌 때 그 위를 지나간다). J4의 원판은 손목 1에 반 바퀴 돌려 달아서 귀가 반대쪽이다.
+    """
+    back = _child_at().inverse()
+    parts = [j.Part("앞 관절의 출력 원판", solid(back * j.out_disc()), color="cap")]
+    for p in j.inner_hardware(model):
+        if p.name.startswith(("멈춤 나사", "너트 (멈춤")):
+            parts.append(
+                j.Part(f"앞 관절의 {p.name}", solid(back * p.shape), j.STEEL, False, "metal")
+            )
+    return parts
 
 
 def child_hardware() -> list[j.Part]:

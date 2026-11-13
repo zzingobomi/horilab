@@ -8,6 +8,7 @@ import pytest
 
 from horilab_design.parts import flange as f
 from horilab_design.parts import joint as j
+from horilab_design.parts import wrist
 from horilab_design.printcheck import overhangs
 
 
@@ -39,6 +40,24 @@ def test_flange_turns_freely_and_stops_on_the_web(parts: list[j.Part]) -> None:
     for q in (j.STOP_DEG, -j.STOP_DEG):
         gaps = f.clearances(parts, q)
         assert gaps[("플랜지 원판", "손목 몸통")] < 0.05, (q, gaps)
+
+
+@pytest.mark.slow
+def test_flange_clears_the_stop_ear_of_the_joint_before(parts: list[j.Part]) -> None:
+    # 손목 2 몸통이 앉은 J5 출력 원판의 멈춤 귀는 플랜지 쪽을 보고, 끝이 플랜지 면과 같은 높이까지 온다.
+    # 플랜지 원판의 귀 둘과 어댑터 판, 손나사는 그 귀와 2 mm 넘게 떨어져 돈다
+    before = wrist.parent_disc()
+    ear = next(p for p in before if p.name == "앞 관절의 출력 원판")
+    tip = ear.shape.bounding_box().max.Y
+    assert tip == pytest.approx(j.ATOP, abs=0.05)
+    gap = min(
+        j.turned(a.shape, float(q)).distance_to(b.shape)
+        for q in range(-160, 161, 10)
+        for a in parts
+        if a.moving
+        for b in before
+    )
+    assert gap >= 2.0
 
 
 @pytest.mark.slow

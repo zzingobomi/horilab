@@ -100,6 +100,19 @@ def test_arm_page_solves_every_box_stacking_pose() -> None:
     variant = data["variants"][0]
     assert len(variant["chain"]) == 6
     assert all(len(f["q"]) == 6 for f in variant["frames"])
-    assert {p["s"] for p in variant["prims"]} <= {"box", "cyl", "ring", "dtube"}
+    assert {p["s"] for p in variant["prims"]} <= {"box", "cyl", "ring", "dtube", "prism"}
     # 팔꿈치 위, J5 > 0인 작업 갈래로만 푼다
     assert all(f["q"][2] > 0 and f["q"][4] > 0 for f in variant["frames"])
+    # 도구는 검토 모델의 그린 평행 그리퍼다: 플랜지에 앉는 판, 틀, 랙 집, 손가락
+    names = {p["n"] for p in variant["prims"]}
+    assert {"adapter", "gripper_frame", "gripper_house", "finger+1_tip", "finger-1_tip"} <= names
+    assert not any("_mass_" in n for n in names)
+    assert variant["tcp_mm"] == pytest.approx(gripper.H_TCP)
+    # 박스를 잡는 자리의 도구 끝점은 박스 윗면에서 손가락 어깨까지의 깊이만큼 아래다
+    grips = [f for f in variant["frames"] if f["ev"] == "grip"]
+    depth = gripper.H_TCP - gripper.H_SHOULDER
+    assert grips and all(f["tcp"][2] == pytest.approx(data["box_mm"] - depth) for f in grips)
+    # D405는 기울인 자리다: 광축이 도구 축(링크 5의 +y)에서 J6 축 쪽(-x)으로 20° 누워 있다
+    assert variant["cam"]["axis"] == pytest.approx([-0.342, 0.94, 0.0], abs=1e-3)
+    for prism in (p for p in variant["prims"] if p["s"] == "prism"):
+        assert len(prism["pts"]) >= 3 and prism["z"][0] > 0

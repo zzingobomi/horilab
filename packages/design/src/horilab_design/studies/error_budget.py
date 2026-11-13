@@ -21,7 +21,7 @@ from horilab_design.parts import joint as jp
 from horilab_design.parts import links as lp
 from horilab_design.parts import shoulder as sp
 from horilab_design.robot import Robot
-from horilab_design.statics import FLANGE, GRAVITY, PointMass, frame_poses, holding_torques
+from horilab_design.statics import FLANGE, GRAVITY, frame_poses, holding_torques
 from horilab_design.studies import packaging as pk
 from horilab_design.studies import ur_arm as ua
 from horilab_design.studies import ur_compare as uc
@@ -88,13 +88,10 @@ class Arm:
 def arm(tool_key: str, payload: bool) -> Arm:
     """도구를 단 팔. payload가 참이면 그 도구의 짐도 든다."""
     c = ua.Concept()
-    tool = pk.TOOLS[tool_key]
-    robot, prims = ua.build(c, tool)
-    ranges = (robot.lower, robot.upper)
-    h = uc.make_hori(robot, prims, ranges, ranges)
-    h.masses = [m for m in h.masses if m.label != "짐"]
-    if payload and tool.payload > 0:
-        h.masses.append(PointMass("짐", FLANGE, (0.0, 0.0, tool.length), tool.payload))
+    tool = ua.TOOLS[tool_key]
+    h = ua.hori(c, tool)
+    if not payload:
+        h.masses = [m for m in h.masses if m.label != "짐"]
     return Arm(h, tool, c)
 
 

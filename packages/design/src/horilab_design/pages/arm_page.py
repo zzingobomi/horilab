@@ -1,10 +1,12 @@
 """팔 전체 3D 페이지: 책상 위의 팔, 박스 쌓기 동작, 관절 직접 움직이기.
 
-틀 arm_page.html의 __DATA__ 자리에 데이터를 넣는다. 책상, 박스, 박스 쌓기의 TCP 자리와 도구(평행 그리퍼) 그림은
-바탕 데이터(arm_page_base.json)에 있고, 팔의 형상과 관절 각은 검토 모델(studies/ur_arm.py)에서 뽑는다.
+틀 arm_page.html의 __DATA__ 자리에 데이터를 넣는다. 책상, 박스, 박스 쌓기의 TCP 자리는 바탕 데이터
+(arm_page_base.json)에 있고, 팔과 D405, 도구(평행 그리퍼)의 형상과 관절 각은 검토 모델(studies/ur_arm.py)에서
+뽑는다. 바탕 데이터의 TCP 자리는 박스를 잡을 때 박스 윗면에서 4.5 mm 아래다 (손가락 어깨가 박스 윗면에 닿는다).
 
 형상(prims)은 링크 좌표 mm다. 모양(s)은 box · cyl · ring · dtube(z = 반지름, 반 길이, 깎은 깊이. 납작한 면이
-형상의 -y 쪽), 색 구실(c)은 body · cap · frame · base · servo · metal · camera · glass · lens · grip이다.
+형상의 -y 쪽) · prism(pts = 단면의 꼭짓점, z = 반 길이. 단면을 형상의 z 방향으로 뽑는다), 색 구실(c)은
+body · cap · frame · base · servo · metal · camera · glass · lens · grip이다.
 색이 다른 두 면을 같은 평면에 두면 화면에 줄무늬가 생긴다. 덮개는 몸통 면에서 0.5 mm 넘게 띄운다.
 
     uv run python -m horilab_design.pages.arm_page
@@ -20,16 +22,16 @@ import numpy as np
 from horilab_design.pages import HERE, OUT_DIR
 from horilab_design.studies import packaging as pk
 from horilab_design.studies import ur_arm
-from horilab_design.studies import ur_compare as uc
-from horilab_design.studies.packaging import MM, TOOLS
+from horilab_design.studies.packaging import MM
 
 ROLE = {
     "base": "base",
     "turntable": "base",
-    "column": "body",
-    "d405_plate": "frame",
     "d405": "camera",
+    "d405_plug": "camera",
 }
+# 관절의 형상 가운데 검정 출력 원판에 붙은 것. 나머지(집, 목, 귀)는 흰 몸통이다
+DISC_PARTS = ("cap", "stopear", "post")
 ROT = {
     "x": [0, 0, 1, 0, 1, 0, -1, 0, 0],
     "y": [0, 1, 0, 0, 0, 1, 1, 0, 0],
@@ -41,24 +43,49 @@ def _r3(v: object) -> list[float]:
     return [round(float(x), 3) for x in np.asarray(v, float).ravel()]
 
 
-def _prim(p: pk.Prim) -> dict | None:
-    """검토 형상 하나를 페이지 형식으로. 서보 속, 베어링, 무게만 든 조각, 벽 나사 머리의 띠, 도구는 뺀다."""
+def _role(p: pk.Prim) -> str | None:
+    """색 구실. 서보 속, 베어링, 무게만 든 조각, 벽 나사 머리의 띠는 그리지 않는다 (None)."""
     name = p.name
-    hidden = (
-        "/servo_" in name
-        or name.endswith("/bearing")
-        or "_mass_" in name
-        or name.endswith("/wallscrews")
-        or name in ("adapter", "extra")
-    )
-    if hidden or p.group == "도구":
+    part = name.split("/")[-1]
+    hidden = "/servo_" in name or "_mass_" in name or part in ("bearing", "wallscrews")
+    if hidden or name == "extra":
         return None
-    if name.endswith(("/house", "/far_house", "_foot", "/ears", "/pinear")):
-        role = "body"
-    elif name.endswith(("/cap", "/stopear")):
-        role = "cap"
-    else:
-        role = ROLE.get(name, "body" if p.shape == "hull" else "frame")
+    if p.group in ("도구", "교체 어댑터"):
+        return "grip"
+    if part in ("post_tip",) or name.startswith("d405_screw"):
+        return "metal"
+    if "/" in name:
+        # J6의 영점 핀 귀는 플랜지 원판에 있다. 다른 관절의 것은 자식 몸통의 귀다
+        return "cap" if part in DISC_PARTS or name == "J6/pinear" else "body"
+    if name in ROLE:
+        return ROLE[name]
+    return "body" if p.shape == "hull" or name.endswith("_foot") else "frame"
+
+
+def _prism(p: pk.Prim) -> dict:
+    """볼록 기둥(꼭짓점이 두 끝 면에 같은 차례로 든 껍질)을 단면과 뽑는 방향으로 푼다."""
+    assert p.verts is not None
+    v = p.verts / MM
+    n = len(v) // 2
+    low, high = v[:n], v[n:]
+    ez = high[0] - low[0]
+    length = float(np.linalg.norm(ez))
+    ez = ez / length
+    ex = low[1] - low[0]
+    ex = ex / np.linalg.norm(ex)
+    ey = np.cross(ez, ex)
+    center = v.mean(axis=0)
+    pts = [[round(float((q - center) @ ex), 3), round(float((q - center) @ ey), 3)] for q in low]
+    rot = np.column_stack([ex, ey, ez])
+    return {"s": "prism", "p": _r3(center), "r": _r3(rot), "z": [round(length / 2, 3)], "pts": pts}
+
+
+def _prim(p: pk.Prim) -> dict | None:
+    """검토 형상 하나를 페이지 형식으로."""
+    role = _role(p)
+    if role is None:
+        return None
+    name = p.name
     d: dict = {
         "l": int(p.link),
         "s": p.shape,
@@ -67,14 +94,13 @@ def _prim(p: pk.Prim) -> dict | None:
         "c": role,
         "n": name,
     }
-    if p.shape == "hull" and name.endswith(
-        "_foot"
-    ):  # 발 상자: 윗모서리를 깎은 껍질을 상자로 그린다
+    if p.shape == "hull" and name in ("upper_foot", "fore_foot"):
+        # 링크의 발 상자: 윗모서리를 깎은 껍질을 상자로 그린다
         assert p.verts is not None
         v = p.verts / MM
         lo, hi = v.min(axis=0), v.max(axis=0)
         d.update(s="box", p=_r3((lo + hi) / 2), z=_r3((hi - lo) / 2))
-    elif p.shape == "hull":  # 납작한 관
+    elif p.shape == "hull" and name.endswith("_tube"):  # 납작한 관
         assert p.verts is not None
         v = p.verts / MM
         z0, z1 = float(v[:, 2].min()), float(v[:, 2].max())
@@ -85,6 +111,8 @@ def _prim(p: pk.Prim) -> dict | None:
         cut = radius - (yc - y_lo) if flat_low else radius - (y_hi - yc)
         d.update(s="dtube", p=_r3([0.0, yc, (z0 + z1) / 2]), z=_r3([radius, (z1 - z0) / 2, cut]))
         d["r"] = [1, 0, 0, 0, 1, 0, 0, 0, 1] if flat_low else [-1, 0, 0, 0, -1, 0, 0, 0, 1]
+    elif p.shape == "hull":
+        d.update(_prism(p))
     else:
         d["z"] = _r3(np.array(p.size) / MM)
     if p.mass > 0:
@@ -108,9 +136,9 @@ def _cyl(
 
 def _frames(c: ur_arm.Concept, base: dict) -> list[dict]:
     """박스 쌓기의 TCP 자리마다 관절 각을 푼다 (작업 갈래: 앞, 팔꿈치 위, J5 > 0. 앞 프레임과 가장 가까운 해)."""
-    tool = TOOLS["gripper"]
-    robot, prims = ur_arm.build(c, uc.TOOL)
-    h = uc.make_hori(robot, prims, (robot.lower, robot.upper), (robot.lower, robot.upper))
+    tool = ur_arm.GRIPPER
+    h = ur_arm.hori(c, tool)
+    robot = h.robot
     frames = []
     prev: np.ndarray | None = None
     for fr in base["frames"]:
@@ -144,7 +172,7 @@ def _frames(c: ur_arm.Concept, base: dict) -> list[dict]:
 def page_data(c: ur_arm.Concept | None = None) -> dict:
     c = c or ur_arm.Concept()
     base = json.loads((HERE / "arm_page_base.json").read_text(encoding="utf-8"))
-    robot, prims = ur_arm.build(c, TOOLS["gripper"])
+    robot, prims = ur_arm.build(c, ur_arm.GRIPPER)
     st2, st4 = c.st("ST-3120"), c.st("STS3215")
     st3 = c.st("STS3250")
 
@@ -166,30 +194,25 @@ def page_data(c: ur_arm.Concept | None = None) -> dict:
         _cyl(link, f"{name}/back_cover", center, axis, r, 1.0, "cap")
         for link, name, center, axis, r in covers
     ]
-    # 도구: 바탕 그림의 평행 그리퍼를 플랜지 면에 놓는다
-    for p in base["tool_prims"]:
-        out.append({**p, "p": [p["p"][0], round(p["p"][1] + mm(c.d6), 3), p["p"][2]]})
-    # D405 유리와 렌즈
-    cam = next(p for p in out if p["n"] == "d405")
-    cx, cy, cz = cam["p"]
-    hy = cam["z"][1]
-    one = [1, 0, 0, 0, 1, 0, 0, 0, 1]
-    glass = {
-        "l": 5,
-        "s": "box",
-        "p": _r3([cx, cy + hy + 0.4, cz]),
-        "r": one,
-        "z": [20.0, 0.4, 20.0],
-    }
-    out.append({**glass, "c": "glass", "n": "glass"})
-    for dz in (-9.0, 9.0):
-        lens = {
+    # D405의 유리와 렌즈 둘 (카메라 좌표: 원점이 렌즈 면 가운데, x가 가로, z가 광축)
+    cam_at, cam_rot = ur_arm.camera_frame(c)
+
+    def on_camera(
+        shape: str, local: tuple[float, float, float], size: list[float], role: str
+    ) -> dict:
+        at = cam_at / MM + cam_rot @ np.array(local)
+        return {
             "l": 5,
-            "s": "cyl",
-            "p": _r3([cx, cy + hy + 0.9, cz + dz]),
-            "r": [1, 0, 0, 0, 0, 1, 0, -1, 0],
+            "s": shape,
+            "p": _r3(at),
+            "r": _r3(cam_rot),
+            "z": size,
+            "c": role,
+            "n": role,
         }
-        out.append({**lens, "z": [4.0, 0.8, 0.0], "c": "lens", "n": "lens"})
+
+    out.append(on_camera("box", (0.0, 0.0, 0.4), [20.0, 20.0, 0.4], "glass"))
+    out += [on_camera("cyl", (dx, 0.0, 0.9), [4.0, 0.8, 0.0], "lens") for dx in (-9.0, 9.0)]
 
     chain = [
         {
@@ -210,7 +233,7 @@ def page_data(c: ur_arm.Concept | None = None) -> dict:
         {"l": 4, "p": _r3([0.0, mm(c.c4 + c.sign4 * st4.back) - 3.0, 0.0]), "t": "J4"},
         {"l": 5, "p": _r3([0.0, 0.0, mm(c.mid + st4.back) - 3.0]), "t": "J5"},
         {"l": 6, "p": _r3([0.0, mm(c.mid + st4.back) - 3.0, 0.0]), "t": "J6"},
-        {"l": 5, "p": _r3([cx + 21.0, cy, cz + 21.0]), "t": "D405"},
+        {"l": 5, "p": _r3(cam_at / MM + cam_rot @ np.array([21.0, 21.0, -11.5])), "t": "D405"},
     ]
     labels = [
         {
@@ -235,14 +258,20 @@ def page_data(c: ur_arm.Concept | None = None) -> dict:
         "offsets": offsets,
         "chain": chain,
         "flange": [_r3(row) for row in flange],
-        "tcp_mm": round(TOOLS["gripper"].length / MM, 1),
+        "tcp_mm": round(ur_arm.GRIPPER.length / MM, 1),
         "prims": out,
         "tags": tags,
-        "cam": {**base["cam"], "l": 5, "lens": _r3([cx, cy + hy, cz])},
+        "cam": {
+            **base["cam"],
+            "l": 5,
+            "lens": _r3(cam_at / MM),
+            "axis": _r3(cam_rot[:, 2]),
+            "wide": _r3(cam_rot[:, 0]),
+        },
         "frames": _frames(c, base),
         "labels": labels,
     }
-    keep = {k: v for k, v in base.items() if k not in ("cam", "tool_prims", "frames")}
+    keep = {k: v for k, v in base.items() if k not in ("cam", "frames")}
     return {**keep, "variants": [variant]}
 
 

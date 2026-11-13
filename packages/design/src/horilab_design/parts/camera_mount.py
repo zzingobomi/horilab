@@ -99,9 +99,9 @@ def plug(length: float = PLUG_LEN + PLUG_RELIEF) -> Compound:
     return solid(body.moved(FRAME))
 
 
-def mount() -> Compound:
-    """D405 받침 (검정). 옆으로 눕혀(x가 위) 뽑는다: 꺾인 단면이 바닥에 그려져 각도가 정확하고, 층이 판의 길이
-    방향으로 이어져 카메라 무게가 층을 떼는 쪽으로 걸리지 않는다."""
+def profile() -> list[tuple[float, float]]:
+    """받침의 꺾인 단면 (y, z). 발의 안쪽 뒤 모서리에서 시작해 카메라 뒷면을 따라 바깥 끝까지 갔다가 돌아온다:
+    발 안쪽 뒤, 판 앞면이 돋움 면과 만나는 곳, 판 앞면의 바깥 끝, 판 뒷면의 바깥 끝, 메운 모서리 둘, 발 바깥 뒤."""
     ay, az = AXIS[1], AXIS[2]
     oy, oz = -INWARD[1], -INWARD[2]  # 판을 따라 바깥으로 가는 방향 (y, z)
     by, bz = _back_edge()
@@ -113,7 +113,7 @@ def mount() -> Compound:
     qy, qz = by - PLATE_T * ay, bz - PLATE_T * az  # 판 뒷면 위의 한 점
     s_out = (z_out - qz) / (-oz)
     back_root = (qy - s_out * oy, z_out)
-    profile = [
+    return [
         (FOOT_Y0, z_in),
         front_root,
         front_end,
@@ -122,7 +122,13 @@ def mount() -> Compound:
         (back_root[0] - FILLET, z_out),
         (FOOT_Y0, z_out),
     ]
-    m = j.prism_x(profile, -MOUNT_W / 2, MOUNT_W / 2)
+
+
+def mount() -> Compound:
+    """D405 받침 (검정). 옆으로 눕혀(x가 위) 뽑는다: 꺾인 단면이 바닥에 그려져 각도가 정확하고, 층이 판의 길이
+    방향으로 이어져 카메라 무게가 층을 떼는 쪽으로 걸리지 않는다."""
+    z_in, z_out = -wrist.MOUNT_Z, -(wrist.MOUNT_Z + FOOT_T)
+    m = j.prism_x(profile(), -MOUNT_W / 2, MOUNT_W / 2)
     for x, y in wrist.mount_xy():  # 발 나사
         m = solid(m - cyl_z(j.M3_FREE_H / 2, z_out - 1, z_in + 1, x, y))
     r = j.M3_FREE_H / 2

@@ -75,7 +75,11 @@ def test_frame_sits_on_the_flange_pins_and_leaves_room_for_the_knobs() -> None:
 @pytest.mark.slow
 def test_gripper_clears_the_wrist_and_camera_when_j6_turns() -> None:
     gaps = g.sweep_gaps()
-    assert min(gaps.values()) >= 5.0, gaps
+    near = {k: d for k, d in gaps.items() if "앞 관절" in k}
+    assert min(d for k, d in gaps.items() if k not in near) >= 5.0, gaps
+    # 앞 관절(J5) 출력 원판의 멈춤 귀 끝은 플랜지 면 높이까지 온다. 몸통의 밑을 깎아 그 위를 2 mm 넘게 띄운다
+    assert near and min(near.values()) >= 2.0, near
+    assert near["그리퍼 몸통 ↔ 앞 관절의 출력 원판"] < 5.0  # 귀가 검사에 들어 있다
 
 
 @pytest.mark.slow
@@ -148,3 +152,8 @@ def test_weight_stays_under_the_cap() -> None:
     # 그리퍼 전체(플랜지에 앉는 판, 서보, 나사, 손나사, 선까지)가 140 g 안이다 (0017의 가정)
     assert sum(m.values()) < 140.0, m
     assert m["서보와 혼"] == pytest.approx(58.65, abs=0.01)
+    # 무게 중심은 서보 쪽(플랜지에서 3 cm 남짓)에 있다. 손가락 끝(9.5 cm)까지 뻗은 길이에 견주어 손목에 가깝다
+    lumps = g.mass_centers()
+    total = sum(grams for grams, _ in lumps.values())
+    assert total == pytest.approx(sum(m.values()), abs=0.01)
+    assert sum(grams * at[1] for grams, at in lumps.values()) / total < 35.0

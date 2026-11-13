@@ -183,12 +183,16 @@ def make_hori(
     prims: list[pk.Prim],
     now: tuple[np.ndarray, np.ndarray],
     window: tuple[np.ndarray, np.ndarray],
+    tool: pk.Tool = TOOL,
 ) -> Hori:
-    """형상(prims)과 관절 범위 둘(지금, 270°처럼 서보가 허락하는 가장 넓은 범위)로 견줄 호리봇을 만든다."""
+    """형상(prims)과 관절 범위 둘(지금, 270°처럼 서보가 허락하는 가장 넓은 범위)로 견줄 호리봇을 만든다.
+
+    tool은 prims에 든 도구다. 그 도구의 짐을 도구 끝점에 단다.
+    """
     servos = load_servos()
     rated = np.array([servos[s].rated_torque for s in SERVO_OF_JOINT])
     masses = [PointMass(p.name, min(p.link, 6), tuple(p.pos), p.mass) for p in prims if p.mass > 0]
-    masses.append(PointMass("짐", FLANGE, (0.0, 0.0, TOOL.length), TOOL.payload))
+    masses.append(PointMass("짐", FLANGE, (0.0, 0.0, tool.length), tool.payload))
     return Hori(
         robot, AnalyticIK(robot), pk.build_scene(robot, prims), prims, now, window, rated, masses
     )
@@ -209,9 +213,9 @@ def hori_arm(layout: Layout | None = None, *, covers: bool = True) -> Hori:
     return make_hori(robot, prims, now, window)
 
 
-def ur_arm(s: float) -> Arm:
+def ur_arm(s: float, tool: pk.Tool = TOOL) -> Arm:
     robot = ur3e.ur_robot(s)
-    return Arm(robot, AnalyticIK(robot), ur3e.ur_scene(s, TOOL))
+    return Arm(robot, AnalyticIK(robot), ur3e.ur_scene(s, tool))
 
 
 def _joints(ok: np.ndarray) -> str:
@@ -284,18 +288,20 @@ def compare(
     free_joints: bool = False,
     hori: Hori | None = None,
     label: str = "지금 설계",
+    tool: pk.Tool = TOOL,
+    outcome: Callable[[Hori, Mat], tuple[str, str]] | None = None,
 ) -> Comparison:
     """every > 1이면 자세를 그만큼 건너뛰며 본다 (빠른 확인용). free_joints는 hori_outcome의 가정이다.
 
-    hori를 주면 그 호리봇(다른 관절 구조 등)으로 견준다.
+    hori를 주면 그 호리봇(다른 관절 구조 등)으로 견준다. tool은 두 팔에 다는 도구다 (hori를 주면 그 호리봇에
+    단 것과 같은 도구를 준다). outcome을 주면 호리봇이 자세를 하는지를 hori_outcome 대신 그 함수로 가른다.
     """
     s = scale()
-    u, h = ur_arm(s), hori or hori_arm(layout)
+    u, h = ur_arm(s, tool), hori or hori_arm(layout)
     out = Comparison(s, free_joints, label)
-    for t in targets()[::every]:
-        out.results.append(
-            Result(t, ur_outcome(u, t.T), hori_outcome(h, t.T, free_joints=free_joints))
-        )
+    judge = outcome or (lambda arm, T: hori_outcome(arm, T, free_joints=free_joints))
+    for t in targets(tool.length)[::every]:
+        out.results.append(Result(t, ur_outcome(u, t.T), judge(h, t.T)))
     return out
 
 
