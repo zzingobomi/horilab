@@ -14,6 +14,7 @@
 
 use std::time::Duration;
 
+use horilab_servo::feetech::bus::Reply;
 use horilab_servo::feetech::registers::{self as reg, Fault, Register};
 use horilab_servo::feetech::{Bus, Port};
 
@@ -269,25 +270,80 @@ impl<P: Port> Joints<P> {
         let result = self.bus.read(id, &SNAPSHOT);
         self.watch(id);
         let reply = result.map_err(|e| format!("{name}: 상태를 읽지 못했다: {e}"))?;
-        let get = |register: Register| reply.get(register).unwrap_or_default();
-        Ok(Snapshot {
-            torque_enable: get(reg::TORQUE_ENABLE),
-            acceleration: get(reg::ACCELERATION),
-            goal_position: get(reg::GOAL_POSITION),
-            goal_speed: get(reg::GOAL_SPEED),
-            torque_limit: get(reg::TORQUE_LIMIT),
-            lock: get(reg::LOCK),
-            position: get(reg::PRESENT_POSITION),
-            speed: get(reg::PRESENT_SPEED),
-            load: get(reg::PRESENT_LOAD),
-            voltage: get(reg::PRESENT_VOLTAGE),
-            temperature: get(reg::PRESENT_TEMPERATURE),
-            status: Fault(u8::try_from(get(reg::STATUS)).unwrap_or(u8::MAX)),
-            moving: get(reg::MOVING) != 0,
-            current: get(reg::PRESENT_CURRENT),
-        })
+        Ok(snapshot_of(&reply))
     }
 
+    /// 관절 층의 서보 ID (연 순서).
+    pub fn ids(&self) -> Vec<u8> {
+        self.servos.iter().map(|servo| servo.id).collect()
+    }
+
+    /// 모든 서보의 상태를 한 번에 읽는다 (동기 읽기, 실행 루프의 박자). 멈춰 있어도 읽는다. 한 서보라도
+    /// 읽지 못하면 오류이고, 잇단 실패는 멈춤이 된다. 결과는 연 순서다.
+    pub fn read_all(&mut self) -> Result<Vec<(u8, Snapshot)>, String> {
+        let ids = self.ids();
+        let result = self.bus.sync_read(&ids, &SNAPSHOT);
+        for &id in &ids {
+            self.watch(id);
+        }
+        let replies = result.map_err(|e| format!("상태를 한 번에 읽지 못했다: {e}"))?;
+        let mut states = Vec::new();
+        let mut failed = Vec::new();
+        for servo in &self.servos {
+            match replies.get(&servo.id) {
+                Some(Ok(reply)) => states.push((servo.id, snapshot_of(reply))),
+                Some(Err(e)) => failed.push(format!("{}: {e}", servo.name)),
+                None => failed.push(format!("{}: 응답이 없다", servo.name)),
+            }
+        }
+        if failed.is_empty() {
+            Ok(states)
+        } else {
+            Err(format!("상태를 읽지 못했다: {}", failed.join(", ")))
+        }
+    }
+
+    /// 여러 서보의 목표를 한 번에 쓴다 (동기 쓰기, 실행 루프의 박자). 멈춰 있거나 하나라도 한계 밖이면
+    /// 아무것도 쓰지 않는다. 토크가 켜져 있는지는 같은 박자에 읽은 상태로 부르는 쪽이 본다.
+    pub fn write_goals(&mut self, goals: &[(u8, i32)]) -> Result<(), String> {
+        self.require_running()?;
+        for &(id, raw) in goals {
+            let servo = self.servo(id)?;
+            if raw < servo.min_raw || raw > servo.max_raw {
+                return Err(format!(
+                    "{}: 목표 {raw}가 한계({}~{}) 밖이라 아무것도 쓰지 않는다",
+                    servo.name, servo.min_raw, servo.max_raw
+                ));
+            }
+        }
+        self.bus
+            .sync_write(reg::GOAL_POSITION, goals)
+            .map_err(|e| format!("목표를 한 번에 쓰지 못했다: {e}"))
+    }
+}
+
+/// 상태 읽기의 응답을 [`Snapshot`]으로 푼다.
+fn snapshot_of(reply: &Reply) -> Snapshot {
+    let get = |register: Register| reply.get(register).unwrap_or_default();
+    Snapshot {
+        torque_enable: get(reg::TORQUE_ENABLE),
+        acceleration: get(reg::ACCELERATION),
+        goal_position: get(reg::GOAL_POSITION),
+        goal_speed: get(reg::GOAL_SPEED),
+        torque_limit: get(reg::TORQUE_LIMIT),
+        lock: get(reg::LOCK),
+        position: get(reg::PRESENT_POSITION),
+        speed: get(reg::PRESENT_SPEED),
+        load: get(reg::PRESENT_LOAD),
+        voltage: get(reg::PRESENT_VOLTAGE),
+        temperature: get(reg::PRESENT_TEMPERATURE),
+        status: Fault(u8::try_from(get(reg::STATUS)).unwrap_or(u8::MAX)),
+        moving: get(reg::MOVING) != 0,
+        current: get(reg::PRESENT_CURRENT),
+    }
+}
+
+impl<P: Port> Joints<P> {
     /// EEPROM이나 RAM 레지스터를 읽는다 (서보를 움직이지 않는다).
     pub fn read(&mut self, id: u8, registers: &[Register]) -> Result<Vec<(Register, i32)>, String> {
         let name = self.servo(id)?.name.clone();
