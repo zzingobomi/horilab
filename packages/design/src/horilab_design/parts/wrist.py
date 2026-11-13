@@ -26,7 +26,12 @@ X_FOOT = -(j.FAR + HEAD)  # 발 바닥
 AX_Y = 3.68  # 앞 관절 축이 지나는 y: 뒷덮개 바깥 면 ~ 원통 앞 끝의 가운데
 PIN_Z = j.R_PIN  # 영점 핀 귀 (+z 쪽)
 PIN_POSE_DEG = -90.0  # 영점 핀을 꽂는 관절 각: 자식의 핀 귀가 부모의 살 위에 온다
-NOTCH = (6.5, 11.5)  # 앞벽의 발 쪽 끝에 낸 선 홈의 |z| 범위
+# 앞벽의 발 쪽 끝에 낸 선 홈 (0031). 가운데 홈은 다음 관절로 나가는 선이 살 위로 나가는 자리다: 멈춤 기둥과 귀가
+# 지나가지 않는 폭(멈춤 각에서 살 가운데 ± 2.5 mm) 안에 둔다. 옆 홈 둘은 앞 관절에서 들어오는 선의 자리다
+# (이 몸통의 앞이 앞 관절 원판의 살 쪽에 올 때: 손목 1). 손목 2는 들어오는 선이 뒷덮개 쪽 모서리로 들어온다
+NOTCH = (6.5, 11.5)  # 옆 홈의 |z| 범위
+EXIT_HW = 2.6  # 가운데 홈의 반폭 (선 폭 3.9에 여유)
+SIDE_LANE = 10.0  # 서보 먼 끝 밑(앞 관절 원판 위)에서 선이 지나는 |z|: 혼 볼트 머리(7.8까지)와 목 안쪽 벽(12.7) 사이
 # 원통 옆(-z 쪽, 영점 핀 귀의 반대쪽)의 돋움 둘: 손목 2에서는 D405 받침(parts/camera_mount.py)을, 손목 1에서는
 # D405 선의 클립을 M3 나사 둘로 단다. 너트는 뒤(-y, 뽑을 때 위)에서 떨어뜨려 넣는다
 MOUNT_X = 12.0  # 돋움 가운데의 |x|
@@ -116,9 +121,9 @@ def wrist_body() -> Compound:
     for x, z in j.RIM:
         h = solid(h - cyl_x(j.M3_FREE_H / 2, X_FOOT - 1, X_FOOT + j.EAR_T + 1, AX_Y + x, z))
     h = solid(h - cyl_x(j.PIN_HOLE_H / 2, X_FOOT - 1, X_FOOT + j.EAR_T + 1, AX_Y, PIN_Z))
-    # 선 홈: 앞벽의 발 쪽 끝 (앞 관절에서 들어오는 선, 다음 관절로 나가는 선)
-    for sg in (1, -1):
-        z0, z1 = (NOTCH[0], NOTCH[1]) if sg > 0 else (-NOTCH[1], -NOTCH[0])
+    # 선 홈: 앞벽의 발 쪽 끝. 가운데는 다음 관절로 나가는 선, 양옆은 앞 관절에서 들어오는 선
+    spans = [(-EXIT_HW, EXIT_HW), (NOTCH[0], NOTCH[1]), (-NOTCH[1], -NOTCH[0])]
+    for z0, z1 in spans:
         h = solid(h - box(X_FOOT - 1, X_FOOT + 2.4, j.NECK_FRONT_IN - 1, j.FRONT + 1, z0, z1))
     return j.cut_joint_features(h, window=False)
 

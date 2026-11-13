@@ -13,7 +13,7 @@
 - 손목 끝은 그린 부품의 자리다: 손목 몸통 옆의 돋움, 기울인 D405와 받침과 플러그(parts/camera_mount.py),
   플랜지 원판의 영점 핀 귀(parts/flange.py), 평행 그리퍼(parts/gripper.py). 포인터는 아직 그리지 않아
   자리표시(packaging.TOOLS)다.
-- 선은 아직 없다 (배선을 그릴 때 넣는다).
+- 선은 무게만 넣는다 (studies/wiring.py: 서보 선과 D405 선을 링크마다 한 덩어리로). 느슨한 고리의 형상은 없다.
 
     uv run python -m horilab_design.studies.ur_arm               # 쌓임, 옆 자리, 무게, 세운 자세의 범위
     uv run python -m horilab_design.studies.ur_arm compare       # UR3e와 같은 자세 시험 (0027, 5분쯤)
@@ -23,7 +23,7 @@
     uv run python -m horilab_design.studies.ur_arm calib         # 손목 카메라의 캘리브레이션 자세 (0018)
 
 뒤에 키=값을 붙여 바꿔 볼 수 있다 (길이는 mm, 무게는 g):
-    shoulder=180 upper=230 fore=170 extra=30 tube_scale=0.62 plug=straight
+    shoulder=180 upper=230 fore=170 extra=30 tube_scale=0.62 plug=straight wires=0
     ranges=,-160:160,-160:160,20:340,-160:160,-160:160
 """
 
@@ -51,6 +51,7 @@ from horilab_design.statics import FLANGE, GRAVITY, PointMass, frame_poses, hold
 from horilab_design.studies import cameras as cm
 from horilab_design.studies import packaging as pk
 from horilab_design.studies import ur_compare as uc
+from horilab_design.studies import wiring as wr
 from horilab_design.studies.common import RATED_MARGIN
 from horilab_design.studies.packaging import (
     DEG,
@@ -78,23 +79,23 @@ BEARING_MASS: dict[ServoModel, float] = {
 # 원통 속 부품과 나사: 누름 틀 4.1, 서보 받침 3.3, 뒷덮개 5.3, 벽 나사 3.9, 너트 1.5, 서보 뒷면 나사 0.8, 덮개 나사 1.8
 INNER_MASS = 21.0 * G
 WRIST_BODY_MASS = 26.6 * G  # 손목 몸통 (원통 옆의 돋움 둘 포함)
-# 자식 쪽: 출력 원판 11.1, 허브 판 1.4, 혼(가운데 나사 포함, 실측) 2.0, 혼 볼트 넷 5.4, 몸통 나사 넷 3.4, 너트 1.3,
+# 자식 쪽: 출력 원판 11.8, 허브 판 1.4, 혼(가운데 나사 포함, 실측) 2.0, 혼 볼트 넷 5.4, 몸통 나사 넷 3.4, 너트 1.3,
 # 멈춤 나사와 너트 1.2
-OUT_MASS = 25.8 * G
+OUT_MASS = 26.5 * G
 # 어깨 (uv run python -m horilab_design.parts.shoulder).
 # 부모 쪽: 집(J1 몸통의 윗부분) 54.7, 누름 틀 4.2, 서보 받침 9.2, 뒷덮개 12.3, 벽 나사 여섯 4.6, 너트 여섯 1.8,
 # 서보 뒷면 나사 여섯 2.9, 덮개 나사 둘 2.0
 SHOULDER_HOUSE_MASS = 91.7 * G
-# 자식 쪽: 출력 원판 16.7, 허브 판 2.5, 혼 FT110M과 가운데 나사 6.9(도면 부피로 어림), 혼 볼트 여덟 11.5,
+# 자식 쪽: 출력 원판 17.6, 허브 판 2.5, 혼 FT110M과 가운데 나사 6.9(도면 부피로 어림), 혼 볼트 여덟 11.5,
 # 위팔 나사 여섯 5.3, 너트 여섯 2.1, 멈춤 나사와 너트 1.2
-SHOULDER_OUT_MASS = 46.2 * G
+SHOULDER_OUT_MASS = 47.1 * G
 # 위팔의 납작한 면(어깨 출력 원판 윗면)이 J1 축에서 떨어진 거리. 어깨 쌓임이 길어진 만큼 서보를 출력 반대쪽으로
 # 물려서 이 값을 지킨다 (0029: 골격과 손목 오프셋이 그대로이고, 어깨 원통이 J1 축을 가운데로 거의 대칭이다)
 SHOULDER_PLANE = sp.J1_PLANE * MM
 # J1 관절 (uv run python -m horilab_design.parts.base). 돌림판 윗면의 높이는 그 쌓임에서 나온다
 TABLE_TOP = bp.TOP_H * MM
-# J1의 도는 쪽: 돌림판 33.2, 허브 4.5, 사이 고리 11.8, 혼 2.0, 조임 볼트와 와셔·혼 나사·멈춤 나사·J1 몸통 나사와 너트 23.9
-J1_TABLE_MASS = 75.5 * G
+# J1의 도는 쪽: 돌림판 34.5, 허브 4.5, 사이 고리 11.8, 혼 2.0, 조임 볼트와 와셔·혼 나사·멈춤 나사·J1 몸통 나사와 너트 23.9
+J1_TABLE_MASS = 76.8 * G
 # J1 몸통(89.3)에서 어깨 집(54.7, SHOULDER_HOUSE_MASS에 들었다)을 뺀 몫: 돌림판까지 내려온 목과 바닥판
 J1_FOOT_MASS = 34.6 * G
 # 링크 한 부품을 세 덩어리로 나눈 값: 끝 집 쪽 22.8 g(끝 관절 축에서 10 mm 앞 관절 쪽), 관(길이당 무게 × 관 길이.
@@ -108,9 +109,9 @@ LINK_TUBE: dict[
     "fore": (0.287, 16.7 * G, 0.0134),
 }
 D405_PLATE_MASS = 12.1 * G  # D405 받침 8.5 (parts/camera_mount.py)과 나사 넷, 너트 둘 3.6
-# J6의 자식 쪽 (uv run python -m horilab_design.parts.flange): 플랜지 원판 11.9, 허브 판 1.4, 혼 2.0, 혼 볼트 넷 5.4,
+# J6의 자식 쪽 (uv run python -m horilab_design.parts.flange): 플랜지 원판 12.6, 허브 판 1.4, 혼 2.0, 혼 볼트 넷 5.4,
 # 너트 둘 0.7, 멈춤 나사와 너트 1.2, 도구 핀 둘 2.2. 손나사 둘과 손잡이는 도구의 무게에 들어 있다
-FLANGE_MASS = 24.8 * G
+FLANGE_MASS = 25.5 * G
 # 평행 그리퍼의 무게 덩어리 (uv run python -m horilab_design.parts.gripper): (무게 kg, 도구 좌표의 무게 중심 mm).
 # 도구 좌표는 x가 손가락이 벌어지는 쪽(J6의 멈춤 귀 쪽), H가 플랜지 면에서 도구 쪽, z가 D405의 반대쪽이다
 GRIPPER_LUMPS: dict[str, tuple[float, Vec3]] = {
@@ -206,6 +207,7 @@ class Concept:
     # D405의 플러그 (PLUGS): "angled"(ㄱ자, 가정), "straight"(가진 곧은 플러그 선), "none"(넣지 않음).
     # 커넥터가 있는 옆면은 J5 쪽을 본다 (0029)
     plug: str = "angled"
+    wires: bool = True  # 선의 무게를 넣는다 (0031)
     ranges_deg: tuple[tuple[float, float], ...] = DEFAULT_RANGES  # (가운데, 반폭)
 
     @cached_property
@@ -710,7 +712,21 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
     # 베이스 몸통(0)과 돌림판(1). J1 서보와 베어링은 몸통 속이라 충돌 검사에서 뺀다
     base_h = (bp.FRONT - bp.Y_DESK) * MM
     b.cyl(0, "base", (0.0, 0.0, base_h / 2), Z, bp.R_CORE * MM, base_h, mass=0.0, group="베이스")
-    # 책상에 무는 판의 날개와, 그 위를 무는 클램프 둘 (클램프의 위 턱은 높이 12 mm로 가정)
+    # 선이 감기는 띠의 위아래 턱 (0031). 띠에 감긴 선의 두께는 아직 형상에 없다
+    lip_h = 1.1 * bp.BAND_LIP * MM
+    for name, top in (("base_lip", base_h), ("base_rib", base_h - bp.BAND_H * MM + lip_h)):
+        b.cyl(
+            0,
+            name,
+            (0.0, 0.0, top - lip_h),
+            Z,
+            (bp.R_CORE + bp.BAND_LIP) * MM,
+            2 * lip_h,
+            mass=0.0,
+            group="베이스",
+        )
+    # 책상에 무는 판의 날개와, 그 위를 무는 클램프 둘. 클램프는 가진 금속 클램프의 위 턱(사진으로 어림:
+    # 두께 약 7, 폭 약 10, 가장자리에서 28 mm)을 넉넉히 덮는 상자다
     wing_top = (bp.PLATE_T + bp.RING_H) * MM
     for sg in (1, -1):
         y0, y1 = sorted((sg * bp.WING_IN * MM, sg * bp.WING_Z * MM))
@@ -866,6 +882,20 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
             group="D405 플러그",
             frame=fcam,
         )
+    if c.wires:
+        # 선의 무게 (0031): 링크마다 관 가운데와 끝 집, 손목 몸통 둘. J6 → 그리퍼 선은 도구의 무게에 들어 있다
+        wire = wr.wire_masses()
+        spots: dict[str, tuple[int, Vec3]] = {
+            "upper_mid": (2, (0.0, c.s2, a2 / 2)),
+            "upper_end": (2, (0.0, c.c3, a2)),
+            "fore_mid": (3, (0.0, c.s3, a3 / 2)),
+            "fore_end": (3, (0.0, c.c4, a3)),
+            "wrist1": (4, (0.0, c.d4 * 0.6, 0.0)),
+            "wrist2": (5, (0.0, 0.0, c.d5 * 0.6)),
+        }
+        for key, (link, (x, y, z)) in spots.items():
+            lo, hi = (x - 0.002, y - 0.002, z - 0.002), (x + 0.002, y + 0.002, z + 0.002)
+            b.box(link, f"wire_{key}", lo, hi, mass=wire[key], group="선")
     pk.add_tool(b, 6, c.d6, tool)
     if c.extra > 0:
         lo, hi = (-0.002, c.d6 - 0.004, -0.002), (0.002, c.d6, 0.002)
@@ -907,6 +937,7 @@ def check(c: Concept, verbose: bool = True) -> dict:
     bad = pk.collisions(pk.hits(scene, q0))
     ranges = pk.joint_ranges(scene, q0)
     masses = link_masses(prims)
+    wire_load = sum(p.mass for p in prims if p.group == "선" and p.link >= 2)
     out = {
         "upright_hits": [f"{hit.a} ↔ {hit.b}" for hit in bad],
         "ranges": [
@@ -915,6 +946,7 @@ def check(c: Concept, verbose: bool = True) -> dict:
         ],
         "masses": masses,
         "j2_load": sum(masses[2:]),
+        "j2_wires": wire_load,
     }
     if not verbose:
         return out
@@ -937,7 +969,7 @@ def check(c: Concept, verbose: bool = True) -> dict:
     print(
         "- 링크 무게 [g]: "
         + ", ".join(f"{n} {m * 1000:.0f}" for n, m in zip(LINK_NAMES, masses[1:], strict=True))
-        + f" | J2가 드는 무게 {out['j2_load'] * 1000:.0f} g"
+        + f" | J2가 드는 무게 {out['j2_load'] * 1000:.0f} g (선 {wire_load * 1000:.0f} g 포함)"
     )
     return out
 
@@ -1384,6 +1416,8 @@ def parse(args: list[str]) -> Concept:
             if v not in PLUGS:
                 raise SystemExit(f"모르는 플러그: {v} ({', '.join(PLUGS)})")
             c = replace(c, plug=v)
+        elif k == "wires":
+            c = replace(c, wires=bool(int(v)))
         elif k == "tube_scale":
             c = replace(c, tube_scale=float(v))
         elif k == "extra":

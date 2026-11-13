@@ -35,8 +35,9 @@ const USAGE: &str = "\
                       --yes가 있으면 쓴다. 토크가 꺼져 있어야 하고, 서보는 움직이지 않는다
   check               맨 서보 확인: 로봇에 달지 않은 서보 하나의 동작을 단계마다 본다.
                       --yes가 없으면 할 일을 보여 주고 서보 상태를 한 번 읽는다 (움직이지 않는다).
-                      --yes가 있으면 서보가 움직인다
-  check-state         맨 서보의 상태만 읽는다 (끊김 확인). 서보는 움직이지 않는다
+                      --yes가 있으면 서보가 움직인다. --only로 단계를 고르면 그 단계만 한다
+  check-state         맨 서보의 상태만 읽는다 (끊김 확인). 서보는 움직이지 않는다.
+                      --situation이 없으면 상황을 묻는다
 
 옵션:
   --settings <파일>   로봇 설정 파일. 기본 data/robot.toml (레포 루트에서 돌릴 때)
@@ -44,6 +45,9 @@ const USAGE: &str = "\
   --joint <이름>      이 관절만 (여러 번 줄 수 있다). 기본은 로봇 설정의 모든 관절
   --id <ID>           맨 서보의 ID (check, check-state)
   --yes               보여 준 대로 서보에 쓰거나 움직인다
+  --only <단계,단계>  맨 서보 확인에서 이 단계만 한다 (예: state,overload_hold,voltage)
+  --situation <1~4>   끊김 확인의 상황 (check-state): 1 프로그램을 끈 뒤, 2 USB를 뺐다 꽂은 뒤,
+                      3 + 플러그를 뺀 채, 4 + 플러그를 다시 꽂은 뒤
   --records <폴더>    기록 폴더. 기본 records (그 아래 servo/에 쓴다)
 ";
 
@@ -67,6 +71,8 @@ struct Options {
     joints: Vec<String>,
     id: Option<u8>,
     yes: bool,
+    only: Vec<String>,
+    situation: Option<usize>,
     records: PathBuf,
 }
 
@@ -79,6 +85,8 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, String>
         joints: Vec::new(),
         id: None,
         yes: false,
+        only: Vec::new(),
+        situation: None,
         records: PathBuf::from("records"),
     };
     while let Some(arg) = args.next() {
@@ -98,6 +106,28 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, String>
                 );
             }
             "--yes" => options.yes = true,
+            "--only" => {
+                let text = args.next().ok_or("--only 뒤에 단계 이름이 없다")?;
+                for name in text.split(',').filter(|name| !name.is_empty()) {
+                    if !STEPS.iter().any(|(step, _)| *step == name) {
+                        let names: Vec<&str> = STEPS.iter().map(|(step, _)| *step).collect();
+                        return Err(format!(
+                            "모르는 단계다: {name} (단계: {})",
+                            names.join(", ")
+                        ));
+                    }
+                    options.only.push(name.to_owned());
+                }
+            }
+            "--situation" => {
+                let text = args.next().ok_or("--situation 뒤에 번호가 없다")?;
+                let number = text
+                    .parse()
+                    .ok()
+                    .filter(|n| check::situation_name(*n).is_some());
+                options.situation =
+                    Some(number.ok_or_else(|| format!("상황은 1~4의 번호다: {text}"))?);
+            }
             "--records" => {
                 options.records = PathBuf::from(args.next().ok_or("--records 뒤에 폴더가 없다")?)
             }
@@ -336,8 +366,14 @@ fn run_check(options: &Options) -> Result<(), String> {
     println!(
         "맨 서보 확인: 서보 {id} 하나만 어댑터에 꽂아 책상에 두고, 혼에는 아무것도 달지 않는다."
     );
-    for (index, (_, text)) in STEPS.iter().enumerate() {
-        println!("  {}. {text}", index + 1);
+    for (index, (name, text)) in STEPS.iter().enumerate() {
+        let chosen = options.only.is_empty() || options.only.iter().any(|only| only == name);
+        let mark = if chosen {
+            ""
+        } else {
+            " (이번에는 하지 않는다)"
+        };
+        println!("  {}. {text}{mark}", index + 1);
     }
     println!(
         "토크 한도 {} (0.1 %), 속도 {}, 가속 {} (100 step/s²)로 움직인다. 서보 설정은 잠근 채 잠깐 바꾸고 \
@@ -372,11 +408,13 @@ fn run_check(options: &Options) -> Result<(), String> {
             "acceleration": BENCH_CAPS.acceleration,
         },
         "range": [BENCH_RANGE.0, BENCH_RANGE.1],
+        "only": options.only,
         "results": {},
     });
     record::write_json(&meta_path, &meta)?;
     let log = Log::create(&folder, &Snapshot::columns())?;
     let mut run = Check::new(joints, id, Terminal::default(), WallClock::default(), log);
+    run.only = options.only.clone();
     let result = run.run(&mut |results| {
         meta["results"] = Value::Object(results.clone());
         let _ = record::write_json(&meta_path, &meta);
@@ -389,11 +427,14 @@ fn run_check(options: &Options) -> Result<(), String> {
     result
 }
 
-/// 맨 서보의 상태만 읽는다 (끊김 확인). 상황과 손으로 본 것을 묻고, 앞선 맨 서보 확인과 견준다.
+/// 맨 서보의 상태만 읽는다 (끊김 확인). 상황은 --situation으로 받거나 묻고, 앞선 맨 서보 확인과 견준다.
 fn check_state(options: &Options) -> Result<(), String> {
     let id = options.id.ok_or("--id가 없다")?;
     let mut console = Terminal::default();
-    let (situation, holds) = check::ask_situation(&mut console);
+    let situation = match options.situation {
+        Some(number) => check::situation_name(number),
+        None => check::ask_situation(&mut console),
+    };
     let port = options.port.as_deref().unwrap_or_default();
     let started = Local::now();
     let mut meta = json!({
@@ -401,7 +442,6 @@ fn check_state(options: &Options) -> Result<(), String> {
         "started": record::time_text(&started),
         "run": record::run_info(port, BAUD_RATES[0].1),
         "situation": situation,
-        "holds_by_hand": holds,
     });
     match open_bench(options, id)? {
         Some((mut joints, model)) => {
@@ -500,9 +540,22 @@ mod tests {
         assert!(!options.yes);
         let options = parse_args(args("check-state --port COM5 --id 20")).unwrap();
         assert_eq!(options.command, Command::CheckState);
+        assert_eq!(options.situation, None);
+        let options = parse_args(args("check-state --port COM5 --id 20 --situation 3")).unwrap();
+        assert_eq!(options.situation, Some(3));
+        assert!(parse_args(args("check-state --port COM5 --id 20 --situation 5")).is_err());
         assert!(parse_args(args("check --port COM5")).is_err());
         assert!(parse_args(args("check --id 20")).is_err());
         assert!(parse_args(args("check --port COM5 --id 300")).is_err());
+    }
+
+    #[test]
+    fn check_takes_step_names() {
+        let options =
+            parse_args(args("check --port COM5 --id 20 --only state,voltage --yes")).unwrap();
+        assert_eq!(options.only, ["state", "voltage"]);
+        let error = parse_args(args("check --port COM5 --id 20 --only volt")).unwrap_err();
+        assert!(error.contains("모르는 단계"), "{error}");
     }
 
     #[test]

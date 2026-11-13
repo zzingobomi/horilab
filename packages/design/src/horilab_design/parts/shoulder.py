@@ -270,6 +270,8 @@ def out_disc() -> Compound:
     a = cyl_y(R_JOURNAL, B0 + j.CLAMP_GAP, B0 + BRG_B + 0.01)
     a += cyl_y(R_STEP, B0 + BRG_B, SEAM + 0.01)
     a += cyl_y(R_DRUM, SEAM, ATOP)
+    # 선이 틈으로 빠지지 않게 막는 테두리 (joint.py의 출력 원판과 같다)
+    a += j.ring(R_DRUM, R_DRUM - j.LIP_W, FRONT + j.LIP_GAP, SEAM + 0.01)
     a += box(R_DRUM - 3.6, R_POST, SEAM, ATOP, -4.6, 4.6) + cyl_y(4.6, SEAM, ATOP, R_POST, 0.0)
     a += cyl_y(j.BOSS_R, POST_TIP, SEAM + 0.01, R_POST, 0.0)  # 멈춤 기둥 (속에 M3 나사)
     a -= cyl_y(j.M3_FREE / 2, POST_TIP - 1, ATOP + 1, R_POST, 0.0)

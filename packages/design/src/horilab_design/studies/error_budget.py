@@ -86,8 +86,12 @@ class Arm:
 
 
 def arm(tool_key: str, payload: bool) -> Arm:
-    """도구를 단 팔. payload가 참이면 그 도구의 짐도 든다."""
-    c = ua.Concept()
+    """도구를 단 팔. payload가 참이면 그 도구의 짐도 든다.
+
+    선의 무게(0031)는 넣지 않는다. 선의 무게는 아직 가정이고(D405 선을 재지 않았다), 넣으면 가장 먼 낮은 칸의
+    어깨 버팀 토크가 한계(정격의 0.8배)에 걸려 그 칸의 작업 자세를 고를 수 없다. 선을 잰 뒤 넣어서 다시 낸다
+    """
+    c = ua.Concept(wires=False)
     tool = ua.TOOLS[tool_key]
     h = ua.hori(c, tool)
     if not payload:

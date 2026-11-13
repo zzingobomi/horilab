@@ -25,6 +25,11 @@ WALL = 2.6  # 0.20mm Strength의 벽 6겹
 EMBED = 6.0  # 관을 납작하게 깎는 깊이: 바닥에서 45° 안으로 선다
 NECK_END = -40.0  # 집의 목이 관으로 이어지는 x
 BED = 256.0  # 출력 범위 [mm]
+# 발의 선 통로 (0031): 발 끝벽 밑의 구멍과, 거기서 혼 볼트 머리 위 구멍까지 발 바닥을 뚫은 긴 틈이다.
+# 플러그는 혼 볼트 머리 위 구멍으로 넣고, 선은 링크를 원판에 얹기 전에 이 틈으로 밀어 끝벽 밑으로 뺀다
+# (플러그를 좁은 구멍에 꿰지 않는다). 영점 핀 귀(|z| 4.4까지)를 비켜 한쪽에 둔다
+FOOT_SLOT_Z = (6.5, 11.5)
+FOOT_SLOT_H = 3.0  # 끝벽 밑 구멍의 높이 (선 두께 1.3)
 
 
 @dataclass(frozen=True)
@@ -117,7 +122,13 @@ def link(length: float, tube_r: float, foot: Foot = STS_FOOT) -> Compound:
     for dx, z in foot.rim:
         h = solid(h - cyl_y(j.M3_FREE / 2, j.FRONT - j.EAR_T - 1, j.FRONT + 1, xa + dx, z))
     h = solid(h - cyl_y(j.PIN_HOLE / 2, j.FRONT - j.EAR_T - 1, j.FRONT + 1, xa - foot.pin_r, 0.0))
-    h = solid(h - box(xa - hx - 1, xa - hx + WALL + 1, j.FRONT - 2.4, j.FRONT + 1, 6.5, 11.5))
+    z0, z1 = FOOT_SLOT_Z
+    h = solid(
+        h - box(xa - hx - 1, xa - hx + WALL + 0.01, j.FRONT - FOOT_SLOT_H, j.FRONT + 1, z0, z1)
+    )
+    # 긴 틈은 혼 볼트 머리 위 구멍과 1 mm 넘게 겹쳐서, 구멍에서 끝벽까지 선을 옆으로 밀어 넣을 수 있다
+    reach = math.sqrt(foot.head_r**2 - z0**2) - 1.0
+    h = solid(h - box(xa - hx + WALL, xa - reach, j.FRONT - WALL - 1, j.FRONT + 1, z0, z1))
     return j.cut_joint_features(h, window=True)
 
 

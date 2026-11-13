@@ -59,12 +59,13 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
   - `uv run python -m horilab_design.parts.wrist` (첫 관절: 겹침, 틈, 무게, 걸침), `... parts.shoulder` (어깨), `... parts.base` (J1), `... parts.flange` (J6 플랜지), `... parts.camera_mount` (D405 받침), `... parts.gripper` (평행 그리퍼, [0030](docs/decisions/0030-parallel-gripper.md)), `... parts.links` (링크)
   - `uv run python -m horilab_design.studies.clamp_plate` (허브 판이 베어링 안쪽 링을 누르는 힘), `... studies.error_budget` (오차 예산)
   - `uv run python -m horilab_design.studies.ur_arm [compare|zone|lengths|view|calib]` (팔 전체: 쌓임과 무게, UR3e와 같은 자세 시험, 주 작업 영역, 링크 길이 후보, D405 화면, 손목 카메라의 캘리브레이션 자세)
+  - `uv run python -m horilab_design.studies.wiring` (배선: 관절을 넘는 선 길이, 구간마다 쓸 선, D405 선, [0031](docs/decisions/0031-wiring.md))
   - `uv run python -m horilab_design.pages.joint_page`, `... pages.arm_page` (`build/pages/`에 3D 페이지를 만든다: `joint.html`, `shoulder.html`, `base.html`, `wrist_end.html`, `gripper.html`, `arm.html`. 올려 둔 페이지 "STS 관절 구조", "어깨 관절 구조", "J1 관절 구조", "손목 끝 구조", "평행 그리퍼 구조", "horilab 팔 전체"를 고칠 때는 아티팩트 목록에서 제목으로 찾아 같은 주소에 다시 올린다)
 - 파이용 실행 파일 만들기 ([0026](docs/decisions/0026-pi-runtime-deploy-records.md)): `uv run tools/pi_build.py -p <크레이트> --bin <실행 파일>`
 - 실물 서보·카메라 테스트는 `uv run pytest --hardware`다. 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
 - 서보 첫 연결(찾기, 덤프, 통신 시간, ID 바꾸기): `uv run python -m horilab_servo ports|scan|dump|timing|set-id` ([docs/servo-setup.md](docs/servo-setup.md)). `timing`과 `set-id`는 서보에 값을 쓰므로(움직이지는 않는다) 확인을 받은 뒤 `--yes`로 돌린다.
 - 로봇 설정 확인과 값 적용: `cargo run -p horilab-controller -- settings|ports|apply` ([docs/servo-setup.md](docs/servo-setup.md#값-적용)). `apply --yes`는 서보 EEPROM에 쓰므로(움직이지는 않는다) 확인을 받은 뒤에 돌린다.
-- 맨 서보 확인: `cargo run -p horilab-controller -- check|check-state --port <포트> --id 20` ([docs/servo-setup.md](docs/servo-setup.md#맨-서보-확인)). 묻고 답하는 명령이라 사용자가 터미널에서 돌린다. `check --yes`는 서보를 움직이므로 확인을 받은 뒤에 돌린다.
+- 맨 서보 확인: `cargo run -p horilab-controller -- check|check-state --port <포트> --id 20` ([docs/servo-setup.md](docs/servo-setup.md#맨-서보-확인)). `check --yes`는 서보를 움직이므로 확인을 받은 뒤, 사용자가 보는 창으로 띄운다 (손으로 하는 단계에서 사용자가 Enter를 누른다). `check-state`는 `--situation <번호>`로 Claude가 돌린다. 한 단계만 다시 할 때는 `--only <단계>`다.
 - 시험 기록 올리고 받기 ([0022](docs/decisions/0022-records-and-sync.md)). 실물 시험이 끝나면 올리고, 분석을 시작할 때 받는다:
   - `uv run tools/sync.py push`
   - `uv run tools/sync.py pull` (경로를 주거나 `--max-age 3d`로 골라 받는다)

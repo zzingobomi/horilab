@@ -12,15 +12,16 @@ STS 관절(parts/joint.py)을 세워 놓고 베어링을 둘로 늘린 짜임이
 - 기계 멈춤 기둥은 돌림판 밑면에, 홈과 살은 몸통 윗면에 있다. 영점 핀은 J1 몸통의 뒤쪽 귀에서 그 살에 꽂는다.
 - J1 몸통은 돌림판에 축 가까이(반지름 21 mm)의 나사 넷으로 단다. 나사는 돌림판 밑에서 올라와 J1 몸통의 두꺼운
   바닥판 속 너트에 물린다 (책상 위에서 먼저 조립한다). 돌림판의 얇은 테가 팔의 기울이는 힘에 휘지 않게 하려는 것이다.
-- 몸통 윗면과 J1 몸통 사이(돌림판 테 + 발 귀, 높이 12 mm, 반지름 39 mm)가 선이 감기는 자리다.
+- 선은 몸통 윗부분의 띠(높이 16 mm, 반지름 40.5 mm)에 감긴다 (0031). 몸통 쪽 누르개와 J1 몸통 뒤쪽 귀 위의
+  누르개가 범위 가운데에서 같은 방위각(뒤에서 왼쪽으로 28°)에 온다.
 
 좌표(mm)는 joint.py의 서보 좌표다: y가 J1 축(위), x는 서보의 가까운 끝 쪽(로봇 앞), z = x × y (로봇 오른쪽).
 서보 먼 끝(-x)이 로봇 뒤(책상 가장자리 쪽)를 본다. 책상 윗면은 y = Y_DESK다.
 J1 몸통은 어깨 집(parts/shoulder.py)에 발을 단 한 부품이고, 어깨의 서보 좌표로 그린 뒤 as_child로 옮긴다.
 
 책상에 무는 판(날개)은 몸통 밑에 깔리고, 책상 뒤 가장자리에서 금속 클램프 둘로 문다. 책상 두께(40 mm)와 가장자리에서
-J1 축까지(60 mm)는 문서의 값이고(0014, 0018), 클램프의 치수는 가정이다. 선이 드나드는 자리는 배선을 정한 뒤에
-그린다 (PROVISIONAL).
+J1 축까지(60 mm)는 문서의 값이다(0014, 0018). 금속 클램프는 다 벌린 틈을 쟀고 나머지 치수는 사진으로 어림했다
+(hardware.md).
 
     uv run python -m horilab_design.parts.base
 """
@@ -114,13 +115,30 @@ FAR_GAP = 1.2  # 서보 먼 끝(눕힌 선은 0.9 더 나온다)과 벽 사이
 WIRE_EXIT = (
     6.0,
     7.0,
-)  # 몸통 뒤 아래의 선 구멍: 반폭, 높이 (플러그 9.6 × 5.4가 지나간다. 자리는 임시)
+)  # 몸통 뒤 아래의 선 구멍: 반폭, 높이 (플러그 9.6 × 5.4가 지나간다). J1 서보의 선 둘이 여기로 나온다
 FLARE = 1.3  # 돌림판 테의 아래 가장자리를 45°로 넓힌 턱: 감긴 선이 몸통과의 틈으로 빠지지 않는다
 STRING_D = 1.0  # 돌림판 테 둘레의 스프링 줄 홈 깊이 (V 모양이라 뽑을 때 걸치지 않는다)
 STRING_Y = SEAM + 2.5  # 줄 홈의 가운데 높이
 M2_TAP = 1.7  # 줄을 묶는 M2 나사를 조여 넣는 구멍 (임시: 시험편 값이 없다)
 FOOT_HOLE = 16.0  # J1 몸통 바닥판 가운데 구멍의 반지름 (조임 볼트와 와셔를 넣고 렌치가 드나든다)
 STRING_DEG = 10.0  # 줄 끝을 묶는 나사의 방위각 (앞쪽. 멈춤 기둥을 비킨다)
+
+# ---- 선 (0031) ----
+# J1을 넘는 선(서보 선 둘, D405 선)은 몸통 윗부분의 띠에 감긴다. 띠는 서 있는 몸통의 둥근 면이라, J1 몸통의
+# 모서리(축에서 47.5 mm까지 나온다)와 상관없이 선이 한 원에 감긴다. 멈춤 기둥은 돌림판 밑에 숨어 있어 선과 만나지 않는다.
+# 선은 몸통 쪽 누르개(방위각 WIRE_AZ)와 J1 몸통 뒤쪽 귀 위의 누르개 사이에서 감겼다 풀린다. 범위 가운데에서 두
+# 누르개가 같은 방위각에 온다
+BAND_H = 16.0  # 띠의 높이 (몸통 윗면에서 아래로)
+BAND_LIP = 1.5  # 띠 위아래의 턱 (45°): 감긴 선이 띠 밖으로 넘어가지 않는다
+WIRE_AZ = 208.0  # 선이 띠로 올라오는 방위각 (뒤에서 왼쪽으로 28°)
+BAND_NOTCH = 8.0  # 아래 턱을 튼 자리의 반폭 (선이 밑에서 띠로 올라온다)
+CLAMP_DROP = 6.0  # 아래 턱에서 몸통 쪽 누르개 나사 구멍까지
+CLAMP_DEPTH = 8.0  # 누르개 나사(M3 × 8)를 조여 넣는 구멍의 깊이
+EAR_CLAMP = (-31.5, -17.0)  # J1 몸통 뒤쪽 귀의 누르개 나사 자리 (x, z). 방위각이 WIRE_AZ다
+TABLE_LIP = (
+    38.6,
+    39.8,
+)  # 돌림판 밑의 테두리 (반지름 범위): 몸통 윗면과의 틈을 joint.LIP_GAP으로 좁힌다
 
 # ---- 책상에 무는 판 ----
 EDGE = 60.0  # 책상 뒤 가장자리에서 J1 축까지 (0018의 검토에 쓴 값)
@@ -131,12 +149,19 @@ RING_W = 5.5  # 턱의 폭
 WING_Z = 76.0  # 판의 반폭
 WING_IN = 30.0  # 날개가 시작하는 |z| (그 사이는 선이 나가는 바닥이다)
 WING_X = -15.0  # 날개의 앞 끝
-# 클램프가 무는 자리 (가정: 금속 클램프의 위 턱 폭 20 mm 안, 가장자리에서 25 mm 넘게 들어온다).
+# 클램프가 무는 자리: 날개 위에 비워 둔 폭 20 mm의 띠다 (가장자리에서 35 mm까지).
 # 몸통(반지름 40.5)을 비키는 가장 가까운 자리라, 뒤쪽 판 나사와 클램프 사이가 짧다
 CLAMP_Z = 50.0
 CLAMP_HW = 10.0
-CLAMP_IN = 25.0  # 책상 가장자리에서 무는 자리의 가운데까지 (design.md: 2 ~ 3 cm 안쪽)
-CLAMP_OPEN = 60.0  # 클램프가 벌어지는 가장 넓은 틈 (hardware.md)
+CLAMP_IN = 25.0  # 책상 가장자리에서 띠의 가운데까지 (design.md: 2 ~ 3 cm 안쪽)
+# 가진 금속 클램프 (다 벌린 틈은 캘리퍼스, 나머지는 사진으로 어림한 값, hardware.md). 등을 책상 가장자리에 붙이면
+# 위 턱이 가장자리에서 JAW_REACH까지 날개를 누르고, 나사가 그 밑(JAW_AXIS)에서 받침으로 책상 밑면을 민다
+JAW_REACH = 28.0  # 위 턱이 등 안쪽 면에서 나온 길이
+JAW_AXIS = 22.0  # 등 안쪽 면에서 나사 축까지
+JAW_HW = 5.0  # 각재의 반폭
+JAW_T, SPINE_T = 7.0, 9.0  # 위 턱의 두께, 등과 아래 턱의 두께
+PAD_R, PAD_T = 20.0, 10.7  # 나사 끝 받침의 반지름, 받침의 높이 (나사를 다 풀었을 때 아래 턱 위로)
+CLAMP_OPEN = 55.88  # 금속 클램프를 다 벌린 틈 (2026-11-13 캘리퍼스, hardware.md)
 R_PLATE = (
     33.0  # 몸통을 판에 묶는 나사 넷 (45° 대각선: 서보 먼 끝 자리와 선 구멍, 벽 나사 굴을 비킨다)
 )
@@ -149,9 +174,8 @@ ACC_Z = 69.0
 ACC_NUT = 2.6  # 그 밑면의 너트 자리 깊이
 
 PROVISIONAL = (
-    "CLAMP_Z, CLAMP_HW, CLAMP_IN (금속 클램프의 치수와 책상 밑면)",
     "SLOT_W, SLOT_H (검정 너트 홈 시험편)",
-    "선이 몸통에서 나오는 자리와 J1 몸통으로 들어가는 홈 (배선을 그리며 정한다)",
+    "선 누르개의 모양 (쓸 선의 굵기가 정해진 뒤에 그린다. 나사 자리는 냈다)",
     *j.PROVISIONAL[:2],
 )
 
@@ -208,9 +232,33 @@ def core() -> Compound:
         out = (math.cos(math.radians(a)), 0.0, math.sin(math.radians(a)))
         trap = nut_trap((x, y_nut, z), (0.0, 1.0, 0.0), out, R_CORE - R_PLATE + 1, SLOT_W, SLOT_H)
         h = solid(h - trap)
+    h = solid(h + _band_lips())
+    # 몸통 쪽 누르개 나사 구멍 (아래 턱 밑, 옆에서 조여 넣는다)
+    y_clamp = FRONT - BAND_H - CLAMP_DROP
+    hole = cyl_x(j.M3_TAP / 2, R_CORE - CLAMP_DEPTH, R_CORE + 1, y_clamp, 0.0)
+    h = solid(h - j.turned(solid(hole), WIRE_AZ))
     if not h.is_valid or h.volume < 1000:
         raise RuntimeError(f"베이스 몸통 형상이 깨졌다: 부피 {h.volume:.1f}")
     return h
+
+
+def _band_lips() -> Compound:
+    """선이 감기는 띠의 위아래 턱. 위 턱은 몸통 윗면(뽑을 때 바닥)에서 가장 넓고, 아래 턱은 양쪽이 45°보다 조금 선다.
+
+    아래 턱은 WIRE_AZ에서 터 있다 (선이 밑에서 띠로 올라오는 자리).
+    """
+    lip, c = BAND_LIP, 1.1 * BAND_LIP
+    top = Pos(0, FRONT - c / 2, 0) * (Rot(-90, 0, 0) * Cone(R_CORE - 0.01, R_CORE + lip, c))
+    y_rib = FRONT - BAND_H
+    rib = Pos(0, y_rib - c / 2, 0) * (Rot(-90, 0, 0) * Cone(R_CORE - 0.01, R_CORE + lip, c))
+    rib += Pos(0, y_rib + c / 2, 0) * (Rot(-90, 0, 0) * Cone(R_CORE + lip, R_CORE - 0.01, c))
+    notch = box(
+        R_CORE - 1.0, R_CORE + lip + 1, y_rib - c - 1, y_rib + c + 1, -BAND_NOTCH, BAND_NOTCH
+    )
+    rib = solid(solid(Rot(0, 45, 0) * solid(rib)) - j.turned(notch, WIRE_AZ))
+    # 원뿔의 안쪽은 몸통과 겹친다. 몸통 밖으로 나온 고리만 남긴다
+    lips = solid(solid(Rot(0, 45, 0) * solid(top)) + rib)
+    return solid(lips - cyl_y(R_CORE - 0.5, Y_FLOOR - 1, FRONT + 1))
 
 
 # ------------------------------------------------------------------------------------------------
@@ -257,27 +305,23 @@ def plate() -> Compound:
 
 
 def desk_parts() -> list[j.Part]:
-    """책상과 클램프 둘 (그림에만 쓴다). 클램프의 모양과 치수는 가정이다."""
+    """책상과 금속 클램프 둘 (그림에만 쓴다). 클램프는 사진으로 어림한 치수다. 등을 책상 가장자리에 붙여 그린다."""
     top = Y_FLOOR + RING_H
-    desk = box(-EDGE, 150.0, Y_DESK - DESK_T, Y_DESK, -130.0, 130.0)
+    under = Y_DESK - DESK_T  # 책상 밑면
+    desk = box(-EDGE, 150.0, under, Y_DESK, -130.0, 130.0)
     out = [j.Part("책상", desk, color="desk")]
+    arm_top = top - (CLAMP_OPEN + PAD_T)  # 아래 턱의 윗면
+    x_back, x_tip, x_axis = -EDGE - SPINE_T, -EDGE + JAW_REACH, -EDGE + JAW_AXIS
     for k, s in enumerate((1, -1), start=1):
-        z0, z1 = sorted((s * (CLAMP_Z - CLAMP_HW), s * (CLAMP_Z + CLAMP_HW)))
-        jaw = box(-EDGE - 14.0, -EDGE + CLAMP_IN + 8.0, top, top + 8.0, z0, z1)
-        spine = box(-EDGE - 14.0, -EDGE - 4.0, Y_DESK - DESK_T - 26.0, top, z0, z1)
-        low = box(
-            -EDGE - 14.0,
-            -EDGE + CLAMP_IN + 8.0,
-            Y_DESK - DESK_T - 26.0,
-            Y_DESK - DESK_T - 18.0,
-            z0,
-            z1,
-        )
-        screw = cyl_y(
-            4.0, Y_DESK - DESK_T - 18.0, Y_DESK - DESK_T - 3.0, -EDGE + CLAMP_IN, s * CLAMP_Z
-        )
-        pad = cyl_y(8.0, Y_DESK - DESK_T - 3.0, Y_DESK - DESK_T, -EDGE + CLAMP_IN, s * CLAMP_Z)
-        out.append(j.Part(f"클램프 {k}", solid(jaw + spine + low + screw + pad), color="metal"))
+        z0, z1 = sorted((s * (CLAMP_Z - JAW_HW), s * (CLAMP_Z + JAW_HW)))
+        jaw = box(x_back, x_tip, top, top + JAW_T, z0, z1)
+        spine = box(x_back, -EDGE, arm_top - SPINE_T, top + JAW_T, z0, z1)
+        low = box(x_back, x_tip, arm_top - SPINE_T, arm_top, z0, z1)
+        screw = cyl_y(4.0, arm_top - SPINE_T - 45.0, under - 4.0, x_axis, s * CLAMP_Z)
+        knob = cyl_y(9.0, arm_top - SPINE_T - 57.0, arm_top - SPINE_T - 45.0, x_axis, s * CLAMP_Z)
+        pad = cyl_y(PAD_R, under - 4.0, under, x_axis, s * CLAMP_Z)
+        shape = solid(jaw + spine + low + screw + knob + pad)
+        out.append(j.Part(f"클램프 {k}", shape, color="metal"))
     return out
 
 
@@ -340,6 +384,9 @@ def turntable() -> Compound:
         Rot(-90, 0, 0) * Cone(R_TABLE + FLARE, R_TABLE, FLARE)
     )
     a = solid(a + solid(Rot(0, 45, 0) * solid(brim)))
+    # 테 밑의 테두리: 몸통 윗면과의 틈을 좁혀, 띠에서 올라오는 선이 돌림판 밑으로 들어가지 않게 한다
+    lip = j.ring(TABLE_LIP[1], TABLE_LIP[0], FRONT + j.LIP_GAP, SEAM + 0.01)
+    a = solid(a + solid(Rot(0, 45, 0) * lip))
     a = solid(a + cyl_y(j.BOSS_R, POST_TIP, SEAM + 0.01, R_POST, 0.0))  # 멈춤 기둥 (속에 M3 나사)
     a = solid(a - cyl_y(j.M3_FREE / 2, POST_TIP - 1, ATOP + 1, R_POST, 0.0))
     a = solid(a - cyl_y(3.1, ATOP - 1.8, ATOP + 1, R_POST, 0.0))  # 기둥 나사 머리 자리
@@ -419,6 +466,9 @@ def j1_body() -> Compound:
         h = solid(h - cyl_x(j.M3_FREE_H / 2, x0 - 1, x_floor + 1, y_h, z_h))
         h = solid(h - j.hex_x(y_h, z_h, x_floor - FOOT_NUT, x_floor + 0.01, j.NUT_AF_UPRIGHT))
     h = solid(h - cyl_x(j.PIN_HOLE_H / 2, x0 - 1, x_ear + 1, sh.J1_AXIS_Y, R_PIN))
+    # 뒤쪽 귀의 누르개 나사 구멍 (0031): J1을 넘는 선을 여기서 잡는다. 베이스의 (x, z) → 어깨의 (y, z)
+    cx, cz = EAR_CLAMP
+    h = solid(h - cyl_x(j.M3_TAP / 2, x0 - 1, x_ear + 1, sh.J1_AXIS_Y - cz, -cx))
     if not h.is_valid:
         raise RuntimeError("J1 몸통 형상이 깨졌다")
     return h

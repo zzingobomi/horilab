@@ -10,6 +10,8 @@
 //!   남은 목표와 설정을 이어받고 다시 쓰지 않는다 (0009의 "컨트롤러만 다시 켜짐").
 //! - 한 서보와의 통신이 정한 횟수만큼 잇달아 실패하면 멈춤이 되고, 사람이 풀기 전에는 목표를 쓰지 않는다.
 
+use std::time::Duration;
+
 use horilab_servo::feetech::registers::{self as reg, Fault, Register};
 use horilab_servo::feetech::{Bus, Port};
 
@@ -34,6 +36,9 @@ pub const BENCH_CAPS: Caps = Caps {
 
 /// 이만큼 잇달아 실패하면 멈춘다 (0009).
 pub const MAX_FAILURES: u64 = 3;
+/// 상한(속도, 가속)을 쓴 뒤 토크를 켜기 전에 기다리는 시간. 서보는 쓴 값을 몇 ms 뒤에 반영한다
+/// (2026-11-13 실물: 오프셋을 쓰고 2 ms 뒤에는 옛 값, 4 ms 뒤에는 새 값).
+pub const CAPS_SETTLE: Duration = Duration::from_millis(20);
 
 /// 로봇 관절에서 잠근 채 바꿔 볼 수 있는 레지스터 (게인을 고를 때, 통신 시간을 잴 때). 한계와 보호 설정은
 /// 맨 서보에서만 바꿔 본다.
@@ -311,6 +316,9 @@ impl<P: Port> Joints<P> {
         self.write(id, reg::TORQUE_LIMIT, caps.torque_limit)?;
         self.write(id, reg::ACCELERATION, caps.acceleration)?;
         self.write(id, reg::GOAL_SPEED, caps.speed)?;
+        // 서보는 쓴 값을 몇 ms 뒤에 반영한다. 전원을 넣고 처음 켤 때 속도와 가속을 쓰고 바로 토크를 켜자,
+        // 다음에 토크를 껐다 켤 때까지 속도 상한 없이 토크 한도껏 돌았다 (2026-11-13 맨 서보 확인)
+        self.bus.pause(CAPS_SETTLE);
         self.write(id, reg::TORQUE_ENABLE, reg::TORQUE_ON)?;
         Ok(Enabled::TurnedOn)
     }

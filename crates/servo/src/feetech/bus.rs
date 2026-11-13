@@ -43,6 +43,10 @@ pub trait Port {
     fn receive(&mut self, buffer: &mut Vec<u8>, want: usize, deadline: Instant) -> io::Result<()>;
     /// 받은 채 남은 바이트를 버린다.
     fn clear_input(&mut self) -> io::Result<()>;
+    /// 서보가 방금 쓴 값을 반영하도록 기다린다. 가짜 포트는 기다리지 않는다.
+    fn pause(&mut self, duration: Duration) {
+        std::thread::sleep(duration);
+    }
 }
 
 /// 실물 시리얼 포트.
@@ -209,6 +213,11 @@ impl<P: Port> Bus<P> {
             latency,
             stats: BTreeMap::new(),
         }
+    }
+
+    /// 서보가 방금 쓴 값을 반영하도록 기다린다 (가짜 포트는 기다리지 않는다).
+    pub fn pause(&mut self, duration: Duration) {
+        self.port.pause(duration);
     }
 
     pub fn stats(&self) -> &BTreeMap<u8, LinkStats> {

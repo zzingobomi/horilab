@@ -7,6 +7,9 @@
 //!
 //! 끝나면 토크를 켠 채 두고, 프로그램을 끈 뒤, USB를 뺐다 꽂은 뒤, 서보 전원을 뺀 채, 다시 꽂은 뒤에
 //! `check-state`로 상태만 읽는다 ([`state_report`]).
+//!
+//! 버티는지를 손으로 보지 않는다. 기어비 1:345인 서보의 맨 혼은 전원이 없어도 손가락으로 돌아가지 않아서
+//! (2026-11-13), 손 느낌으로는 토크가 켜진 것과 기어의 마찰을 가를 수 없다. 읽은 값으로 본다.
 
 use std::io::{self, BufRead, Write};
 use std::ops::RangeInclusive;
@@ -54,6 +57,9 @@ const OUTSIDE_LIMITS: (i32, i32) = (2300, 2600);
 const OFFSET_SHIFT: i32 = 512;
 /// 옛 0/4095 경계 자리를 지나가 볼 때, 그 자리에서 양쪽으로 떨어진 거리 (서보 값, 약 26°).
 const OFFSET_CROSS: i32 = 300;
+/// 오프셋을 쓴 뒤 읽는 위치가 바뀌기를 기다리는 가장 긴 시간 [s]. 서보는 쓴 값을 몇 ms 뒤에야 읽는 위치에
+/// 반영한다 (2026-11-13 실물: 2 ms 뒤에는 옛 위치, 4 ms 뒤에는 새 위치).
+const OFFSET_SETTLE: f64 = 0.3;
 /// 한 바퀴의 서보 값 칸 수.
 const TURN: i32 = reg::STEPS_PER_TURN as i32;
 
@@ -122,12 +128,12 @@ const EEPROM_FIELDS: [Register; 11] = [
 ];
 
 /// 끝낸 뒤 끊김 확인의 순서.
-const AFTER_TEXT: &str = "\n토크를 켠 채 끝냈다. 이어서 끊겼을 때를 본다. check-state는 상태만 읽고(서보는 움직이지 않는다) \
-상황과 손으로 본 것을 묻는다:\n\
-  1. 혼을 손으로 살짝 돌려 본 뒤 check-state: 프로그램이 꺼져도 버티는지\n\
-  2. 어댑터의 USB를 뽑고 혼을 돌려 본 뒤, 다시 꽂고 check-state\n\
-  3. 가변 전원의 + 플러그를 뽑고 혼을 돌려 본 뒤, 뺀 채로 check-state: USB 전기만으로 서보가 살아 있는지\n\
-  4. + 플러그를 다시 꽂고 혼을 돌려 본 뒤 check-state: 토크가 꺼졌는지, 잠근 채 바꾼 값이 처음 값으로 돌아왔는지\n\
+const AFTER_TEXT: &str = "\n토크를 켠 채 끝냈다. 이어서 끊겼을 때를 본다. check-state는 상태만 읽는다 (서보는 움직이지 않는다). \
+상황은 --situation으로 준다:\n\
+  1. 그대로 check-state: 프로그램이 꺼져도 토크와 목표가 남는지\n\
+  2. 어댑터의 USB를 뽑았다가 다시 꽂고 check-state\n\
+  3. 가변 전원의 + 플러그를 뽑고, 뺀 채로 check-state: USB 전기만으로 서보가 살아 있는지\n\
+  4. + 플러그를 다시 꽂고 check-state: 토크가 꺼졌는지, 잠근 채 바꾼 값이 처음 값으로 돌아왔는지\n\
 끝나면 + 플러그를 빼고 가변 전원을 끈다. 전압 손잡이에는 테이프를 다시 붙인다.";
 
 /// 끊김 확인의 상황: 기록 이름과 사람이 볼 말.
@@ -435,6 +441,8 @@ pub struct Check<P: Port, C: Console, K: Clock> {
     log: Log,
     /// 단계 이름 → 결과. 끝나면 전류 부호의 결과("current")도 있다.
     pub results: Map<String, Value>,
+    /// 이 이름의 단계만 한다. 비어 있으면 모두 한다 (한 단계만 다시 볼 때 쓴다)
+    pub only: Vec<String>,
     /// 도는 쪽(+, -)마다 본 현재 전류 값
     currents: (Vec<i32>, Vec<i32>),
 }
@@ -448,6 +456,7 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
             clock,
             log,
             results: Map::new(),
+            only: Vec::new(),
             currents: (Vec::new(), Vec::new()),
         }
     }
@@ -455,9 +464,14 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
     /// 단계를 차례로 한다. 단계마다 `after_step`을 불러 기록을 남기게 한다. 단계가 실패하면 결과에 오류를
     /// 남기고 다음 단계로 간다. 통신이 끊겨 멈췄으면 사람에게 묻고, 그만두면 거기서 끝낸다.
     pub fn run(&mut self, after_step: &mut dyn FnMut(&Map<String, Value>)) -> Result<(), String> {
-        for (index, &(name, text)) in STEPS.iter().enumerate() {
+        let chosen: Vec<(&str, &str)> = STEPS
+            .iter()
+            .copied()
+            .filter(|(name, _)| self.only.is_empty() || self.only.iter().any(|only| only == name))
+            .collect();
+        for (index, &(name, text)) in chosen.iter().enumerate() {
             self.console
-                .say(&format!("\n[{}/{}] {text}", index + 1, STEPS.len()));
+                .say(&format!("\n[{}/{}] {text}", index + 1, chosen.len()));
             let result = match name {
                 "state" => self.step_state(),
                 "enable" => self.step_enable(),
@@ -610,9 +624,6 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
         self.event("enable", text)?;
         let snapshot = self.sample("enable")?;
         self.console.say(&describe(&snapshot));
-        let answer = self
-            .console
-            .ask("혼을 손가락으로 살짝 돌려 보세요. 버티면 y, 그냥 돌아가면 n: ");
         let enabled = match enabled {
             Enabled::TurnedOn => "turned_on",
             Enabled::AlreadyOn => "already_on",
@@ -620,7 +631,6 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
         Ok(json!({
             "enabled": enabled,
             "snapshot": snapshot_json(&snapshot),
-            "holds_by_hand": answer,
         }))
     }
 
@@ -880,15 +890,43 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
         let tried = self.offset_moves(original);
         // 결과와 상관없이 되돌린다: 토크를 끄고 오프셋을 되돌린 뒤, 다시 켜서 가운데로 보낸다
         self.joints.disable(self.id)?;
+        let shifted = self.sample("offset")?.position;
         self.joints
             .trial(self.id, &[(reg::POSITION_OFFSET, original)])?;
-        let restored = self.sample("offset")?.position;
+        // 되돌린 값이 읽는 위치에 반영된 뒤에 토크를 켠다. 그전에 켜면 옛 위치를 목표로 잡는다
+        let applied = tried
+            .as_ref()
+            .is_ok_and(|value| value["applied"] == json!(true));
+        let restored = if applied {
+            self.settle("offset", shifted)?.0
+        } else {
+            self.clock.sleep(OFFSET_SETTLE);
+            self.sample("offset")?.position
+        };
         self.joints.enable(self.id)?;
         self.go("offset", CENTER, MOVE_TIMEOUT)?;
         let mut value = tried?;
         value["offset_restored"] = json!(original);
         value["position_after_restore"] = json!(restored);
         Ok(value)
+    }
+
+    /// 오프셋을 쓴 뒤 읽는 위치가 `before`에서 바뀔 때까지 5 ms마다 읽는다 (가장 길게 [`OFFSET_SETTLE`]).
+    /// 바뀐 뒤의 위치와 바뀌기까지 걸린 시간 [s]을 돌려준다. 바뀌지 않았으면 마지막에 읽은 위치와 None이다.
+    fn settle(&mut self, step: &str, before: i32) -> Result<(i32, Option<f64>), String> {
+        let start = self.clock.now();
+        loop {
+            let position = self.sample(step)?.position;
+            let elapsed = self.clock.now() - start;
+            if (position - before).abs() > 20 {
+                self.clock.sleep(0.005);
+                return Ok((self.sample(step)?.position, Some(elapsed)));
+            }
+            if elapsed >= OFFSET_SETTLE {
+                return Ok((position, None));
+            }
+            self.clock.sleep(0.005);
+        }
     }
 
     /// 토크가 꺼진 채 오프셋을 바꿔 읽는 위치가 옮겨지는지 보고, 옮겨졌으면 토크를 켜서 옛 0/4095 경계
@@ -902,7 +940,7 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
         let before = self.sample("offset")?.position;
         self.joints
             .trial(self.id, &[(reg::POSITION_OFFSET, trial)])?;
-        let after = self.sample("offset")?.position;
+        let (after, settled) = self.settle("offset", before)?;
         let shift = after - before;
         let mut value = json!({
             "offset_before": original,
@@ -910,6 +948,7 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
             "position_before": before,
             "position_after": after,
             "shift": shift,
+            "settled_after_s": settled,
         });
         let applied = (shift.abs() - OFFSET_SHIFT).abs() <= 20;
         value["applied"] = json!(applied);
@@ -1227,13 +1266,25 @@ impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
         self.results.insert("current".to_owned(), current);
         self.ensure_torque("finish")?;
         self.go("finish", CENTER, MOVE_TIMEOUT)?;
-        self.console.say(AFTER_TEXT);
+        self.console.say(if self.only.is_empty() {
+            AFTER_TEXT
+        } else {
+            "\n고른 단계를 마쳤다. 서보는 토크를 켠 채 가운데에 있다."
+        });
         Ok(())
     }
 }
 
-/// 끊김 확인에서 상황과 손으로 본 것을 묻는다. 상황을 고르지 않으면 없다.
-pub fn ask_situation(console: &mut dyn Console) -> (Option<&'static str>, String) {
+/// 끊김 확인의 상황 번호(1부터)에 맞는 기록 이름.
+pub fn situation_name(number: usize) -> Option<&'static str> {
+    number
+        .checked_sub(1)
+        .and_then(|index| SITUATIONS.get(index))
+        .map(|(name, _)| *name)
+}
+
+/// 끊김 확인에서 상황을 묻는다. 상황을 고르지 않으면 없다.
+pub fn ask_situation(console: &mut dyn Console) -> Option<&'static str> {
     let choices: Vec<String> = SITUATIONS
         .iter()
         .enumerate()
@@ -1243,14 +1294,7 @@ pub fn ask_situation(console: &mut dyn Console) -> (Option<&'static str>, String
         "지금 상황은? ({}, 그 밖은 Enter): ",
         choices.join(", ")
     ));
-    let situation = answer
-        .parse::<usize>()
-        .ok()
-        .and_then(|n| n.checked_sub(1))
-        .and_then(|index| SITUATIONS.get(index))
-        .map(|(name, _)| *name);
-    let holds = console.ask("방금 혼을 손으로 살짝 돌려 봤을 때 버텼으면 y, 그냥 돌아갔으면 n: ");
-    (situation, holds)
+    answer.parse::<usize>().ok().and_then(situation_name)
 }
 
 /// 상태만 읽어 보이고, 앞선 맨 서보 확인과 견준다 (끊김 확인). 서보를 움직이지 않는다.
@@ -1410,8 +1454,8 @@ mod tests {
         let folder = temp_dir("check");
         let servo = FakeServo::with(20, 2825, 900);
         let flash = servo.flash;
-        // 토크 켜기 y, 과부하 두 번(잡음, 놓음), 전압 준비
-        let mut run = check(servo, &["y", "", "", "", "", ""], &folder);
+        // 과부하 두 번(잡음, 놓음), 전압 준비
+        let mut run = check(servo, &["", "", "", "", ""], &folder);
         let mut saved = 0;
         run.run(&mut |_| saved += 1).unwrap();
         assert_eq!(saved, STEPS.len());
@@ -1476,7 +1520,7 @@ mod tests {
     #[test]
     fn hand_steps_can_be_skipped() {
         let folder = temp_dir("check-skip");
-        let mut run = check(FakeServo::new(20), &["y", "s", "s", "s"], &folder);
+        let mut run = check(FakeServo::new(20), &["s", "s", "s"], &folder);
         run.run(&mut |_| {}).unwrap();
         for name in ["overload_unload", "overload_hold", "voltage"] {
             assert_eq!(run.results[name]["skipped"], true, "{name}");
@@ -1489,7 +1533,7 @@ mod tests {
         let folder = temp_dir("check-again");
         let mut servo = FakeServo::with(20, 2825, 1700);
         servo.set(reg::TORQUE_ENABLE, reg::TORQUE_ON);
-        let mut run = check(servo, &["y", "s", "s", "s"], &folder);
+        let mut run = check(servo, &["s", "s", "s"], &folder);
         run.run(&mut |_| {}).unwrap();
         assert_eq!(run.results["enable"]["enabled"], "already_on");
         std::fs::remove_dir_all(&folder).unwrap();
@@ -1537,6 +1581,52 @@ mod tests {
         assert!(state.torque_on());
         assert_eq!(state.position, CENTER);
         assert_eq!(run.joints.wire().servos[0].eeprom_saves, 0);
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn offset_step_waits_for_the_reading_to_follow() {
+        // 실물은 오프셋을 쓴 뒤 몇 ms 동안 옛 위치로 답한다 (2026-11-13). 바로 읽고 "옮겨지지 않았다"고 보지 않는다
+        let folder = temp_dir("check-offset-lag");
+        let mut servo = FakeServo::with(20, 2825, 900);
+        servo.offset_moves_reading = true;
+        servo.offset_lag_reads = 2;
+        servo.set(reg::POSITION_OFFSET, 85);
+        let mut run = check(servo, &[], &folder);
+        let value = run.step_offset().unwrap();
+        assert_eq!(value["shift"], -512);
+        assert_eq!(value["applied"], true);
+        assert!(value["settled_after_s"].as_f64().unwrap() > 0.0);
+        assert_eq!(value["boundary_moved"], true);
+        // 되돌린 값이 반영되기를 기다린 뒤에 토크를 켜서, 가운데로 돌아와 있다
+        assert_eq!(value["position_after_restore"], 300);
+        let state = run.joints.snapshot(20).unwrap();
+        assert!(state.torque_on());
+        assert_eq!(state.position, CENTER);
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn only_the_chosen_steps_run() {
+        let folder = temp_dir("check-only");
+        let mut run = check(FakeServo::new(20), &["s"], &folder);
+        run.only = vec!["state".to_owned(), "voltage".to_owned()];
+        let mut saved = 0;
+        run.run(&mut |_| saved += 1).unwrap();
+        assert_eq!(saved, 2);
+        let names: Vec<&str> = run.results.keys().map(String::as_str).collect();
+        assert_eq!(names, ["current", "state", "voltage"]);
+        assert!(run.console.said.iter().any(|line| line.contains("[2/2]")));
+        assert!(
+            run.console
+                .said
+                .iter()
+                .any(|line| line.contains("고른 단계"))
+        );
+        // 토크 켜기 단계를 건너뛰어도 끝낼 때 토크를 켜고 가운데로 간다
+        let state = run.joints.snapshot(20).unwrap();
+        assert!(state.torque_on());
+        assert_eq!(state.position, CENTER);
         std::fs::remove_dir_all(&folder).unwrap();
     }
 
@@ -1589,13 +1679,12 @@ mod tests {
 
     #[test]
     fn situations_are_asked_by_number() {
-        let mut console = Script::new(&["2", "y", "", "n", "9", "y"]);
-        assert_eq!(
-            ask_situation(&mut console),
-            (Some("usb_replugged"), "y".to_owned())
-        );
-        assert_eq!(ask_situation(&mut console), (None, "n".to_owned()));
-        assert_eq!(ask_situation(&mut console), (None, "y".to_owned()));
+        let mut console = Script::new(&["2", "", "9"]);
+        assert_eq!(ask_situation(&mut console), Some("usb_replugged"));
+        assert_eq!(ask_situation(&mut console), None);
+        assert_eq!(ask_situation(&mut console), None);
+        assert_eq!(situation_name(4), Some("power_back"));
+        assert_eq!(situation_name(0), None);
     }
 
     #[test]

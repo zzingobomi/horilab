@@ -35,7 +35,9 @@ def test_upright_arm_is_clear_and_stops_on_the_webs() -> None:
     info = ur_arm.check(ur_arm.Concept(), verbose=False)
     assert info["upright_hits"] == []
     # J2가 드는 무게 예산 1,050 g (그리퍼 130, D405 60 포함. 선과 형상에 없는 것은 빼고)
-    assert info["j2_load"] < 1.05
+    assert info["j2_load"] - info["j2_wires"] < 1.05
+    # 선의 무게 (0031): 서보 선과 D405 선을 더해 60 g 안이다
+    assert 0.03 < info["j2_wires"] < 0.06
     # 멈춤 기둥과 홈이 형상에 들어 있다: 다른 것에 먼저 닿지 않는 관절은 멈춤 각에서 선다 (J4는 180° 둘레)
     ranges = info["ranges"]
     for joint in (4, 6):

@@ -145,7 +145,7 @@ def test_plate_bolts_and_clamp_zones() -> None:
     assert checks["판 나사 머리 자리 위에 남은 판의 살"] >= 1.5
     # 머리와 와셔가 판 밑면 밖으로 나오지 않는다 (책상에 닿지 않는다)
     assert b.PLATE_RECESS >= 1.65 + b.WASHER_T
-    # 가진 클램프(가장 넓게 60 mm)가 책상(40 mm)과 날개를 같이 문다: 조일 틈이 5 mm 넘게 남는다
+    # 가진 금속 클램프(다 벌려 55.88 mm)가 책상(40 mm)과 날개를 같이 문다: 조일 틈이 5 mm 넘게 남는다
     assert checks["클램프가 벌어지는 틈에서 책상과 날개를 뺀 나머지"] >= 5.0
     # 판 나사는 서보 먼 끝 자리(|z| 12.7 안)와 베어링 구멍(반지름 21) 밖의 두꺼운 벽에 있다
     for x, z in b.plate_xz():
@@ -158,6 +158,10 @@ def test_plate_bolts_and_clamp_zones() -> None:
     assert b.WING_IN <= b.CLAMP_Z - b.CLAMP_HW
     assert b.CLAMP_Z + b.CLAMP_HW <= b.ACC_Z - 3.2 - 2.0  # 부속 자리의 너트와 2 mm 넘게 떨어진다
     assert x_in <= b.WING_X
+    # 가진 금속 클램프(사진으로 어림한 치수)는 그 띠 안에 든다: 위 턱의 끝과 폭, 나사 축
+    assert b.JAW_REACH <= b.CLAMP_IN + b.CLAMP_HW - 2.0
+    assert b.JAW_HW <= b.CLAMP_HW - 2.0
+    assert b.JAW_AXIS < b.JAW_REACH
     # 판이 책상 가장자리 밖으로 나가지 않는다
     assert b.EDGE >= b.R_CORE + b.SEAT_GAP + b.RING_W
 

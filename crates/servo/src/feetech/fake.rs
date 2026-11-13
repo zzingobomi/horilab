@@ -9,7 +9,8 @@
 //! - 응답 없음, 깨진 응답, 잘린 응답, 상태 바이트의 오류 비트, 같은 ID 둘, 포트 오류를 일부러 낸다.
 //! - 가짜 포트는 기다리지 않아서, 응답 없음 시험도 바로 끝난다.
 //! - `offset_moves_reading`을 켜면 위치 오프셋을 쓸 때 읽는 위치가 그만큼 옮겨진다 (Rust 쪽에만 있다).
-//!   실물로 확인하기 전의 가정이고, 맨 서보 확인의 오프셋 단계를 시험할 때 쓴다.
+//!   맨 서보 확인의 오프셋 단계를 시험할 때 쓴다. 실물(STS3215, 2026-11-13)도 그렇게 옮겨지는데, 쓴 값이
+//!   몇 ms 뒤에야 읽는 위치에 반영된다. `offset_lag_reads`로 그 늦음을 흉내 낸다.
 //!
 //! 각도 한계, 보호, 0/4095 경계는 흉내 내지 않는다. 맨 서보 확인 결과가 나오면 실물의 동작으로 맞춘다.
 
@@ -47,8 +48,15 @@ pub struct FakeServo {
     /// flash에 쓴 횟수 (EEPROM 수명)
     pub eeprom_saves: u32,
     pub faults: Faults,
-    /// 위치 오프셋을 쓰면 읽는 위치가 그만큼 옮겨진다: 읽는 위치 = 엔코더 값 - 오프셋 (확인 전의 가정)
+    /// 위치 오프셋을 쓰면 읽는 위치가 그만큼 옮겨진다: 읽는 위치 = 엔코더 값 - 오프셋
     pub offset_moves_reading: bool,
+    /// 오프셋을 쓴 뒤 읽는 위치가 옮겨지기 전에 옛 위치로 답하는 읽기 횟수. 실물은 쓴 값을 몇 ms 뒤에
+    /// 반영한다 (2026-11-13: 2 ms 뒤에는 옛 위치, 4 ms 뒤에는 새 위치)
+    pub offset_lag_reads: u32,
+    /// 아직 읽는 위치에 반영하지 않은 오프셋 변화
+    offset_pending: i32,
+    /// 반영하기까지 남은 읽기 횟수
+    offset_wait: Option<u32>,
 }
 
 impl FakeServo {
@@ -64,6 +72,9 @@ impl FakeServo {
             eeprom_saves: 0,
             faults: Faults::default(),
             offset_moves_reading: false,
+            offset_lag_reads: 0,
+            offset_pending: 0,
+            offset_wait: None,
         };
         let defaults = [
             (reg::FIRMWARE_MAJOR, 3),
@@ -133,6 +144,8 @@ impl FakeServo {
         let position = self.get(reg::PRESENT_POSITION);
         self.memory[..EEPROM_END].copy_from_slice(&self.flash);
         self.memory[EEPROM_END..].fill(0);
+        self.offset_pending = 0;
+        self.offset_wait = None;
         self.power_on(position);
     }
 
@@ -165,9 +178,12 @@ impl FakeServo {
         }
         let offset_change = self.get(reg::POSITION_OFFSET) - offset_before;
         if self.offset_moves_reading && offset_change != 0 {
-            let turn = reg::STEPS_PER_TURN as i32;
-            let position = (self.get(reg::PRESENT_POSITION) - offset_change).rem_euclid(turn);
-            self.set(reg::PRESENT_POSITION, position);
+            self.offset_pending += offset_change;
+            if self.offset_lag_reads == 0 {
+                self.show_offset();
+            } else {
+                self.offset_wait = Some(self.offset_lag_reads);
+            }
         }
         if start < EEPROM_END && self.memory[usize::from(reg::LOCK.address)] == 0 {
             self.flash.copy_from_slice(&self.memory[..EEPROM_END]);
@@ -182,6 +198,26 @@ impl FakeServo {
             let goal = self.get(reg::GOAL_POSITION);
             self.set(reg::PRESENT_POSITION, goal);
             self.set(reg::PRESENT_GOAL, goal);
+        }
+    }
+}
+
+impl FakeServo {
+    /// 미뤄 둔 오프셋 변화를 읽는 위치에 반영한다.
+    fn show_offset(&mut self) {
+        let turn = reg::STEPS_PER_TURN as i32;
+        let position = (self.get(reg::PRESENT_POSITION) - self.offset_pending).rem_euclid(turn);
+        self.set(reg::PRESENT_POSITION, position);
+        self.offset_pending = 0;
+        self.offset_wait = None;
+    }
+
+    /// 읽기 한 번이 지나간다: 미뤄 둔 오프셋 반영을 센다.
+    fn before_read(&mut self) {
+        match self.offset_wait {
+            Some(0) => self.show_offset(),
+            Some(left) => self.offset_wait = Some(left - 1),
+            None => {}
         }
     }
 }
@@ -213,10 +249,12 @@ impl FakeWire {
         }
         let params = &request[5..request.len() - 1];
         match (instruction, params) {
-            (packet::SYNC_READ, [address, size, ids @ ..]) => ids
-                .iter()
-                .flat_map(|&servo_id| self.reply(servo_id, |servo| servo.read(*address, *size)))
-                .collect(),
+            (packet::SYNC_READ, [address, size, ids @ ..]) => {
+                self.servos.iter_mut().for_each(FakeServo::before_read);
+                ids.iter()
+                    .flat_map(|&servo_id| self.reply(servo_id, |servo| servo.read(*address, *size)))
+                    .collect()
+            }
             (packet::SYNC_WRITE, [address, size, rest @ ..]) => {
                 for chunk in rest.chunks(usize::from(*size) + 1) {
                     if let [servo_id, data @ ..] = chunk {
@@ -229,7 +267,12 @@ impl FakeWire {
             }
             _ if id == packet::BROADCAST_ID => Vec::new(),
             (packet::PING, _) => self.reply(id, |_| Vec::new()),
-            (packet::READ, [address, size]) => self.reply(id, |servo| servo.read(*address, *size)),
+            (packet::READ, [address, size]) => {
+                for servo in self.servos.iter_mut().filter(|s| s.id() == id) {
+                    servo.before_read();
+                }
+                self.reply(id, |servo| servo.read(*address, *size))
+            }
             (packet::WRITE, [address, data @ ..]) => {
                 let mut silent = false;
                 let mut replies = Vec::new();
@@ -288,6 +331,8 @@ fn status(servo: &FakeServo, data: &[u8]) -> Vec<u8> {
 pub struct FakePort {
     pub wire: FakeWire,
     received: Vec<u8>,
+    /// 기다리라고 한 시간의 합 (가짜 포트는 기다리지 않는다)
+    pub paused: Duration,
 }
 
 impl Port for FakePort {
@@ -313,6 +358,10 @@ impl Port for FakePort {
         self.received.clear();
         Ok(())
     }
+
+    fn pause(&mut self, duration: Duration) {
+        self.paused += duration;
+    }
 }
 
 /// 가짜 서보들을 물린 버스를 연다.
@@ -323,6 +372,7 @@ pub fn open_fake_bus(servos: impl IntoIterator<Item = FakeServo>) -> Bus<FakePor
             fail_next_send: false,
         },
         received: Vec::new(),
+        paused: Duration::ZERO,
     };
     Bus::new(port, 1_000_000, Duration::from_millis(1))
 }
