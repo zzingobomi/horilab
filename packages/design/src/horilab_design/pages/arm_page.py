@@ -42,19 +42,20 @@ def _r3(v: object) -> list[float]:
 
 
 def _prim(p: pk.Prim) -> dict | None:
-    """검토 형상 하나를 페이지 형식으로. 서보 속, 베어링, 무게만 든 조각, 도구는 뺀다."""
+    """검토 형상 하나를 페이지 형식으로. 서보 속, 베어링, 무게만 든 조각, 벽 나사 머리의 띠, 도구는 뺀다."""
     name = p.name
     hidden = (
         "/servo_" in name
         or name.endswith("/bearing")
         or "_mass_" in name
+        or name.endswith("/wallscrews")
         or name in ("adapter", "extra")
     )
     if hidden or p.group == "도구":
         return None
-    if name.endswith("/house") or name.endswith("/far_house") or name.endswith("_foot"):
+    if name.endswith(("/house", "/far_house", "_foot", "/ears", "/pinear")):
         role = "body"
-    elif name.endswith("/cap"):
+    elif name.endswith(("/cap", "/stopear")):
         role = "cap"
     else:
         role = ROLE.get(name, "body" if p.shape == "hull" else "frame")

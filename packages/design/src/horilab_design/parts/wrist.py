@@ -15,7 +15,7 @@ import math
 from build123d import Compound, Pos, Rot
 
 from horilab_design.parts import joint as j
-from horilab_design.parts.shapes import box, cyl_x, solid
+from horilab_design.parts.shapes import box, cyl_x, cyl_y, cyl_z, nut_trap, solid
 from horilab_design.printcheck import overhangs, printed_mass_g
 from horilab_design.values import ServoModel
 
@@ -27,6 +27,19 @@ AX_Y = 3.68  # 앞 관절 축이 지나는 y: 뒷덮개 바깥 면 ~ 원통 앞 
 PIN_Z = j.R_PIN  # 영점 핀 귀 (+z 쪽)
 PIN_POSE_DEG = -90.0  # 영점 핀을 꽂는 관절 각: 자식의 핀 귀가 부모의 살 위에 온다
 NOTCH = (6.5, 11.5)  # 앞벽의 발 쪽 끝에 낸 선 홈의 |z| 범위
+# 원통 옆(-z 쪽, 영점 핀 귀의 반대쪽)의 돋움 둘: 손목 2에서는 D405 받침(parts/camera_mount.py)을, 손목 1에서는
+# D405 선의 클립을 M3 나사 둘로 단다. 너트는 뒤(-y, 뽑을 때 위)에서 떨어뜨려 넣는다
+MOUNT_X = 12.0  # 돋움 가운데의 |x|
+MOUNT_HW = 4.5  # 돋움의 반폭
+MOUNT_Y = (-17.0, -7.0)  # 돋움의 y 범위: 뒷덮개 테(-17.8)와 서보를 잠그는 벽 나사(-2) 사이
+MOUNT_Z = 27.6  # 돋움 면의 |z| (원통 옆면에서 4.0)
+MOUNT_SCREW_Y = -12.0
+MOUNT_NUT = (
+    5.6,
+    2.8,
+    1.6,
+)  # 너트 홈의 폭과 두께, 돋움 면에서 홈까지의 살 (임시: 흰색 fit1_nut_drops 값으로 바꾼다)
+MOUNT_HOLE = 6.0  # 나사 구멍의 깊이 (돋움 면에서. 원통 벽에는 닿지 않는다)
 
 
 def _ear_outline(side: int, pin: bool) -> list[tuple[float, float]]:
@@ -59,9 +72,44 @@ def _steps(a0: float, a1: float, n: int, first: bool = False) -> list[float]:
     return [a0 + (a1 - a0) * k / n for k in range(0 if first else 1, n + 1)]
 
 
+def mount_xy() -> list[tuple[float, float]]:
+    """돋움 둘의 나사 자리 (x, y)."""
+    return [(MOUNT_X, MOUNT_SCREW_Y), (-MOUNT_X, MOUNT_SCREW_Y)]
+
+
+def _mount_bosses() -> Compound:
+    """원통 옆의 돋움 둘. 원통 밖에만 살을 더한다. 뽑을 때 아래를 보는 면(+y 쪽)은 45°보다 조금 서게 깎는다."""
+    y0, y1 = MOUNT_Y
+    deep = 15.0  # 원통 속까지 넉넉히 그린 뒤 원통 바깥 면으로 자른다
+    ramp = 1.1 * (MOUNT_Z - deep)
+    out: Compound | None = None
+    for x, _y in mount_xy():
+        b = box(x - MOUNT_HW, x + MOUNT_HW, y0, y1, -MOUNT_Z, -deep)
+        b += j.prism_x(
+            [(y1, -MOUNT_Z), (y1 + ramp, -deep), (y1, -deep)], x - MOUNT_HW, x + MOUNT_HW
+        )
+        out = solid(b) if out is None else solid(out + b)
+    assert out is not None
+    return solid(out - cyl_y(j.R_DRUM - 0.01, y0 - 1, y1 + ramp + 1))
+
+
+def _mount_cuts() -> Compound:
+    """돋움의 너트 홈(뒤에서 떨어뜨려 넣는다)과 나사 구멍."""
+    w, t, roof = MOUNT_NUT
+    z_nut = -(MOUNT_Z - roof - t / 2)
+    out: Compound | None = None
+    for x, y in mount_xy():
+        trap = nut_trap((x, y, z_nut), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), y - MOUNT_Y[0] + 1, w, t)
+        cut = trap + cyl_z(j.M3_FREE_H / 2, -MOUNT_Z - 1, -MOUNT_Z + MOUNT_HOLE, x, y)
+        out = solid(cut) if out is None else solid(out + cut)
+    assert out is not None
+    return out
+
+
 def wrist_body() -> Compound:
     """손목 몸통 (흰색). 원통 앞 끝(y = FRONT)을 바닥에 두고 뽑는다."""
     h = solid(j.drum_shell(X_FOOT) - j.drum_cavity(X_FOOT))
+    h = solid(solid(h + _mount_bosses()) - _mount_cuts())
     # 발: 양옆 귀 (+z 쪽에 영점 핀 귀). 뽑을 때 선 판이다
     h = solid(h + j.prism_x(_ear_outline(1, True), X_FOOT, X_FOOT + j.EAR_T))
     h = solid(h + j.prism_x(_ear_outline(-1, False), X_FOOT, X_FOOT + j.EAR_T))

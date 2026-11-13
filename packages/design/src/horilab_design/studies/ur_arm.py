@@ -8,6 +8,8 @@
   그래서 위팔, 아래팔, 손목이 관절마다 옆(y)으로 한 칸씩 비킨다.
 - 손목 몸통은 서보 먼 끝이 앞 관절 쪽을 본다.
 - 베이스 몸통, 돌림판, J1 몸통의 바닥판은 J1 관절 CAD(parts/base.py)의 치수다.
+- 관절마다 원통 밖으로 나온 것도 넣는다: 자식 몸통의 귀와 그 위의 나사 머리, 멈춤 기둥의 귀, 영점 핀 귀,
+  원통 옆의 벽 나사 머리. 선은 아직 없다 (배선을 그릴 때 넣는다).
 
     uv run python -m horilab_design.studies.ur_arm               # 쌓임, 옆 자리, 무게, 세운 자세의 범위
     uv run python -m horilab_design.studies.ur_arm compare       # UR3e와 같은 자세 시험 (0027, 4분쯤)
@@ -63,7 +65,7 @@ BEARING_MASS: dict[ServoModel, float] = {
 }  # NSK 카탈로그
 # 원통 속 부품과 나사: 누름 틀 4.1, 서보 받침 3.3, 뒷덮개 5.3, 벽 나사 3.9, 너트 1.5, 서보 뒷면 나사 0.8, 덮개 나사 1.8
 INNER_MASS = 21.0 * G
-WRIST_BODY_MASS = 24.9 * G  # 손목 몸통
+WRIST_BODY_MASS = 26.6 * G  # 손목 몸통 (원통 옆의 돋움 둘 포함)
 # 자식 쪽: 출력 원판 11.1, 허브 판 1.4, 혼(가운데 나사 포함, 실측) 2.0, 혼 볼트 넷 5.4, 몸통 나사 넷 3.4, 너트 1.3,
 # 멈춤 나사와 너트 1.2
 OUT_MASS = 25.8 * G
@@ -79,8 +81,8 @@ SHOULDER_OUT_MASS = 46.2 * G
 SHOULDER_PLANE = sp.J1_PLANE * MM
 # J1 관절 (uv run python -m horilab_design.parts.base). 돌림판 윗면의 높이는 그 쌓임에서 나온다
 TABLE_TOP = bp.TOP_H * MM
-# J1의 도는 쪽: 돌림판 32.8, 허브 4.5, 사이 고리 11.8, 혼 2.0, 조임 볼트와 와셔·혼 나사·멈춤 나사·J1 몸통 나사와 너트 24.1
-J1_TABLE_MASS = 75.3 * G
+# J1의 도는 쪽: 돌림판 33.2, 허브 4.5, 사이 고리 11.8, 혼 2.0, 조임 볼트와 와셔·혼 나사·멈춤 나사·J1 몸통 나사와 너트 23.9
+J1_TABLE_MASS = 75.5 * G
 # J1 몸통(89.3)에서 어깨 집(54.7, SHOULDER_HOUSE_MASS에 들었다)을 뺀 몫: 돌림판까지 내려온 목과 바닥판
 J1_FOOT_MASS = 34.6 * G
 # 링크 한 부품을 세 덩어리로 나눈 값: 끝 집 쪽 22.8 g(끝 관절 축에서 10 mm 앞 관절 쪽), 관(길이당 무게 × 관 길이.
@@ -93,7 +95,7 @@ LINK_TUBE: dict[
     "upper": (0.320, 22.7 * G, 0.0129),
     "fore": (0.287, 16.7 * G, 0.0134),
 }
-D405_PLATE_MASS = 8.0 * G
+D405_PLATE_MASS = 12.1 * G  # D405 받침 8.5 (parts/camera_mount.py)과 나사 넷, 너트 둘 3.6
 HEAD = wp.HEAD * MM  # 출력 원판 윗면에서 다음 서보 먼 끝까지
 FLANGE_T = 6.0 * MM  # 플랜지 원판 (도구 교체부는 그리퍼와 같이 그린다)
 # 발 상자의 (반 길이, 반폭, 윗모서리를 깎은 깊이): 위팔은 어깨 출력 원판에, 아래팔은 STS 출력 원판에 앉는다
@@ -102,6 +104,11 @@ FEET = {
     for key, f in (("upper", lp.SHOULDER_FOOT), ("fore", lp.STS_FOOT))
 }
 NECK_HW = jp.NECK_HW * MM  # STS 집의 목 반폭
+SCREW_HEAD = 1.65 * MM  # M3 둥근머리의 높이
+EAR_T = jp.EAR_T * MM  # 자식 몸통의 귀 (출력 원판과 같은 원)
+PIN_UP = 3.0 * MM  # 영점 핀이 귀 위로 나온 길이
+EAR_HW = 4.6 * MM  # 멈춤 기둥 귀의 반폭
+PIN_HW = 4.4 * MM  # 영점 핀 귀의 반폭
 LINK_NAMES = ("J1 몸통", "위팔", "아래팔", "손목 1", "손목 2", "손목 3")
 DEFAULT_RANGES = (
     (0.0, 160.0),
@@ -165,7 +172,15 @@ class Concept:
     cam_side: int = 1  # D405를 다는 쪽 (링크 5의 x)
     tube_scale: float = 1.0  # 관 무게에 곱하는 값 (벽을 얇게 할 때)
     extra: float = 0.0  # 플랜지에 더 다는 무게 [kg] (형상에 없는 것: 선, 나사)
-    camera_back: float = 0.005
+    # D405의 렌즈 면이 플랜지 면보다 뒤에 있는 거리. J6 출력 원판의 멈춤 귀(이음매에서 3.8 mm 두께)가 카메라 앞을
+    # 2 mm 틈으로 지나가게 8 mm다. 5 mm면 귀와 1 mm 겹쳐서 J6가 43°에서 막힌다. 이 모델은 카메라를 기울이지 않은
+    # 상자로 본다. 기울인 실제 자리는 parts/camera_mount.py에 있다 (렌즈 면 가운데가 9.2 mm 뒤)
+    camera_back: float = 0.008
+    # D405 옆면의 플러그가 나가는 쪽: ""(넣지 않음), "j5"(J5 쪽), "front"(J5 반대쪽), "out"(J6 축에서 바깥)
+    plug_dir: str = ""
+    # 카메라 옆면에서, 선이 굽기 시작하는 곳까지의 길이 (곧은 플러그 30 + 꺾임 보호 12 mm로 가정)
+    plug_len: float = 0.042
+    cam_shift: float = 0.0  # 카메라를 J5 축 방향으로 J5 반대쪽으로 민 거리
     ranges_deg: tuple[tuple[float, float], ...] = DEFAULT_RANGES  # (가운데, 반폭)
 
     @cached_property
@@ -294,7 +309,9 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
         out_t: float = jp.BRIM_T * MM,
         neck_hw: float = NECK_HW,
         neck_x: float | None = None,
+        child: str = "",
     ) -> None:
+        """child는 출력 원판에 앉는 자식: "wrist"(손목 몸통), "upper"·"fore"(링크), ""(플랜지)."""
         shape = sh[model]
         m = pk.Module(j, shape, origin, axis, near, out, mid)
         s = c.st(model)
@@ -357,6 +374,60 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
             frame=m.child_frame(),
             group=f"J{j} 출력 원판",
         )
+        # ---- 원통 밖으로 나온 것 (무게는 위의 덩어리에 들어 있다)
+        cad = sp if model == "ST-3120" else jp
+        off = s.atop - cad.ATOP * MM  # 이 모델의 서보 좌표와 CAD 좌표의 차이
+        fc = m.child_frame()
+        group = f"J{j} 귀와 나사"
+        # 벽 나사 머리: 원통 옆으로 1 mm 나온다. 나사 줄 둘을 덮는 띠로 넣는다
+        y0, y1 = off + (cad.CAR_SCREW_Y - 4.0) * MM, off + (cad.RET_SCREW_Y + 4.0) * MM
+        b.cyl(
+            j - 1,
+            f"J{j}/wallscrews",
+            (0.0, (y0 + y1) / 2, 0.0),
+            Y,
+            s.radius + SCREW_HEAD - 0.6 * MM,
+            y1 - y0,
+            mass=0.0,
+            frame=f,
+            group=group,
+        )
+        # 멈춤 기둥의 귀: 출력 원판 테에서 가까운 끝 쪽(관절 각 0)으로 나온다
+        r_post = cad.R_POST * MM
+        b.box(
+            j,
+            f"J{j}/stopear",
+            (s.radius - 3.6 * MM, s.seam, -EAR_HW),
+            (r_post + EAR_HW, s.seam + jp.BRIM_T * MM, EAR_HW),
+            mass=0.0,
+            frame=fc,
+            group=group,
+        )
+        if not child:
+            return
+        # 자식 몸통의 귀(출력 원판과 같은 원)와 그 위의 나사 머리
+        b.cyl(
+            j,
+            f"J{j}/ears",
+            (0.0, s.atop + (EAR_T + SCREW_HEAD) / 2, 0.0),
+            Y,
+            s.radius,
+            EAR_T + SCREW_HEAD,
+            mass=0.0,
+            frame=fc,
+            group=group,
+        )
+        # 영점 핀 귀: 손목 몸통은 옆(-z), 링크는 발 끝(-x, 먼 끝 쪽)에 있다. 핀이 귀 위로 3 mm 나온다
+        r_pin = cad.R_PIN * MM
+        top = s.atop + EAR_T + PIN_UP
+        if child == "wrist":
+            lo, hi = (-PIN_HW, s.atop, -(r_pin + PIN_HW)), (PIN_HW, top, -(s.radius - 3.0 * MM))
+        else:
+            lo, hi = (
+                (-(r_pin + PIN_HW), s.atop, -PIN_HW),
+                (-(FEET[child][0] - 1.0 * MM), top, PIN_HW),
+            )
+        b.box(j, f"J{j}/pinear", lo, hi, mass=0.0, frame=fc, group=group)
 
     def d_tube(
         link: int, name: str, y_center: float, radius: float, z0: float, z1: float, y_cut: float
@@ -418,6 +489,29 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
     # 베이스 몸통(0)과 돌림판(1). J1 서보와 베어링은 몸통 속이라 충돌 검사에서 뺀다
     base_h = (bp.FRONT - bp.Y_DESK) * MM
     b.cyl(0, "base", (0.0, 0.0, base_h / 2), Z, bp.R_CORE * MM, base_h, mass=0.0, group="베이스")
+    # 책상에 무는 판의 날개와, 그 위를 무는 클램프 둘 (클램프의 위 턱은 높이 12 mm로 가정)
+    wing_top = (bp.PLATE_T + bp.RING_H) * MM
+    for sg in (1, -1):
+        y0, y1 = sorted((sg * bp.WING_IN * MM, sg * bp.WING_Z * MM))
+        b.box(
+            0,
+            f"wing{sg:+d}",
+            (-bp.EDGE * MM, y0, 0.0),
+            (bp.WING_X * MM, y1, wing_top),
+            mass=0.0,
+            group="베이스",
+        )
+        c0, c1 = sorted(
+            (sg * (bp.CLAMP_Z - bp.CLAMP_HW) * MM, sg * (bp.CLAMP_Z + bp.CLAMP_HW) * MM)
+        )
+        b.box(
+            0,
+            f"clamp{sg:+d}",
+            ((-bp.EDGE - 14.0) * MM, c0, wing_top),
+            ((-bp.EDGE + bp.CLAMP_IN + 8.0) * MM, c1, wing_top + 0.012),
+            mass=0.0,
+            group="클램프",
+        )
     table0 = (bp.SEAM - bp.Y_DESK) * MM
     b.cyl(
         1,
@@ -455,20 +549,32 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
         house_mass=SHOULDER_HOUSE_MASS,
         neck_hw=sp.NECK_HW * MM,
         neck_x=neck_x,
+        child="upper",
     )
     foot(2, "upper", "upper_foot", c.ya2, 1, 2 * c.upper_r - c.embed, "위팔")
     d_tube(2, "upper_tube", c.s2, c.upper_r, FEET["upper"][0], a2 - 0.036, c.ya2)
     link_body(2, "upper", a2, c.c3, -1, "위팔")
     # J3: 위팔 끝, 출력이 -y. 원통 앞 끝이 위팔의 납작한 면과 한 평면
-    joint(3, "STS3250", (0.0, 0.0, a2), Y, Z, -1, c.c3, house_mass=INNER_MASS)
+    joint(3, "STS3250", (0.0, 0.0, a2), Y, Z, -1, c.c3, house_mass=INNER_MASS, child="fore")
     foot(3, "fore", "fore_foot", c.yb3, -1, 2 * c.fore_r - c.embed, "아래팔")
     d_tube(3, "fore_tube", c.s3, c.fore_r, FEET["fore"][0], a3 - 0.036, c.yb3)
     link_body(3, "fore", a3, c.c4, c.sign4, "아래팔")
     # J4: 아래팔 끝. J5, J6은 손목 몸통 (서보 먼 끝이 앞 관절 쪽)
-    joint(4, "STS3215", (0.0, 0.0, a3), Y, Z, c.sign4, c.c4, house_mass=INNER_MASS)
+    joint(4, "STS3215", (0.0, 0.0, a3), Y, Z, c.sign4, c.c4, house_mass=INNER_MASS, child="wrist")
     wrist_house = WRIST_BODY_MASS + INNER_MASS
     near5 = (0.0, float(c.sign4), 0.0)
-    joint(5, "STS3215", (0.0, c.d4, 0.0), Z, near5, 1, c.mid, house_mass=wrist_house, wrist=True)
+    joint(
+        5,
+        "STS3215",
+        (0.0, c.d4, 0.0),
+        Z,
+        near5,
+        1,
+        c.mid,
+        house_mass=wrist_house,
+        wrist=True,
+        child="wrist",
+    )
     joint(
         6,
         "STS3215",
@@ -502,15 +608,27 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
         group="D405 받침",
     )
     cx = xr(x_in, x_in + 0.042)
+    cz = (c.d5 + c.cam_shift - 0.021, c.d5 + c.cam_shift + 0.021)
     b.box(
         5,
         "d405",
-        (cx[0], back, c.d5 - 0.021),
-        (cx[1], lens_y, c.d5 + 0.021),
+        (cx[0], back, cz[0]),
+        (cx[1], lens_y, cz[1]),
         material="camera",
         mass=pk.D405_MASS,
         group="D405",
     )
+    if c.plug_dir:
+        # 플러그 몸통 (가정: 폭 17, 두께 9 mm). 커넥터 가운데는 카메라 뒷면에서 6.82 mm다 (hardware.md)
+        py = (back + 0.00682 - 0.0045, back + 0.00682 + 0.0045)
+        mid_x = x_in + 0.021
+        mid_z = c.d5 + c.cam_shift
+        if c.plug_dir == "out":
+            qx, qz = xr(x_in + 0.042, x_in + 0.042 + c.plug_len), (mid_z - 0.0085, mid_z + 0.0085)
+        else:
+            qx = xr(mid_x - 0.0085, mid_x + 0.0085)
+            qz = (cz[0] - c.plug_len, cz[0]) if c.plug_dir == "j5" else (cz[1], cz[1] + c.plug_len)
+        b.box(5, "d405_plug", (qx[0], py[0], qz[0]), (qx[1], py[1], qz[1]), group="D405")
     pk.add_tool(b, 6, c.d6, tool)
     if c.extra > 0:
         lo, hi = (-0.002, c.d6 - 0.004, -0.002), (0.002, c.d6, 0.002)
@@ -868,10 +986,21 @@ def parse(args: list[str]) -> Concept:
     c = Concept()
     for a in args:
         k, v = a.split("=")
-        if k in ("shoulder", "upper", "fore", "upper_r", "fore_r", "camera_back"):
+        if k in (
+            "shoulder",
+            "upper",
+            "fore",
+            "upper_r",
+            "fore_r",
+            "camera_back",
+            "plug_len",
+            "cam_shift",
+        ):
             c = replace(c, **{k: float(v) * MM})
         elif k in ("sign4", "cam_side"):
             c = replace(c, **{k: int(v)})
+        elif k == "plug_dir":
+            c = replace(c, plug_dir=v)
         elif k == "tube_scale":
             c = replace(c, tube_scale=float(v))
         elif k == "extra":

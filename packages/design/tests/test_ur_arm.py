@@ -9,6 +9,7 @@ from horilab_design.parts import joint as j
 from horilab_design.parts import links, wrist
 from horilab_design.printcheck import printed_mass_g
 from horilab_design.studies import ur_arm
+from horilab_design.studies import ur_compare as uc
 from horilab_design.studies.packaging import MM
 
 UP = (0.0, -1.0, 0.0)  # 몸통은 원통 앞 끝을 바닥에 두고 뽑는다
@@ -29,6 +30,23 @@ def test_upright_arm_is_clear_and_within_the_mass_budget() -> None:
     assert info["upright_hits"] == []
     # J2가 드는 무게 예산 1,050 g (그리퍼 140, 어댑터 15, D405 60 포함. 선과 형상에 없는 것은 빼고)
     assert info["j2_load"] < 1.05
+
+
+def test_model_includes_what_sticks_out_of_the_joints() -> None:
+    # 부딪힘 검사에 원통 밖으로 나온 것이 들어 있다: 벽 나사 머리, 멈춤 기둥의 귀, 자식 몸통의 귀, 영점 핀 귀
+    _robot, prims = ur_arm.build(ur_arm.Concept(), uc.TOOL)
+    names = {p.name for p in prims}
+    for joint in range(2, 7):
+        assert f"J{joint}/wallscrews" in names
+        assert f"J{joint}/stopear" in names
+    for joint in range(2, 6):
+        assert f"J{joint}/ears" in names
+        assert f"J{joint}/pinear" in names
+    # 멈춤 기둥의 귀는 출력 원판 밖으로 나오고, 자식(도는 쪽) 링크에 있다
+    ear = next(p for p in prims if p.name == "J4/stopear")
+    assert ear.link == 4
+    wall = next(p for p in prims if p.name == "J4/wallscrews")
+    assert wall.link == 3
 
 
 def test_fit_ranges_moves_angles_into_the_joint_ranges() -> None:

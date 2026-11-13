@@ -29,6 +29,9 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
   - 사용자가 질문하면 그 답만 한다. 답하면서 시키지 않은 파일 수정이나 설계 변경을 시작하지 않고, 묻지 않은 분석(가진 것과 견주기, 조건, 권고)을 덧붙이지 않는다. 목록을 달라고 하면 목록만 준다. 답하다가 문제를 찾으면 고치지 말고 한 줄로 알린 뒤 지시를 기다린다.
   - 설명은 전문 용어 없이 쉬운 말로, 지금 할 일 위주로 한다. 꼭 필요하지 않은 확인 단계는 꺼내지 않는다. 부품 번호가 든 문장은 무엇을 하는지(뽑는다, 끼워 본다, 산다)를 먼저 쓰고, 살 것이 없으면 그렇게 밝힌다.
 - Claude는 실물을 볼 수 없다. 맞는지는 측정값과 사진으로 확인한다. 다시 설계하고 다시 출력하는 일을 계획에 넣지 않고, 출력 전에 확인할 수 있는 것은 모두 확인한다 ([docs/design.md](docs/design.md#출력-전-확인)).
+  - 실물 값(측정, 사진)을 기다리며 설계를 멈추지 않는다. 공개 자료(사양서, 도면, 공식 CAD)와 레포 문서, 이전 프로젝트 기록으로 값을 가정해 먼저 그리고, 실물 값이 오면 숫자를 바꿔 검사를 다시 돌린다. 실물이 없는 PC에서 할 수 있는 일을 최대한 해 두려는 것이다.
+  - 가정한 값은 코드와 문서에 가정이라고 표시하고, [status.md](docs/status.md)의 사용자 순서에 뽑기 전에 확인할 것으로 모은다. 실물 값이 꼭 있어야 하는 때는 뽑기 직전이다.
+  - 가정이 틀리면 숫자가 아니라 배치가 바뀌는 곳은, 그 부분만 고칠 수 있게 그린다.
 - 장비와 프로그램이 버티는지(부하, 지연, 통신 시간, 서보 힘과 열)도 같다. 만들기 전에 잴 수 있는 것은 미리 잰다. 재기 전에 통과 기준과, 모자랄 때 고를 길과 그 순서를 정해 둔다. 다 만든 뒤에 장비 한계나 최적화 문제로 되돌아가는 시행착오를 줄이려는 것이다.
 - 제작과 조립은 기본 공구만으로 쉽게 할 수 있는 것을 고른다. 대안을 비교할 때 조립 난이도도 같이 따진다 ([docs/design.md](docs/design.md#설계-원칙)).
 - 모든 작업 PC에 NVIDIA GPU가 있다. 도구와 방법을 고를 때 GPU를 쓰는 방법을 먼저 따진다 ([docs/software.md](docs/software.md#개발-환경)).
@@ -53,10 +56,10 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
 - 팔 설계 검토와 3D 페이지 ([0029](docs/decisions/0029-joint-parts.md)):
-  - `uv run python -m horilab_design.parts.wrist` (첫 관절: 겹침, 틈, 무게, 걸침), `... parts.shoulder` (어깨), `... parts.base` (J1), `... parts.links` (링크)
+  - `uv run python -m horilab_design.parts.wrist` (첫 관절: 겹침, 틈, 무게, 걸침), `... parts.shoulder` (어깨), `... parts.base` (J1), `... parts.flange` (J6 플랜지), `... parts.camera_mount` (D405 받침), `... parts.links` (링크)
   - `uv run python -m horilab_design.studies.clamp_plate` (허브 판이 베어링 안쪽 링을 누르는 힘), `... studies.error_budget` (오차 예산)
   - `uv run python -m horilab_design.studies.ur_arm [compare|zone|lengths]` (팔 전체: 쌓임과 무게, UR3e와 같은 자세 시험, 주 작업 영역, 링크 길이 후보)
-  - `uv run python -m horilab_design.pages.joint_page`, `... pages.arm_page` (`build/pages/`에 3D 페이지를 만든다: `joint.html`, `shoulder.html`, `base.html`, `arm.html`. 올려 둔 페이지 "STS 관절 구조", "어깨 관절 구조", "J1 관절 구조", "horilab 팔 전체"를 고칠 때는 아티팩트 목록에서 제목으로 찾아 같은 주소에 다시 올린다)
+  - `uv run python -m horilab_design.pages.joint_page`, `... pages.arm_page` (`build/pages/`에 3D 페이지를 만든다: `joint.html`, `shoulder.html`, `base.html`, `wrist_end.html`, `arm.html`. 올려 둔 페이지 "STS 관절 구조", "어깨 관절 구조", "J1 관절 구조", "손목 끝 구조", "horilab 팔 전체"를 고칠 때는 아티팩트 목록에서 제목으로 찾아 같은 주소에 다시 올린다)
 - 파이용 실행 파일 만들기 ([0026](docs/decisions/0026-pi-runtime-deploy-records.md)): `uv run tools/pi_build.py -p <크레이트> --bin <실행 파일>`
 - 실물 서보·카메라 테스트는 `uv run pytest --hardware`다. 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
 - 서보 첫 연결(찾기, 덤프, 통신 시간, ID 바꾸기): `uv run python -m horilab_servo ports|scan|dump|timing|set-id` ([docs/servo-setup.md](docs/servo-setup.md)). `timing`과 `set-id`는 서보에 값을 쓰므로(움직이지는 않는다) 확인을 받은 뒤 `--yes`로 돌린다.

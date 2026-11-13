@@ -1,4 +1,5 @@
-"""관절 3D 페이지: 조립 단계, 펼치기, 관절 돌려 보기, 반으로 잘라 보기. 첫 관절(손목 몸통 둘), 어깨, J1을 만든다.
+"""관절 3D 페이지: 조립 단계, 펼치기, 관절 돌려 보기, 반으로 잘라 보기. 첫 관절(손목 몸통 둘), 어깨, J1, 손목 끝을
+만든다.
 
 틀 joint_page.html의 __MESH_JSON__ 자리에 데이터를 넣는다:
 - parts: 부품마다 이름(n), 색 구실(c), 자식과 함께 도는지(m), 무게(g), 꼭짓점(v), 삼각형(i). 좌표는 서보 좌표 mm다 (y가 출력축).
@@ -16,8 +17,8 @@ from build123d import Compound
 
 from horilab_design.pages import HERE, OUT_DIR
 from horilab_design.parts import base as bs
+from horilab_design.parts import camera_mount, flange, links, wrist
 from horilab_design.parts import joint as j
-from horilab_design.parts import links, wrist
 from horilab_design.parts import shoulder as sh
 from horilab_design.parts.shapes import box, solid
 from horilab_design.printcheck import printed_mass_g
@@ -40,8 +41,19 @@ SHOULDER_PRINTED = {
     "서보 받침": "shoulder_carrier",
 }
 ARM_STUB = 62.0  # 어깨 페이지에 보이는 위팔의 길이 (관절 축에서 관 쪽으로)
+WRIST_END_PRINTED = {
+    "손목 몸통": "wrist_body",
+    "허브 판": "hub_plate",
+    "플랜지 원판": "flange_disc",
+    "누름 틀": "retainer",
+    "서보 받침": "carrier",
+    "뒷덮개": "wrist_cover",
+    "도구 어댑터 판": "tool_adapter",
+    "D405 받침": "d405_mount",
+}
 BASE_PRINTED = {
     "베이스 몸통": "base_core",
+    "책상에 무는 판": "base_plate",
     "돌림판": "base_turntable",
     "허브": "base_hub",
     "사이 고리": "base_spacer",
@@ -385,6 +397,12 @@ def base_data(model: ServoModel = "STS3215") -> dict:
     masses["서보 받침"] = printed_mass_g(carrier, up, preset)
     roles = [
         _role("베이스 몸통", 0, 0, shell=True),
+        _role("책상에 무는 판", 7, -40),
+        _role("판 나사", 7, -72, pre=True),
+        _role("와셔 (판 나사)", 7, -64, pre=True),
+        _role("너트 (판)", 7, 0, pre=True),
+        _role("책상", 8, -60, hideUntil=8),
+        _role("클램프", 8, 0, pre=True, rad=[-3.5, 0, 0], hideUntil=8),
         _role("베어링 6806 (위)", 1, -94),
         _role("사이 고리", 1, -102),
         _role("베어링 6806 (아래)", 1, -110),
@@ -408,8 +426,8 @@ def base_data(model: ServoModel = "STS3215") -> dict:
         _role("M2x6", 4, -180, pre=True),
         _role("조임 볼트", 5, 104, pre=True),
         _role("와셔", 5, 96, pre=True),
-        _role("어깨 서보", 7, 120),
-        _role("영점 핀", 7, 160, pre=True, hideUntil=7, pinOnly=True),
+        _role("어깨 서보", 9, 120),
+        _role("영점 핀", 9, 160, pre=True, hideUntil=9, pinOnly=True),
     ]
     # 벽 나사 다섯: 1·3·5번은 누름 틀(2단계), 2·4번은 서보 받침(6단계). 몸통의 굴 밖으로 빠진다
     for k, (direction, step) in enumerate(
@@ -446,7 +464,8 @@ def base_data(model: ServoModel = "STS3215") -> dict:
         _step(
             "돌림판",
             "3. 돌림판과 J1 몸통",
-            "책상 위에서 먼저 묶습니다. 돌림판의 멈춤 기둥에 M3 × 10 나사와 너트를 조여 두고, J1 몸통 바닥판 "
+            "책상 위에서 먼저 묶습니다. 돌림판 윗면의 볼트 자리 4곳은 얇은 막 한 층으로 막혀 나오니, 2.5 mm "
+            "육각렌치로 눌러 뚫어 둡니다. 돌림판의 멈춤 기둥에 M3 × 10 나사와 너트를 조여 두고, J1 몸통 바닥판 "
             "윗면의 홈에 너트 4개를 끼웁니다. 돌림판을 J1 몸통 밑에 대고 밑에서 M3 × 12 나사 4개를 조입니다. "
             "베이스 몸통을 바로 세우고, 이 묶음의 저널을 위에서 두 베어링과 사이 고리 속으로 끼웁니다.",
         ),
@@ -460,9 +479,10 @@ def base_data(model: ServoModel = "STS3215") -> dict:
         _step(
             "조임 볼트",
             "5. 조임 볼트",
-            "와셔를 낀 M3 × 50 볼트 4개를 J1 몸통 속으로 넣어 돌림판의 구멍에 꽂습니다. J1 몸통의 열린 뒷면으로 "
-            "ㄱ자 육각렌치를 넣어 허브의 너트에 조금씩 번갈아 조입니다. 돌림판, 안쪽 링 둘, 사이 고리, 허브가 한 "
-            "덩어리가 되고 서보가 제자리를 찾습니다.",
+            "와셔를 낀 M3 × 45 렌치볼트(머리가 원통 모양) 4개를 J1 몸통 속으로 넣어 돌림판의 볼트 자리에 꽂습니다. "
+            "2.5 mm ㄱ자 육각렌치의 긴 쪽을 볼트 머리에 세워 꽂고, J1 몸통의 열린 뒷면으로 손을 넣어 짧은 쪽을 "
+            "돌립니다. 허브의 너트에 조금씩 번갈아 조입니다. 돌림판, 안쪽 링 둘, 사이 고리, 허브가 한 덩어리가 "
+            "되고 서보가 제자리를 찾습니다.",
         ),
         _step(
             "서보 잠금",
@@ -471,8 +491,21 @@ def base_data(model: ServoModel = "STS3215") -> dict:
             "자리 그대로 잠깁니다.",
         ),
         _step(
+            "판",
+            "7. 책상에 무는 판",
+            "몸통 밑면 옆의 홈 4곳에 너트를 밀어 넣습니다. 판 밑면의 나사 자리 4곳은 얇은 막 한 층으로 막혀 나오니 "
+            "렌치로 눌러 뚫어 둡니다. 몸통을 판의 둥근 자리에 앉히고(선은 뒤쪽 틈으로 뺍니다), 밑에서 와셔를 낀 "
+            "M3 × 10 나사 4개를 조입니다. 나사 머리는 판 밑면 안으로 들어가 책상에 닿지 않습니다.",
+        ),
+        _step(
+            "책상",
+            "8. 책상에 물리기",
+            "판의 뒤 끝을 책상 뒤 가장자리에 맞추고, 양옆의 날개를 금속 클램프 2개로 뭅니다. 클램프는 가장자리에서 "
+            "2 ~ 3 cm 들어온 곳, 몸통 바로 옆을 뭅니다. 그림의 클램프는 가정한 모양입니다.",
+        ),
+        _step(
             "영점",
-            "7. 영점과 어깨 서보",
+            "9. 영점과 어깨 서보",
             "영점은 팔이 앞을 보는 자리(0°)에서 J1 몸통 뒤쪽 귀의 구멍과 베이스 몸통의 살 구멍에 핀을 꽂고 "
             "잡습니다. 어깨 서보는 그 뒤에 J1 몸통에 넣습니다 (어깨 관절 페이지).",
         ),
@@ -493,6 +526,17 @@ def base_data(model: ServoModel = "STS3215") -> dict:
         ["멈춤 기둥과 홈 벽 사이", "1.2 mm"],
         ["J1 몸통 나사", f"축에서 {bs.R_FOOT:.0f} mm, M3 × 12 넷"],
         [
+            "책상에 무는 판",
+            f"{bs.EDGE + bs.R_CORE + bs.SEAT_GAP + bs.RING_W:.0f} × {2 * bs.WING_Z:.0f} mm, "
+            f"날개 두께 {bs.PLATE_T + bs.RING_H:.0f} mm",
+        ],
+        [
+            "클램프가 무는 자리 (가정)",
+            f"가장자리에서 {bs.CLAMP_IN:.0f} mm, 축에서 옆으로 {bs.CLAMP_Z:.0f} mm",
+        ],
+        ["책상 가장자리에서 J1 축까지", f"{bs.EDGE:.0f} mm"],
+        ["조임 볼트", f"M3 × {bs.CLAMP_LEN:.0f} 넷, 머리 자리 깊이 {bs.SINK:.1f} mm"],
+        [
             "J1 몸통 바닥판 ~ 어깨 서보 먼 끝",
             f"{bs.SHOULDER_H - sh.FAR - bs.TOP_H - bs.FLOOR_T:.1f} mm",
         ],
@@ -500,8 +544,8 @@ def base_data(model: ServoModel = "STS3215") -> dict:
     page = {
         "title": "J1 관절 구조",
         "h1": "J1 관절 구조 (베이스)",
-        "sub": "팔 전체를 받치고 돌리는 맨 아래 관절입니다. 책상에 무는 판(날개)은 책상 사진과 클램프 치수를 받은 뒤에 "
-        "그립니다. 서보 혼의 높이 값이 오면 허브 모양과 돌림판 높이가 1 mm쯤 달라집니다.",
+        "sub": "팔 전체를 받치고 돌리는 맨 아래 관절입니다. 밑에 깐 판의 날개 둘을 금속 클램프로 책상 뒤 가장자리에 "
+        "뭅니다 (클램프 치수는 가정입니다). 서보 혼의 높이 값이 오면 허브 모양과 돌림판 높이가 1 mm쯤 달라집니다.",
         "steps": steps,
         "roles": roles,
         "dims": dims,
@@ -511,6 +555,9 @@ def base_data(model: ServoModel = "STS3215") -> dict:
             "돌림판의 저널 하나가 두 안쪽 링을 다 지나므로 두 링이 한 원기둥에 앉습니다.",
             "허브는 혼에 짧은 나사로 먼저 달고, 긴 조임 볼트는 허브 속의 너트(쇠 나사산)에 조입니다. 혼의 얇은 "
             "나사산(2.5 mm)에 긴 볼트를 걸지 않아도 되고, 볼트 길이가 혼 높이에 매이지 않습니다.",
+            "조임 볼트는 가진 M3 × 45를 씁니다. 머리와 와셔는 돌림판 윗면에서 5.6 mm 내려간 자리에 앉습니다. 그 "
+            "자리가 위 안쪽 링보다 2.4 mm 위라서, 볼트 힘이 그 사이의 살을 누르기만 합니다. 자리의 천장은 뽑을 "
+            "때 허공에 걸치므로, 막 한 층이 볼트 구멍까지 덮게 해서 고르게 걸치게 했습니다.",
             "조임 볼트는 돌림판, 위 안쪽 링, 사이 고리, 아래 안쪽 링, 허브를 한 덩어리로 뭅니다. 바깥 링은 위쪽이 "
             "몸통의 턱, 아래쪽이 누름 틀입니다. 누름 틀을 밀어 붙인 채 잠가서 베어링의 헐거움을 줄입니다.",
             "J1 몸통은 돌림판에 축 가까이(21 mm)의 나사 넷으로 답니다. 가장자리에서 잡으면 돌림판의 얇은 테가 "
@@ -520,6 +567,10 @@ def base_data(model: ServoModel = "STS3215") -> dict:
             "모자라면 J1 서보를 바꿀 수 있습니다.",
             "베이스 몸통은 두꺼운 원기둥입니다. 무게가 문제 되지 않는 자리라 베어링 둘레를 두껍게 했고, 벽 나사는 "
             "몸통 옆의 네모 굴 속에 앉습니다.",
+            "책상에 무는 판은 몸통 밑에 깔고 밑에서 나사 4개로 묶습니다. 클램프가 무는 자리는 몸통 바로 옆이라, "
+            "팔이 베이스를 기울이려는 힘이 판을 거의 휘지 않고 클램프로 갑니다. 두 군데를 띄워 물어서 J1이 돌 때 "
+            "베이스가 돌지 않습니다. 날개 바깥 가장자리의 나사 자리 4곳은 선 정리 부품이나 스프링 기둥을 달 "
+            "자리입니다.",
             "기계 멈춤 기둥은 돌림판 밑면에 있고, 몸통 윗면의 둥근 홈을 돌다가 뒤쪽에 남긴 살에 닿습니다. 영점 "
             "핀은 J1 몸통의 뒤쪽 귀(두께 6.2 mm)에서 그 살에 꽂습니다.",
             "선은 돌림판의 테와 J1 몸통 귀의 둘레에 감깁니다. 반지름이 39 mm라 D405 선의 굽힘 기준(40 mm)과 "
@@ -529,26 +580,162 @@ def base_data(model: ServoModel = "STS3215") -> dict:
             "정밀도가 모자랄 때만 답니다.",
         ],
         "todo": [
-            "책상에 무는 판과 날개는 책상 사진과 클램프 치수가 오면 그립니다 (지금은 몸통 밑에 4 mm 자리만 뒀습니다).",
+            "금속 클램프의 치수와 책상 밑면은 가정입니다. 재신 값이 오면 날개의 무는 자리를 맞춥니다.",
             "선이 몸통에서 나오는 자리와 J1 몸통으로 들어가는 구멍은 배선을 그릴 때 정합니다.",
-            "조임 볼트 M3 × 50 4개는 가진 것이 없습니다. 팔 전체의 살 것 목록에 넣습니다.",
+            "조임 볼트는 가진 M3 × 45 렌치볼트 4개와 평와셔 4개를 씁니다. 살 것이 없습니다 (M3 × 45가 4개 넘게 "
+            "있는지만 셉니다).",
             f"베어링 자리와 저널의 지름은 검정 시험편 값이 오면 넣습니다 (지금은 {j.BEARING_BORE}, {j.JOURNAL_D}).",
             "허브 옆 홈의 너트 자리는 검정 너트 홈 시험편 값으로 바꿉니다.",
         ],
-        "frame": {"y0": -30, "y1": 176, "w": 124, "cx": 0},
+        "frame": {"y0": -95, "y1": 176, "w": 200, "cx": 0},
         "pin_pose": 0,
         "axis": "위가 J1 몸통(어깨 쪽), 아래가 책상",
     }
     return {
         "meta": {"model": model, "stop": j.STOP_DEG},
-        "parts": _meshes(bs.assembly(model), masses),
+        "parts": _meshes(bs.assembly(model) + bs.desk_parts(), masses),
+        "page": page,
+    }
+
+
+def wrist_end_data(model: ServoModel = "STS3215") -> dict:
+    """손목 끝: J6 관절에 플랜지 원판, 도구 어댑터 판, D405와 받침."""
+    by_file = {
+        name: printed_mass_g(s, up, preset)
+        for printed in (wrist.printed(), flange.printed(), camera_mount.printed())
+        for name, (s, up, _c, preset) in printed.items()
+    }
+    masses = {name: by_file[file] for name, file in WRIST_END_PRINTED.items()}
+    masses["D405"] = 60.0
+    parts = camera_mount.assembly(model)
+    roles = [
+        _role("손목 몸통", 0, 0, shell=True),
+        _role("뒷덮개", 0, 0, shell=True),
+        _role("플랜지 원판", 1, 28),
+        _role("도구 핀", 1, 52, pre=True),
+        _role("너트 (출력 원판)", 1, 28, pre=True),
+        _role("멈춤 나사 M3x10", 1, 28),
+        _role("너트 (멈춤 기둥)", 1, 28),
+        _role("혼 볼트", 1, 62, pre=True),
+        _role("D405 받침", 2, 0, rad=[0, 0, -2.2]),
+        _role("너트 (돋움)", 2, -24, pre=True),
+        _role("받침 나사", 2, 0, pre=True, rad=[0, 0, -4.2]),
+        _role("D405 플러그", 4, 0, rad=[-2.6, 0, 0], hideUntil=4),
+        _role("D405", 3, 0, rad=[0, 0, -3.2]),
+        _role("카메라 나사", 3, -40, pre=True),
+        _role("도구 어댑터 판", 5, 40),
+        _role("손나사", 5, 62, pre=True),
+        _role("손잡이", 5, 62, pre=True),
+        _role("영점 핀", 6, 60, pre=True, hideUntil=6, pinOnly=True),
+    ]
+    # 나머지(관절 속 부품과 나사)는 STS 관절과 같아서 제자리에 둔다
+    for p in parts:
+        if not any(p.name == r["n"] or (r["pre"] and p.name.startswith(r["n"])) for r in roles):
+            roles.append(_role(p.name, 0, 0))
+    steps = [
+        _step(
+            "다 조립한 모습",
+            "다 조립한 모습",
+            "손목 끝입니다. 흰 부품이 손목 2 몸통(J6의 집), 그 위의 검정 원판이 플랜지, 옆의 어두운 상자가 D405 "
+            "카메라입니다. 관절 돌리기 막대로 플랜지를 돌려 보면, 원판 밑으로 내려온 멈춤 기둥이 카메라 앞을 "
+            "2.6 mm 틈으로 지나갑니다.",
+        ),
+        _step(
+            "플랜지",
+            "1. 플랜지 원판",
+            "STS 관절의 출력 원판 자리에 플랜지 원판을 씁니다. 도구 자리를 잡는 강철 핀 2개를 먼저 눌러 박아 둡니다. "
+            "나머지 조립은 STS 관절과 같습니다 (STS 관절 구조 페이지).",
+        ),
+        _step(
+            "받침",
+            "2. D405 받침",
+            "손목 몸통 옆의 돋움 2곳에 너트를 뒤에서 떨어뜨려 넣습니다. 받침의 발을 돋움에 대고 M3 × 8 나사 2개를 "
+            "조입니다. 서보를 잠그는 벽 나사는 그 전에 조여 둡니다 (받침을 달면 그쪽 벽 나사 하나에 렌치가 닿지 "
+            "않습니다).",
+        ),
+        _step(
+            "카메라",
+            "3. 카메라",
+            "D405의 뒷면을 받침의 판에 대고, 판 뒤에서 M3 × 6 나사 2개를 조입니다. 커넥터가 있는 옆면이 앞 관절(J5) "
+            "쪽을 보게 답니다. 나사는 카메라에 3 mm만 들어가므로 더 긴 나사를 쓰지 않습니다.",
+        ),
+        _step(
+            "플러그",
+            "4. 플러그",
+            "선을 꽂습니다. 그림의 플러그는 ㄱ자로 꺾인 것(옆으로 12 mm)으로 가정한 크기입니다. 가진 곧은 플러그는 "
+            "30 mm쯤 나와서 J5 관절을 넘습니다.",
+        ),
+        _step(
+            "도구",
+            "5. 도구",
+            "도구의 어댑터 판을 플랜지의 핀 2개에 끼우고 손나사 2개를 조입니다. 도구를 바꿔도 카메라는 그대로입니다.",
+        ),
+        _step(
+            "영점",
+            "6. 영점",
+            "J6의 영점 핀은 플랜지 원판의 귀에서 손목 몸통의 살 구멍에 꽂습니다 (관절 각 0°).",
+        ),
+    ]
+    dims = [
+        ["렌즈 면 가운데 (플랜지 면에서 뒤로)", f"{camera_mount.LENS_BACK:.1f} mm"],
+        ["렌즈 면 가운데 (J6 축에서)", f"{-camera_mount.LENS[2]:.1f} mm"],
+        ["광축 기울기 (도구 축 쪽으로)", f"{camera_mount.TILT:.0f}°"],
+        ["카메라와 원통 옆면 사이", f"{camera_mount.DRUM_GAP:.1f} mm"],
+        ["도는 부품과 카메라 사이 (가장 좁은 곳)", "2.6 mm"],
+        ["받침의 판", f"두께 {camera_mount.PLATE_T:.1f}, 폭 {camera_mount.MOUNT_W:.0f} mm"],
+        [
+            "카메라 무게에 기우는 각",
+            f"{camera_mount.tilt_under_weight(2.75):.3f} ~ {camera_mount.tilt_under_weight(2.0):.3f}°",
+        ],
+        ["카메라 나사", "M3 × 6 둘 (카메라에 3.0 mm)"],
+        ["받침 나사", "M3 × 8 둘 (돋움 속 너트)"],
+        ["도구 핀", f"축에서 ±{flange.TOOL_PIN_X:.1f} mm, 위로 {flange.TOOL_PIN_UP:.0f} mm"],
+        ["도구 어댑터 판", f"지름 {2 * flange.ADAPTER_R:.0f}, 두께 {flange.ADAPTER_T:.1f} mm"],
+    ]
+    page = {
+        "title": "손목 끝 구조",
+        "h1": "손목 끝 구조: 플랜지와 D405 받침",
+        "sub": "J6 관절 끝입니다. 도구를 갈아 끼우는 플랜지와, J6 집 옆에 다는 D405 카메라 받침입니다. 플러그 크기는 "
+        "가정이고, 가진 선을 잰 뒤에 맞춥니다.",
+        "steps": steps,
+        "roles": roles,
+        "dims": dims,
+        "mass_note": "무게는 전에 뽑아서 잰 부품에 맞춘 어림입니다. D405는 60 g, 베어링 24 g, 서보는 따로입니다.",
+        "why": [
+            "카메라는 J6 앞(손목 2 몸통)에 답니다. 도구를 바꿔도 카메라가 그대로라 캘리브레이션을 다시 하지 않고, "
+            "뻣뻣한 USB 선이 J6를 지나지 않습니다.",
+            "광축을 도구 쪽으로 20° 기울여 도구 끝을 봅니다. 포인터를 달면 잡기 전 높이에서 도구 끝 둘레의 "
+            "94 ~ 96%가 보입니다.",
+            "받침은 꺾인 판 하나입니다. 판 두께 4.5 mm는 카메라가 자세에 따라 기우는 양을 화소 반 칸(0.034°)보다 "
+            "작게 두는 값입니다.",
+            "받침만 바꾸면 카메라의 자리와 기울기를 바꿀 수 있습니다. 손목 몸통은 그대로 둡니다.",
+            "손목 1에도 같은 돋움이 있습니다 (손목 1과 손목 2는 같은 부품입니다). 거기에는 D405 선을 잡는 클립을 "
+            "답니다.",
+            "도구는 핀 2개가 자리를 잡고 손나사 2개가 조입니다. 하나는 둥근 구멍, 하나는 긴 구멍이라 두 핀이 서로 "
+            "다투지 않습니다.",
+        ],
+        "todo": [
+            "플러그 크기는 가정입니다. 가진 선의 플러그를 재서 확인합니다.",
+            "평행 그리퍼를 달면 그리퍼가 화면을 가립니다 (지금의 자리표시 모양으로는 잡기 전 높이에서 69%만 보입니다). "
+            "그리퍼를 그릴 때 80% 넘게 맞춥니다.",
+            "D405를 켜 두었을 때의 몸통 온도를 보고, 받침을 PLA로 뽑을지 PETG-CF로 뽑을지 정합니다.",
+            "선이 지나가는 길과 묶는 자리는 배선을 그릴 때 정합니다.",
+        ],
+        "frame": {"y0": -27, "y1": 62, "w": 150, "cx": 0},
+        "pin_pose": 0,
+        "axis": "위가 도구 쪽, 왼쪽이 앞 관절(J5) 쪽",
+    }
+    return {
+        "meta": {"model": model, "stop": j.STOP_DEG},
+        "parts": _meshes(parts, masses),
         "page": page,
     }
 
 
 def render(kind: str = "first") -> str:
-    """kind가 "first"면 첫 관절, "shoulder"면 어깨, "base"면 J1."""
-    data = {"shoulder": shoulder_data, "base": base_data}.get(kind, mesh_data)()
+    """kind가 "first"면 첫 관절, "shoulder"면 어깨, "base"면 J1, "wrist_end"면 손목 끝."""
+    makers = {"shoulder": shoulder_data, "base": base_data, "wrist_end": wrist_end_data}
+    data = makers.get(kind, mesh_data)()
     template = (HERE / "joint_page.html").read_text(encoding="utf-8")
     body = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     # <script type="application/json"> 안이라 "<"만 바꿔 둔다
@@ -562,6 +749,7 @@ def main() -> None:
         ("first", "joint.html"),
         ("shoulder", "shoulder.html"),
         ("base", "base.html"),
+        ("wrist_end", "wrist_end.html"),
     ):
         out = OUT_DIR / name
         out.write_text(render(kind), encoding="utf-8", newline="\n")

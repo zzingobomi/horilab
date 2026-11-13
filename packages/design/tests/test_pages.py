@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from horilab_design.pages import HERE, arm_page, joint_page
+from horilab_design.parts import camera_mount
 
 
 def test_templates_have_one_data_slot() -> None:
@@ -54,8 +55,25 @@ def test_shoulder_page_has_every_part_of_the_shoulder() -> None:
 
 @pytest.mark.slow
 def test_base_page_has_every_part_of_j1() -> None:
-    names = ("베이스 몸통", "돌림판", "허브", "사이 고리", "누름 틀", "서보 받침", "J1 몸통")
+    names = (
+        "베이스 몸통",
+        "책상에 무는 판",
+        "돌림판",
+        "허브",
+        "사이 고리",
+        "누름 틀",
+        "서보 받침",
+        "J1 몸통",
+        "책상",
+    )
     _check_joint_page(joint_page.base_data(), names)
+
+
+@pytest.mark.slow
+def test_wrist_end_page_has_every_part_of_the_flange_and_camera_mount() -> None:
+    names = tuple(p.name for p in camera_mount.assembly())
+    assert "D405 받침" in names and "플랜지 원판" in names and "도구 어댑터 판" in names
+    _check_joint_page(joint_page.wrist_end_data(), names)
 
 
 @pytest.mark.slow
