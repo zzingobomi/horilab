@@ -23,8 +23,8 @@ pub const RAD_PER_STEP: f64 = TAU / STEPS_PER_TURN as f64;
 /// 서보 값의 끝. 위치 모드는 0~4095 안에서 움직인다.
 const MAX_RAW: f64 = (STEPS_PER_TURN - 1) as f64;
 
-/// 로봇 설정에 적지 않는 EEPROM 칸. ID와 통신 속도는 값 적용이 바꾸지 않고(0024), 위치 오프셋은 늘 0이고,
-/// 각도 한계는 소프트 한계에서 계산한다.
+/// `[... .registers]` 표에 적지 않는 EEPROM 칸. ID와 통신 속도는 값 적용이 바꾸지 않고(0024), 위치 오프셋은
+/// 영점과 같이 관절에 적고(`position_offset`), 각도 한계는 소프트 한계에서 계산한다.
 const NOT_IN_FILE: [Register; 5] = [
     reg::ID,
     reg::BAUD_RATE,
@@ -56,18 +56,27 @@ pub struct Joint {
     pub lower: f64,
     /// 소프트 한계의 위 [rad]
     pub upper: f64,
-    /// 영점과 방향. 관절 시험의 영점 단계에서 재기 전에는 없고, 없으면 이 관절은 움직이지 않는다
+    /// 영점 핀을 꽂는 자리의 관절 각 [rad]. 설계 값이다 (docs/decisions/0029-joint-parts.md)
+    pub pin: f64,
+    /// 영점과 방향. 영점 핀으로 재기 전에는 없고, 없으면 이 관절은 움직이지 않는다
     pub calibration: Option<Calibration>,
     /// 서보에 구울 EEPROM 값 (값 적용의 목표, 주소 순). ID와 통신 속도는 빠진다
     pub eeprom: Vec<(Register, i32)>,
 }
 
 /// 서보 값과 관절 각 사이의 변환. 실물 백엔드 안에서만 쓴다 (0009).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// 영점은 영점 핀을 꽂은 자리에서 잰다. 그때 위치 오프셋을 구워 범위 가운데를 서보 값 2048 둘레에 두면,
+/// 위치 모드가 넘지 않는 0/4095 경계가 범위의 반대편에 온다 (0024의 영점).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Calibration {
-    /// 영점 핀을 꽂은 자리의 서보 값 (위치 오프셋 0에서 읽은 값)
+    /// 영점 핀을 꽂는 자리의 관절 각 [rad] (관절의 `pin`)
+    pub pin: f64,
+    /// 영점 핀을 꽂은 자리의 서보 값 (아래 위치 오프셋을 구운 뒤 읽은 값)
     pub zero_raw: u16,
     pub direction: Direction,
+    /// 영점을 잴 때 서보에 구운 위치 오프셋 (EEPROM 31). 값 적용이 이 값을 굽는다
+    pub position_offset: i32,
 }
 
 /// 관절 각이 늘 때 서보 값이 움직이는 쪽.
@@ -96,20 +105,26 @@ impl Direction {
 impl Calibration {
     /// 관절 각 [rad]에서의 서보 값. 반올림하지 않는다.
     pub fn raw_at(&self, angle: f64) -> f64 {
-        f64::from(self.zero_raw) + self.direction.sign() * angle / RAD_PER_STEP
+        f64::from(self.zero_raw) + self.direction.sign() * (angle - self.pin) / RAD_PER_STEP
     }
 
     /// 서보 값에서의 관절 각 [rad].
     pub fn angle_at(&self, raw: f64) -> f64 {
-        self.direction.sign() * (raw - f64::from(self.zero_raw)) * RAD_PER_STEP
+        self.pin + self.direction.sign() * (raw - f64::from(self.zero_raw)) * RAD_PER_STEP
     }
 }
 
 impl Joint {
-    /// 소프트 한계에 양쪽 경계 여유를 더한 범위가 서보 값 0~4095 안에 드는 영점의 범위 (양 끝 포함).
-    /// 그 범위가 한 바퀴보다 넓어 어떤 영점도 안 되면 없다.
+    /// 소프트 한계에 양쪽 경계 여유를 더한 범위가 서보 값 0~4095 안에 드는, 영점 핀 자리의 서보 값의 범위
+    /// (양 끝 포함). 그 범위가 한 바퀴보다 넓어 어떤 값도 안 되면 없다. 영점을 잴 때는 위치 오프셋으로 핀
+    /// 자리를 이 범위의 가운데에 맞춘다.
     pub fn zero_window(&self, clearance: f64, direction: Direction) -> Option<(f64, f64)> {
-        zero_window(self.lower, self.upper, clearance, direction)
+        zero_window(
+            self.lower - self.pin,
+            self.upper - self.pin,
+            clearance,
+            direction,
+        )
     }
 }
 
@@ -136,12 +151,13 @@ fn angle_limits(lower: f64, upper: f64, calibration: Option<Calibration>) -> (i3
     }
 }
 
-/// 서보에 구울 EEPROM 값: 관절의 값, 모델의 값, 메모리 표의 초기값 순으로 찾는다. 위치 오프셋은 0이고
-/// 각도 한계는 계산한 값이다. 어디에도 값이 없는 칸이 있으면 그 이름들을 돌려준다.
+/// 서보에 구울 EEPROM 값: 관절의 값, 모델의 값, 메모리 표의 초기값 순으로 찾는다. 위치 오프셋은 영점을 잴 때
+/// 정한 값(재기 전에는 0)이고 각도 한계는 계산한 값이다. 어디에도 값이 없는 칸이 있으면 그 이름들을 돌려준다.
 fn eeprom_target(
     model: &[(Register, i32)],
     joint: &[(Register, i32)],
     (min_raw, max_raw): (i32, i32),
+    position_offset: i32,
 ) -> Result<Vec<(Register, i32)>, Vec<&'static str>> {
     let find = |values: &[(Register, i32)], register: Register| {
         values
@@ -157,7 +173,7 @@ fn eeprom_target(
             continue;
         }
         let value = if register == reg::POSITION_OFFSET {
-            Some(0)
+            Some(position_offset)
         } else if register == reg::MIN_ANGLE_LIMIT {
             Some(min_raw)
         } else if register == reg::MAX_ANGLE_LIMIT {
@@ -195,8 +211,8 @@ fn check_registers(
             problems.push(format!("{context}: {name}은 쓸 수 있는 EEPROM 칸이 아니다"));
         } else if NOT_IN_FILE.contains(&register) {
             problems.push(format!(
-                "{context}: {name}은 적지 않는다 (ID와 통신 속도는 바꾸지 않고, 위치 오프셋은 0, \
-                 각도 한계는 소프트 한계로 계산한다)"
+                "{context}: {name}은 적지 않는다 (ID와 통신 속도는 바꾸지 않고, 위치 오프셋은 관절의 \
+                 position_offset에, 각도 한계는 소프트 한계로 계산한다)"
             ));
         } else {
             match i32::try_from(value)
@@ -297,8 +313,9 @@ impl Settings {
                 Some(c) => {
                     let (a, b) = (c.raw_at(joint.lower), c.raw_at(joint.upper));
                     format!(
-                        "영점 {}, 방향 {:+}, 소프트 한계의 서보 값 {}~{}",
+                        "핀 자리의 서보 값 {} (위치 오프셋 {}), 방향 {:+}, 소프트 한계의 서보 값 {}~{}",
                         c.zero_raw,
+                        c.position_offset,
                         c.direction.number(),
                         a.min(b).round(),
                         a.max(b).round()
@@ -306,12 +323,13 @@ impl Settings {
                 }
             };
             lines.push(format!(
-                "{}  ID {}  {}  소프트 한계 {}~{}  {calibration}",
+                "{}  ID {}  {}  소프트 한계 {}~{}  영점 핀 {}  {calibration}",
                 joint.name,
                 joint.id,
                 joint.model,
                 deg(joint.lower),
-                deg(joint.upper)
+                deg(joint.upper),
+                deg(joint.pin)
             ));
         }
         lines.join("\n") + "\n"
@@ -347,8 +365,10 @@ struct JointFile {
     id: u8,
     model: String,
     soft_limits_deg: [f64; 2],
+    pin_deg: f64,
     zero_raw: Option<u16>,
     direction: Option<i8>,
+    position_offset: Option<i32>,
     #[serde(default)]
     registers: BTreeMap<String, i64>,
 }
@@ -405,10 +425,17 @@ impl JointFile {
             ));
         }
         let limits_ok = fits;
+        let pin = self.pin_deg.to_radians();
+        if ordered && !(lower_deg..=upper_deg).contains(&self.pin_deg) {
+            problems.push(format!(
+                "{name}: pin_deg(영점 핀을 꽂는 자리의 관절 각)는 소프트 한계 안이다: {}",
+                self.pin_deg
+            ));
+        }
 
-        let calibration = match (self.zero_raw, self.direction) {
-            (None, None) => None,
-            (Some(zero_raw), Some(sign)) => {
+        let calibration = match (self.zero_raw, self.direction, self.position_offset) {
+            (None, None, None) => None,
+            (Some(zero_raw), Some(sign), Some(position_offset)) => {
                 let direction = match sign {
                     1 => Some(Direction::Same),
                     -1 => Some(Direction::Reversed),
@@ -421,11 +448,18 @@ impl JointFile {
                 if !zero_ok {
                     problems.push(format!("{name}: zero_raw는 0~4095다: {zero_raw}"));
                 }
+                if reg::POSITION_OFFSET.encode(position_offset).is_err() {
+                    problems.push(format!(
+                        "{name}: position_offset에 담을 수 없는 값이다: {position_offset}"
+                    ));
+                }
                 direction.map(|direction| {
                     (
                         Calibration {
+                            pin,
                             zero_raw,
                             direction,
+                            position_offset,
                         },
                         zero_ok,
                     )
@@ -433,7 +467,7 @@ impl JointFile {
             }
             _ => {
                 problems.push(format!(
-                    "{name}: zero_raw와 direction은 같이 적는다 (둘 다 관절 시험의 영점 단계에서 잰다)"
+                    "{name}: zero_raw, direction, position_offset는 같이 적는다 (셋 다 영점 핀으로 잴 때 정한다)"
                 ));
                 None
             }
@@ -441,13 +475,13 @@ impl JointFile {
         // 영점과 경계: 한계와 영점 값이 제대로일 때만 본다 (아니면 위에서 이미 알렸다)
         if let Some((c, true)) = calibration
             && limits_ok
-            && let Some((low, high)) = zero_window(lower, upper, clearance, c.direction)
+            && let Some((low, high)) = zero_window(lower - pin, upper - pin, clearance, c.direction)
             && !(low..=high).contains(&f64::from(c.zero_raw))
         {
             problems.push(format!(
                 "{name}: 영점 {}, 방향 {:+}이면 서보 값의 0/4095 경계가 소프트 한계에서 {} 안에 든다. \
-                 영점이 {}~{}여야 한다 (가운데 {}). 출력 쪽 혼을 다시 끼워 서보 자리를 맞추고 영점을 다시 잰다 \
-                 (0024의 영점)",
+                 영점이 {}~{}여야 한다 (가운데 {}). 영점 핀을 꽂고 위치 오프셋으로 핀 자리를 가운데에 맞춰 \
+                 영점을 다시 잰다 (0024의 영점)",
                 c.zero_raw,
                 c.direction.number(),
                 deg(clearance),
@@ -475,6 +509,7 @@ impl JointFile {
             model_values,
             &joint_values,
             angle_limits(lower, upper, calibration),
+            calibration.map_or(0, |c| c.position_offset),
         )
         .map_err(|missing| {
             vec![format!(
@@ -489,6 +524,7 @@ impl JointFile {
             model_number,
             lower,
             upper,
+            pin,
             calibration,
             eeprom,
         })
@@ -498,7 +534,7 @@ impl JointFile {
 /// 시험용 로봇 설정: 관절 하나 시험의 J3 (data/robot.toml과 같은 값). 끝에 키를 붙이면 j3에 들어간다.
 #[cfg(test)]
 pub(crate) const TEST_J3: &str = r#"
-boundary_clearance_deg = 45
+boundary_clearance_deg = 15
 
 [models.STS3250.registers]
 response_delay = 0
@@ -522,6 +558,7 @@ overcurrent_protection_time = 250
 id = 3
 model = "STS3250"
 soft_limits_deg = [-30, 118]
+pin_deg = 0
 "#;
 
 #[cfg(test)]
@@ -545,7 +582,7 @@ mod tests {
     #[test]
     fn reads_a_joint_before_calibration() {
         let settings = Settings::parse(J3).unwrap();
-        assert!(close(settings.boundary_clearance, 45f64.to_radians()));
+        assert!(close(settings.boundary_clearance, 15f64.to_radians()));
         assert_eq!(settings.joints.len(), 1);
         let j3 = settings.joint("j3").unwrap();
         assert_eq!(
@@ -554,20 +591,27 @@ mod tests {
         );
         assert!(close(j3.lower, (-30f64).to_radians()));
         assert!(close(j3.upper, 118f64.to_radians()));
+        assert!(close(j3.pin, 0.0));
         assert_eq!(j3.calibration, None);
         assert!(settings.joint("j2").is_none());
     }
 
     #[test]
     fn calibration_converts_both_ways() {
-        let settings = Settings::parse(&j3_with("zero_raw = 1547\ndirection = 1")).unwrap();
+        let settings = Settings::parse(&j3_with(
+            "zero_raw = 1547\ndirection = 1\nposition_offset = 0",
+        ))
+        .unwrap();
         let c = settings.joint("j3").unwrap().calibration.unwrap();
         assert_eq!(c.direction, Direction::Same);
         assert!(close(c.raw_at(0.0), 1547.0));
         assert!(close(c.raw_at(90f64.to_radians()), 1547.0 + 1024.0));
         assert!(close(c.angle_at(1547.0 - 2048.0), -std::f64::consts::PI));
 
-        let settings = Settings::parse(&j3_with("zero_raw = 2548\ndirection = -1")).unwrap();
+        let settings = Settings::parse(&j3_with(
+            "zero_raw = 2548\ndirection = -1\nposition_offset = 0",
+        ))
+        .unwrap();
         let c = settings.joint("j3").unwrap().calibration.unwrap();
         assert_eq!(c.direction, Direction::Reversed);
         assert!(close(c.raw_at(90f64.to_radians()), 2548.0 - 1024.0));
@@ -578,41 +622,51 @@ mod tests {
 
     #[test]
     fn zero_window_keeps_the_boundary_away() {
-        // J3 -30°~118°, 여유 45° → -75°~163°가 0~4095 안에 들어야 한다 (한 칸 = 360/4096°)
+        // J3 -30°~118°, 여유 15° → -45°~133°가 0~4095 안에 들어야 한다 (한 칸 = 360/4096°)
         let settings = Settings::parse(J3).unwrap();
         let j3 = settings.joint("j3").unwrap();
         let steps = |degrees: f64| degrees * 4096.0 / 360.0;
         let (low, high) = j3
             .zero_window(settings.boundary_clearance, Direction::Same)
             .unwrap();
-        assert!(close(low, steps(75.0)) && close(high, 4095.0 - steps(163.0)));
+        assert!(close(low, steps(45.0)) && close(high, 4095.0 - steps(133.0)));
         let (low, high) = j3
             .zero_window(settings.boundary_clearance, Direction::Reversed)
             .unwrap();
-        assert!(close(low, steps(163.0)) && close(high, 4095.0 - steps(75.0)));
-        // 창의 양 끝 (854~2240)은 되고, 한 칸 밖은 안 된다
-        for zero in [854, 2240] {
-            let text = j3_with(&format!("zero_raw = {zero}\ndirection = 1"));
+        assert!(close(low, steps(133.0)) && close(high, 4095.0 - steps(45.0)));
+        // 창의 양 끝(약 512~2581)은 되고, 한 칸 밖은 안 된다
+        let (low, high) = j3
+            .zero_window(settings.boundary_clearance, Direction::Same)
+            .unwrap();
+        let (first, last) = (low.ceil() as i32, high.floor() as i32);
+        assert!(
+            (511..=513).contains(&first) && last == 2581,
+            "{first} {last}"
+        );
+        for zero in [first, last] {
+            let text = j3_with(&format!(
+                "zero_raw = {zero}\ndirection = 1\nposition_offset = 0"
+            ));
             assert!(Settings::parse(&text).is_ok(), "{zero}");
         }
-        for zero in [853, 2241] {
-            let text = j3_with(&format!("zero_raw = {zero}\ndirection = 1"));
+        for zero in [first - 1, last + 1] {
+            let text = j3_with(&format!(
+                "zero_raw = {zero}\ndirection = 1\nposition_offset = 0"
+            ));
             assert!(Settings::parse(&text).is_err(), "{zero}");
         }
     }
 
     #[test]
     fn zero_near_the_boundary_is_refused_with_the_window() {
-        let message = error(&j3_with("zero_raw = 3000\ndirection = 1"));
-        assert!(
-            message.contains("영점이 854~2240여야 한다 (가운데 1547)"),
-            "{message}"
-        );
-        let message = error(&j3_with("zero_raw = 1000\ndirection = -1"));
-        assert!(
-            message.contains("영점이 1855~3241여야 한다 (가운데 2548)"),
-            "{message}"
-        );
+        let message = error(&j3_with(
+            "zero_raw = 3000\ndirection = 1\nposition_offset = 0",
+        ));
+        assert!(message.contains("여야 한다 (가운데 1547)"), "{message}");
+        let message = error(&j3_with(
+            "zero_raw = 1000\ndirection = -1\nposition_offset = 0",
+        ));
+        assert!(message.contains("여야 한다 (가운데 2548)"), "{message}");
     }
 
     #[test]
@@ -656,10 +710,10 @@ mod tests {
             let message = error(&J3.replace("[-30, 118]", limits));
             assert!(message.contains("아래 < 위"), "{limits}: {message}");
         }
-        // 폭 271°에 여유 45° 둘을 더하면 361°
-        let message = error(&J3.replace("[-30, 118]", "[-135, 136]"));
+        // 폭 331°에 여유 15° 둘을 더하면 361°
+        let message = error(&J3.replace("[-30, 118]", "[-165, 166]"));
         assert!(message.contains("한 바퀴(360°)를 넘는다"), "{message}");
-        assert!(Settings::parse(&J3.replace("[-30, 118]", "[-135, 134]")).is_ok());
+        assert!(Settings::parse(&J3.replace("[-30, 118]", "[-165, 164]")).is_ok());
     }
 
     #[test]
@@ -668,16 +722,20 @@ mod tests {
         assert!(message.contains("같이 적는다"), "{message}");
         let message = error(&j3_with("direction = 1"));
         assert!(message.contains("같이 적는다"), "{message}");
-        let message = error(&j3_with("zero_raw = 1500\ndirection = 2"));
+        let message = error(&j3_with(
+            "zero_raw = 1500\ndirection = 2\nposition_offset = 0",
+        ));
         assert!(message.contains("direction은 1이나 -1이다: 2"), "{message}");
-        let message = error(&j3_with("zero_raw = 4096\ndirection = 1"));
+        let message = error(&j3_with(
+            "zero_raw = 4096\ndirection = 1\nposition_offset = 0",
+        ));
         assert!(message.contains("zero_raw는 0~4095다: 4096"), "{message}");
     }
 
     #[test]
     fn clearance_must_not_be_negative() {
         let message =
-            error(&J3.replace("boundary_clearance_deg = 45", "boundary_clearance_deg = -1"));
+            error(&J3.replace("boundary_clearance_deg = 15", "boundary_clearance_deg = -1"));
         assert!(message.contains("0 이상"), "{message}");
     }
 
@@ -686,9 +744,9 @@ mod tests {
         let text = J3
             .replace("id = 3", "id = 4")
             .replace(r#"model = "STS3250""#, r#"model = "XL430""#);
-        let message = error(&(text + "zero_raw = 3000\ndirection = 1\n"));
+        let message = error(&(text + "zero_raw = 3000\ndirection = 1\nposition_offset = 0\n"));
         assert!(message.starts_with("고칠 것 3가지"), "{message}");
-        assert!(message.contains("영점이 854~2240여야 한다"), "{message}");
+        assert!(message.contains("여야 한다 (가운데 1547)"), "{message}");
         let message = error("boundary_clearance_deg = 45\n[joints]\n");
         assert!(message.contains("관절이 하나도 없다"), "{message}");
     }
@@ -719,16 +777,59 @@ mod tests {
 
     #[test]
     fn angle_limits_follow_the_soft_limits_after_calibration() {
-        let settings = Settings::parse(&j3_with("zero_raw = 1547\ndirection = 1")).unwrap();
+        let settings = Settings::parse(&j3_with(
+            "zero_raw = 1547\ndirection = 1\nposition_offset = 0",
+        ))
+        .unwrap();
         let eeprom = &settings.joint("j3").unwrap().eeprom;
         // -30° → 1205.7, 118° → 2889.6을 바깥쪽으로
         assert!(eeprom.contains(&(reg::MIN_ANGLE_LIMIT, 1205)));
         assert!(eeprom.contains(&(reg::MAX_ANGLE_LIMIT, 2890)));
-        let settings = Settings::parse(&j3_with("zero_raw = 2548\ndirection = -1")).unwrap();
+        let settings = Settings::parse(&j3_with(
+            "zero_raw = 2548\ndirection = -1\nposition_offset = 0",
+        ))
+        .unwrap();
         let eeprom = &settings.joint("j3").unwrap().eeprom;
         // 118° → 2548 - 1342.6 = 1205.4, -30° → 2548 + 341.3 = 2889.3
         assert!(eeprom.contains(&(reg::MIN_ANGLE_LIMIT, 1205)));
         assert!(eeprom.contains(&(reg::MAX_ANGLE_LIMIT, 2890)));
+    }
+
+    #[test]
+    fn position_offset_comes_with_the_zero() {
+        let text = j3_with("zero_raw = 1547\ndirection = 1\nposition_offset = -300");
+        let settings = Settings::parse(&text).unwrap();
+        let eeprom = &settings.joint("j3").unwrap().eeprom;
+        assert!(eeprom.contains(&(reg::POSITION_OFFSET, -300)));
+        let message = error(&j3_with(
+            "zero_raw = 1547\ndirection = 1\nposition_offset = 5000",
+        ));
+        assert!(
+            message.contains("position_offset에 담을 수 없는 값이다: 5000"),
+            "{message}"
+        );
+        let message = error(&j3_with("zero_raw = 1547\ndirection = 1"));
+        assert!(message.contains("같이 적는다"), "{message}");
+    }
+
+    #[test]
+    fn pin_angle_moves_the_zero() {
+        // 핀을 관절 각 90°에서 꽂으면 핀 자리의 서보 값이 90°의 값이다
+        let text = J3.replace("pin_deg = 0", "pin_deg = 90")
+            + "zero_raw = 2571\ndirection = 1\nposition_offset = 0\n";
+        let settings = Settings::parse(&text).unwrap();
+        let j3 = settings.joint("j3").unwrap();
+        let c = j3.calibration.unwrap();
+        assert!(close(c.raw_at(90f64.to_radians()), 2571.0));
+        assert!(close(c.raw_at(0.0), 2571.0 - 1024.0));
+        assert!(close(c.angle_at(2571.0), 90f64.to_radians()));
+        // 창의 가운데는 범위 가운데(44°)가 2047.5에 오는 핀 자리의 값이다: 2047.5 + 46° = 2570.9
+        let (low, high) = j3
+            .zero_window(settings.boundary_clearance, Direction::Same)
+            .unwrap();
+        assert_eq!(((low + high) / 2.0).round(), 2571.0);
+        let message = error(&J3.replace("pin_deg = 0", "pin_deg = 120"));
+        assert!(message.contains("pin_deg"), "{message}");
     }
 
     #[test]
@@ -756,17 +857,16 @@ mod tests {
     #[test]
     fn summary_shows_each_joint() {
         let summary = Settings::parse(J3).unwrap().summary();
-        assert!(
-            summary.contains(
-                "j3  ID 3  STS3250  소프트 한계 -30°~118°  영점과 방향을 아직 재지 않았다"
-            )
-        );
-        let settings = Settings::parse(&j3_with("zero_raw = 1547\ndirection = 1")).unwrap();
+        assert!(summary.contains(
+            "j3  ID 3  STS3250  소프트 한계 -30°~118°  영점 핀 0°  영점과 방향을 아직 재지 않았다"
+        ));
+        let settings = Settings::parse(&j3_with(
+            "zero_raw = 1547\ndirection = 1\nposition_offset = 0",
+        ))
+        .unwrap();
         // -30° → 1547 - 341.3, 118° → 1547 + 1342.6
-        assert!(
-            settings
-                .summary()
-                .contains("영점 1547, 방향 +1, 소프트 한계의 서보 값 1206~2890")
-        );
+        assert!(settings.summary().contains(
+            "핀 자리의 서보 값 1547 (위치 오프셋 0), 방향 +1, 소프트 한계의 서보 값 1206~2890"
+        ));
     }
 }

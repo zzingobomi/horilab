@@ -531,8 +531,10 @@ mod tests {
             .clone();
         assert!(Servo::from_joint(&joint).is_err());
         joint.calibration = Some(Calibration {
+            pin: 0.0,
             zero_raw: 1500,
             direction: Direction::Same,
+            position_offset: 0,
         });
         let servo = Servo::from_joint(&joint).unwrap();
         assert!(servo.min_raw < 1500 && 1500 < servo.max_raw);
