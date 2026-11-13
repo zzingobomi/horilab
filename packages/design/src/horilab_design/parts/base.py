@@ -80,6 +80,7 @@ R_CORE = 40.5  # 몸통 바깥. 서보 먼 끝 모서리(37.2) 밖으로 벽 2.4
 R_TABLE = 39.0  # 돌림판 테와 J1 몸통 발의 바깥 = 선이 감기는 반지름
 R_CLAMP = 11.6  # 조임 볼트 넷 (저널 벽 1.75가 남고, 볼트가 혼의 바깥(반지름 9.98)을 지난다)
 R_HORN = 7.0  # 혼 나사 넷 (혼의 M3 나사 구멍)
+HEAD_POCKET = j.HEAD_H + 0.6  # 허브 밑면의 혼 가운데 나사 머리 자리 (머리는 혼 윗면 위로 2.0까지)
 HEAD_RECESS = 1.5  # 허브 윗면의 혼 나사 머리 자리 (머리가 0.15 나오고, 저널 끝과는 0.45 뜬다)
 HORN_SCREW = 8.0  # 혼 나사 M3 × 8
 HORN_FLANGE = 2.5  # 혼의 테 두께 (M3 나사 구멍이 뚫려 있다, docs/hardware.md)
@@ -353,7 +354,7 @@ def hub() -> Compound:
     h = solid(Rot(0, 22.5, 0) * cyl_y(j.R_STEP, j.SEAT, B0))
     if HUB_RELIEF > 0:  # 혼 바깥에서 밑면을 들어 라벨 판 위로 띄운다
         h = solid(h - j.ring(j.R_STEP + 1, j.HUB_SEAT_R, j.SEAT - 1, j.SEAT + HUB_RELIEF))
-    h = solid(h - cyl_y(3.6, j.SEAT - 1, j.SEAT + 2.0))  # 혼 가운데 나사 머리
+    h = solid(h - cyl_y(3.6, j.SEAT - 1, j.SEAT + HEAD_POCKET))  # 혼 가운데 나사 머리
     for x, z in j.bolt_xz():  # 혼 나사 (45°부터)
         h = solid(h - cyl_y(j.M3_FREE / 2, j.SEAT - 1, B0 + 1, x, z))
         h = solid(h - cyl_y(3.1, B0 - HEAD_RECESS, B0 + 1, x, z))
@@ -580,9 +581,9 @@ def hardware(model: ServoModel) -> list[j.Part]:
     nut_x = j.hex_x(j.RET_SCREW_Y, 0.0, leg_in, leg_in + j.NUT_T, 5.4)
     out.append(j.Part("너트 (누름 틀)", nut_x, j.STEEL * 0.72, False, "metal"))
     for k, (x, z) in enumerate(j.BACK_HOLES):
-        y = j.L1 - j.PLATE_T + dy
-        shape = cyl_y(1.0, y, y + 6.0, x, z) + cyl_y(1.9, y - 2.0, y, x, z)
-        out.append(j.Part(f"M2x6 {k + 1}", solid(shape), j.STEEL, False, "metal"))
+        y = j.L1 - j.PLATE_T + j.M2_SINK + dy  # 머리 밑면 (받침 판 속 자리의 바닥)
+        shape = cyl_y(1.0, y, y + j.M2_SCREW, x, z) + cyl_y(1.9, y - 2.0, y, x, z)
+        out.append(j.Part(f"M2x4 {k + 1}", solid(shape), j.STEEL, False, "metal"))
     return out
 
 

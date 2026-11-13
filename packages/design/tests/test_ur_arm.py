@@ -83,9 +83,10 @@ def test_camera_sits_where_the_mount_puts_it() -> None:
     assert cam.lens == pytest.approx([-cmt.LENS[2] * MM, c.d6 - cmt.LENS_BACK * MM, c.d5], abs=1e-9)
     t = math.radians(cmt.TILT)
     assert cam.axis == pytest.approx([-math.sin(t), math.cos(t), 0.0], abs=1e-9)
-    # 플러그는 J5 쪽(링크 5의 -z)으로 나가고, 곧은 플러그가 ㄱ자보다 길다
+    # 플러그는 J5 쪽(링크 5의 -z)으로 나간다. 기본은 가진 선의 곧은 플러그다
+    assert ur_arm.Concept().plug == "straight"
     lengths = {}
-    for plug in ("angled", "straight", "none"):
+    for plug in ("straight", "none"):
         _robot, prims = ur_arm.build(ur_arm.Concept(plug=plug), ur_arm.GRIPPER)
         found = [p for p in prims if p.name == "d405_plug"]
         if plug == "none":
@@ -94,7 +95,6 @@ def test_camera_sits_where_the_mount_puts_it() -> None:
         cam_box = next(p for p in prims if p.name == "d405")
         assert found[0].pos[2] < cam_box.pos[2] - 0.021
         lengths[plug] = 2 * found[0].size[0]
-    assert lengths["angled"] == pytest.approx(cmt.PLUG_ANGLED * MM)
     assert lengths["straight"] == pytest.approx((cmt.PLUG_LEN + cmt.PLUG_RELIEF) * MM)
 
 

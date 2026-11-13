@@ -1,7 +1,8 @@
 """STS 관절(J3~J6) 하나의 부품 (0028의 UR식 관절을 부품으로 나눈 것, 0029).
 
 서보 좌표계(mm)로 그린다: x는 출력축에서 서보의 가까운 끝 쪽, y는 출력축 방향(출력 혼 쪽이 +), z = x × y.
-원점은 출력축 위, y = -14.5가 서보의 두께 32인 뒷면이다 (docs/hardware.md의 "기구 치수").
+원점은 출력축 위, 몸통 두께의 가운데다: y = -14.5가 출력축 둘레의 낮은 뒷면(두께 29), -16.0이 두께 32인
+뒷면이다 (docs/hardware.md의 "기구 치수"). 출력 혼 윗면은 그 낮은 뒷면에서 잰 값이다 ("혼 높이").
 방위각은 x-z 평면에서 +x가 0°, +z가 90°다. 집의 목(서보 먼 끝)은 180° 쪽이다.
 
 구조:
@@ -34,20 +35,25 @@ _MEASURED = load_measured()
 # ---- 서보 (STS3215와 STS3250은 도면이 같다. 공식 2D 도면의 옆모습 29 / 32 / 35와 실측) ----
 HW = 12.36  # 반폭
 NEAR, FAR = 10.11, 35.11
-L1, F32 = -14.5, 17.5  # 두께 32인 뒷면과 앞면
-L0, F29 = -13.0, 16.0  # 출력축 둘레의 낮은 면 (두께 29)
+L0, F29 = -14.5, 14.5  # 출력축 둘레의 낮은 면 (두께 29)
+L1, F32 = -16.0, 16.0  # 두께 32인 뒷면과 앞면 (고정 구멍과 커넥터가 이 면에 있다)
 STEP = -6.0  # 29 → 32 단이 끝나는 x
-LABEL = 18.6  # 앞면 라벨 판 (x -34.1 ~ -9.2, z ±7.0)
-PLATEAU = -16.4  # 뒷면 볼록한 판 (x -29.7 ~ -17.33, z ±9.24)
-BOSS_TIP = -18.6
+LABEL = F32 + 1.1  # 앞면 라벨 판 (x -34.1 ~ -9.2, z ±7.0)
+PLATEAU = L1 - 1.9  # 뒷면 볼록한 판 (x -29.7 ~ -17.33, z ±9.24)
+BOSS_TIP = L0 - 4.1  # 뒷면 보스 끝 (도면. STS3215의 실측 혼 윗면 ~ 보스 끝 37.32와 맞는다)
 HORN_R = 9.975
 STS_MODELS: tuple[ServoModel, ...] = ("STS3215", "STS3250")
+# 출력 혼 윗면: 낮은 뒷면에서 잰 값이다. 혼이 앞면 라벨 판보다 1.6 ~ 1.8 높다 (깊이 막대로 잰 1.5 ~ 1.75와 맞는다)
 HORN_TOP: dict[ServoModel, float] = {
-    m: L1 + _MEASURED.servo_body[m].horn_to_back_mm for m in STS_MODELS
+    m: L0 + _MEASURED.servo_body[m].horn_to_back_mm for m in STS_MODELS
 }
+assert _MEASURED.servo_depth is not None
+# 혼 가운데 나사의 머리: 지름과, 혼 윗면 위로 나온 높이 (1.7 ~ 2.0으로 오르내린 값 중 큰 값)
+HEAD_D = _MEASURED.servo_depth.horn_screw_head_diameter_mm
+HEAD_H = max(_MEASURED.servo_depth.horn_screw_head_mm)
 _WIRE = _MEASURED.servo_body["STS3250"]
 assert _WIRE.horn_to_wire_mm is not None
-WIRE_TOP = L1 - (_WIRE.horn_to_wire_mm - _WIRE.horn_to_back_mm)  # 꽂아 눕힌 선 (실측, -20.12)
+WIRE_TOP = HORN_TOP["STS3250"] - _WIRE.horn_to_wire_mm  # 꽂아 눕힌 선 (혼 윗면에서 잰 값, -20.12)
 BACK_HOLES = ((-8.30, 10.25), (-8.30, -10.25), (-32.75, 10.25), (-32.75, -10.25))
 
 # ---- 공차 (시험편 값. 검정과 6806은 아직 재지 않아 임시 값이다) ----
@@ -77,7 +83,9 @@ BRG_D, BRG_OD, BRG_B = 30.0, 42.0, 7.0
 SEAT = max(
     HORN_TOP.values()
 )  # 허브 판이 혼 윗면에 앉는 높이 (STS3250 기준. STS3215는 몸통이 0.17 앞으로 온다)
-RELIEF = 1.6  # 허브 판 밑면을 혼 바깥에서 들어 올리는 높이 (앞면 라벨 판과 1.7 ~ 1.8 띄운다)
+# 허브 판이 혼 위에서 두꺼운 높이 (혼 바깥에서는 밑면이 이만큼 들려 있다). 혼 가운데 나사 머리(혼 윗면 위로
+# HEAD_H)가 허브 판 속에 다 들어가고, 저널 끝과 0.8 뜬다. 앞면 라벨 판과는 3.2 ~ 3.4 뜬다
+RELIEF = 1.6
 HUB_SEAT_R = 9.8  # 허브 판이 혼 윗면에 앉는 돋움의 반지름 (테는 이 가장자리에서 휜다)
 # 허브 판의 테 (안쪽 링 뒤). 혼 볼트를 조이면 이 테가 CLAMP_GAP만큼 휘면서 안쪽 링을 누르고, 그 뒤에는
 # 저널 끝이 허브 판에 닿아 볼트 힘이 저널로 간다. 테가 스프링이라 온도와 크리프에도 누르는 힘이 남는다.
@@ -110,11 +118,19 @@ BACK_OUT = BACK_IN - COVER_T  # 뒷덮개 바깥 면
 # ---- 원통 속 부품 ----
 RET_Y = (5.0, 18.7)  # 누름 틀 다리의 범위
 RET_SCREW_Y = 12.0
-CAR_Y = (L1, 3.2)  # 서보 받침 날개의 범위
-CAR_SCREW_Y = -2.0
+CAR_Y = (L1, L1 + 17.7)  # 서보 받침 날개의 범위
+CAR_SCREW_Y = L1 + 12.5  # 서보를 잠그는 벽 나사 (받침 판에서 12.5)
 LEAF_T = 1.4  # 날개 두께: 반지름 쪽으로 무르고 돌리는 쪽으로 단단하다
 PLATE_T = 3.0
 COVER_BOSS = ((3.0, 16.0), (3.0, -16.0))  # 뒷덮개 나사 자리 (x, z)
+COVER_SCREW = 12.0  # 뒷덮개 나사 M3 × 12
+# 서보 뒷면 나사(M2)의 머리는 받침 판 속 자리에 든다: 뒷덮개 안쪽 면이 판에서 2.1 mm라, 머리가 판 위로 나오면
+# 덮개에 닿고 그 위로 선이 지나가지 못한다. 자리 밑에 남는 판의 살은 PLATE_T - M2_SINK = 1.2 mm다
+M2_SINK = 1.8
+M2_HEAD_R = 2.2  # 머리 자리의 반지름 (머리 지름 3.5 ~ 4.0)
+M2_SCREW = 4.0  # M2 × 4: 서보에 2.8 mm 물린다
+# 먼 가로대의 가운데는 뒷면을 이만큼 낮춘다: 꽂아 눕힌 선(밑이 판 뒷면보다 0.4 낮다)이 잰 높이 그대로 지나간다
+WIRE_GROOVE = 0.8
 SPOT_R = R_DRUM - 0.6  # 벽 나사 머리가 앉는 면
 SCREW_LEN = 8.0  # 벽 나사 M3 × 8
 
@@ -126,13 +142,16 @@ NECK_FRONT_IN = FRONT - 2.4  # 목 앞벽의 안쪽 면
 # ---- 기계 멈춤, 영점 핀, 자식 몸통 나사 ----
 R_POST = 28.0  # 멈춤 기둥 중심
 BOSS_R = 3.25
+# 멈춤 기둥 귀의 반폭. 귀의 옆면은 멈춤 각에서 살 가운데(선이 넘는 자리) 가까이 온다. 4.0이면 테의 면에서
+# 살 가운데까지 3.1 mm가 남아 선(반폭 2.4)과 0.7 mm 뜬다 (4.6이면 2.5 mm가 남아 0.1 mm다)
+EAR_HW = 4.0
 POST_TIP = SEAM - 4.5  # 기둥 돋움의 끝. 그 아래 너트 2.4
 STOP_DEG = 163.0  # 기둥이 살에 닿는 각. 프로그램 한계는 SOFT_DEG
 SOFT_DEG = 160.0
 WEB_HALF = 180.0 - STOP_DEG - math.degrees(math.asin(BOSS_R / R_POST))  # 살의 반각 10.3°
 CH_R1 = 32.8  # 홈 바깥 반지름
 CH_Y = 23.5  # 홈 바닥 (원통 앞 끝에서 7.0). 멈춤 나사 끝(24.5)과 1.0 띄운다
-TUB_Y = CH_Y - 1.6  # 홈 밑을 막는 살의 밑면. 서보 앞면(18.8)과 3.1 띄운다
+TUB_Y = CH_Y - 1.6  # 홈 밑을 막는 살의 밑면. 서보 앞면의 라벨 판(17.3)과 4.6 띄운다
 TUB_X = -34.6  # 그 살이 끝나는 x
 R_PIN = 29.0  # 영점 핀
 RIM = ((5.0, 19.4), (-5.0, 19.4), (5.0, -19.4), (-5.0, -19.4))  # 자식 몸통 나사 (x, z)
@@ -144,8 +163,11 @@ WIN_X = (-45.0, -35.4)  # 링크의 선 창 (플러그 9.58 × 4.75가 지나간
 WIN_Z = 3.0
 
 # ---- 선 (0031) ----
-# 서보 선 한 줄이 차지하는 자리: 세 가닥을 나란히 놓은 폭과 두께 (가정: 26 AWG 세 가닥. 가진 선을 재서 확인한다)
-WIRE_W, WIRE_T = 3.9, 1.3
+# 서보 선 한 줄이 차지하는 자리: 세 가닥을 나란히 놓은 폭과 두께 (딸려 온 20 cm 선을 잰 값, 4.75 × 1.5)
+assert _MEASURED.servo_wire is not None
+WIRE_W, WIRE_T = _MEASURED.servo_wire.width_mm, _MEASURED.servo_wire.thickness_mm
+# 꽂은 플러그의 뒤 끝 (선이 나오는 곳): 눕힌 선의 밑이다. 커넥터가 있는 뒷면(L1)에서 2.6 나온다
+PLUG_TOP = WIRE_TOP + WIRE_T
 # 선은 살(180°) 위에서 출력 원판의 테로 건너가 테 둘레에 감긴다. 테 밑의 틈(GAP)으로 선이 빠지면 도는 원판과
 # 서 있는 원통 사이에 낀다. 테 밑면 가장자리에 테두리를 내려 틈을 LIP_GAP으로 좁힌다 (선 두께보다 좁다)
 LIP_GAP = 0.7
@@ -223,10 +245,11 @@ def servo(model: ServoModel = "STS3250") -> dict[str, Compound]:
     body += box(-29.7, -17.33, PLATEAU, L1, -9.24, 9.24)  # 뒷면 볼록한 판
     body -= cyl_y(10.8, F29, LABEL + 1)  # 혼 둘레의 둥근 자리
     body += cyl_y(3.1, BOSS_TIP, L0)  # 뒷면 보스
-    horn = cyl_y(HORN_R, F29 + 0.3, top) + cyl_y(2.8, top, top + 0.8)  # 혼과 가운데 나사 머리
-    plugs = box(-16.6, -11.85, L1 - 4.2, L1 + 0.5, 0.45, 9.46)
-    plugs += box(-16.6, -11.85, L1 - 4.2, L1 + 0.5, -9.46, -0.45)
-    wires = box(-36.0, -11.85, WIRE_TOP, L1 - 4.2, -8.5, 8.5)  # 먼 끝 쪽으로 눕힌 선
+    horn = cyl_y(HORN_R, F29 + 0.3, top)
+    horn += cyl_y(HEAD_D / 2, top, top + HEAD_H)  # 혼과 가운데 나사 머리
+    plugs = box(-16.6, -11.85, PLUG_TOP, L1 + 0.5, 0.45, 9.46)
+    plugs += box(-16.6, -11.85, PLUG_TOP, L1 + 0.5, -9.46, -0.45)
+    wires = box(-36.0, -11.85, WIRE_TOP, PLUG_TOP, -8.5, 8.5)  # 먼 끝 쪽으로 눕힌 선
     out = {"body": solid(body), "horn": solid(horn), "plugs": solid(plugs), "wires": solid(wires)}
     return {k: solid(Pos(0, dy, 0) * v) for k, v in out.items()}
 
@@ -307,9 +330,13 @@ def bolt_xz() -> list[tuple[float, float]]:
 
 
 def hub_plate() -> Compound:
-    """허브 판: 혼 윗면에 앉고(가운데 r 9.8), 넓은 테가 안쪽 링 뒤를 받친다. 테 윗면을 바닥에 두고 뽑는다."""
+    """허브 판: 혼 윗면에 앉고(가운데 r 9.8), 넓은 테가 안쪽 링 뒤를 받친다. 테 윗면을 바닥에 두고 뽑는다.
+
+    가운데 구멍은 혼 가운데 나사 머리(지름 5.15, 높이 2.0까지)의 자리다. 판을 뚫어서, 머리가 판 두께(2.8)
+    안에 들고 그 위의 저널 끝과 0.8 뜬다.
+    """
     h = cyl_y(HUB_SEAT_R, SEAT, SEAT + RELIEF + 0.01) + cyl_y(R_STEP, SEAT + RELIEF, B0)
-    h -= cyl_y(3.6, SEAT - 0.01, SEAT + 1.6)  # 혼 가운데 나사 머리
+    h -= cyl_y(3.6, SEAT - 1, B0 + 1)  # 혼 가운데 나사 머리
     for x, z in bolt_xz():
         h -= cyl_y(M3_FREE / 2, SEAT - 1, B0 + 1, x, z)
     return solid(h)
@@ -328,7 +355,8 @@ def out_disc() -> Compound:
     a += ring(
         R_DRUM, R_DRUM - LIP_W, FRONT + LIP_GAP, SEAM + 0.01
     )  # 선이 틈으로 빠지지 않게 막는 테두리
-    a += box(20.0, R_POST, SEAM, ATOP, -4.6, 4.6) + cyl_y(4.6, SEAM, ATOP, R_POST, 0.0)  # 귀
+    a += box(20.0, R_POST, SEAM, ATOP, -EAR_HW, EAR_HW)
+    a += cyl_y(EAR_HW, SEAM, ATOP, R_POST, 0.0)  # 귀
     a += cyl_y(BOSS_R, POST_TIP, SEAM + 0.01, R_POST, 0.0)  # 멈춤 기둥 (속에 M3 나사)
     a -= cyl_y(M3_FREE / 2, POST_TIP - 1, ATOP + 1, R_POST, 0.0)
     a -= cyl_y(3.1, ATOP - 1.8, ATOP + 1, R_POST, 0.0)  # 기둥 나사 머리 자리
@@ -367,9 +395,8 @@ def retainer(b0: float = B0) -> Compound:
         )
     part -= hex_x(RET_SCREW_Y, 0.0, leg_in - 0.01, leg_in + NUT_T + 0.3, NUT_AF_UPRIGHT)
     part -= cyl_x(r, 10, 25, RET_SCREW_Y, 0.0)
-    part -= box(
-        -30, -9.0, 0, LABEL + 0.17 + 0.75, -7.7, 7.7
-    )  # 앞면 라벨 판 위 (STS3215에서도 0.75)
+    # 앞면 라벨 판 위를 0.75 띄운다 (STS3215는 몸통이 0.17 앞이다). 고리(RET_Y[1]부터)는 그보다 위라 깎이지 않는다
+    part -= box(-30, -9.0, 0, LABEL + 0.17 + 0.75, -7.7, 7.7)
     # 다리가 고리 안쪽으로 2.8 걸치지 않게, 다리 밑을 45° 원뿔로 깎는다.
     # 원뿔은 다리 안쪽 면보다 0.3 안에서 시작하고(면에 접하면 형상이 깨진다), 고리 속으로 0.05 올라간다
     r_ring = R_STEP + 1.3
@@ -383,11 +410,13 @@ def carrier() -> Compound:
     """서보 받침: 서보 뒷면 M2 넷에 다는 틀 모양 판과 벽을 따라 선 날개 둘. 판 뒷면을 바닥에 두고 뽑는다.
 
     판은 뒷면의 볼록한 판과 커넥터를 비킨다. 가까운 쪽 가로대의 가운데는 터서, 플러그 옆면을 잡을 수 있다.
+    M2 나사의 머리는 판 속 자리에 든다 (M2_SINK). 선은 먼 가로대 위를 어디로든 지나간다.
     """
     y0, y1 = L1 - PLATE_T, L1
     r_out = R_BORE - 0.15
     hw = HW - 0.06  # 목 안쪽 벽과 0.4
     plate = box(-35.0, -30.2, y0, y1, -hw, hw)  # 먼 가로대
+    plate -= box(-36.0, -29.2, y0 - 1, y0 + WIRE_GROOVE, -8.6, 8.6)  # 선이 지나는 자리
     for sg in (1, -1):
         plate += box(
             -10.4, -6.1, y0, y1, min(sg * 7.5, sg * hw), max(sg * 7.5, sg * hw)
@@ -422,11 +451,14 @@ def carrier() -> Compound:
         part -= (
             cyl_z(r, 10, 25, 0.0, CAR_SCREW_Y) if sg > 0 else cyl_z(r, -25, -10, 0.0, CAR_SCREW_Y)
         )
-    for x, z in COVER_BOSS:  # 뒷덮개 나사가 물리는 기둥
-        part += cyl_y(3.2, y1 - 0.01, y1 + 5.5, x, z)
-        part -= cyl_y(M3_TAP / 2, y0 - 1, y1 + 5.5 + 1, x, z)
+    # 뒷덮개 나사가 물리는 기둥: 나사 끝(덮개의 머리 자리에서 COVER_SCREW)보다 0.4 길다
+    pillar = BACK_OUT + 1.2 + COVER_SCREW + 0.4
+    for x, z in COVER_BOSS:
+        part += cyl_y(3.2, y1 - 0.01, pillar, x, z)
+        part -= cyl_y(M3_TAP / 2, y0 - 1, pillar + 1, x, z)
     for x, z in BACK_HOLES:
         part -= cyl_y(1.15, y0 - 1, y1 + 1, x, z)
+        part -= cyl_y(M2_HEAD_R, y0 - 1, y0 + M2_SINK, x, z)  # 머리 자리
     return solid(part)
 
 
@@ -516,12 +548,12 @@ def inner_hardware(model: ServoModel) -> list[Part]:
         nut = hex_y(x, z, SEAM, SEAM + NUT_T, 5.4) - cyl_y(1.5, SEAM - 1, SEAM + NUT_T + 1, x, z)
         out.append(Part(f"너트 (출력 원판) {k + 1}", solid(nut), STEEL, True, "metal"))
     for k, (x, z) in enumerate(BACK_HOLES):
-        y = L1 - PLATE_T + dy
-        shape = cyl_y(1.0, y, y + 6.0, x, z) + cyl_y(1.9, y - 2.0, y, x, z)
-        out.append(Part(f"M2x6 {k + 1}", solid(shape), STEEL, False, "metal"))
+        y = L1 - PLATE_T + M2_SINK + dy  # 머리 밑면 (판 속 자리의 바닥)
+        shape = cyl_y(1.0, y, y + M2_SCREW, x, z) + cyl_y(1.9, y - 2.0, y, x, z)
+        out.append(Part(f"M2x4 {k + 1}", solid(shape), STEEL, False, "metal"))
     for k, (x, z) in enumerate(COVER_BOSS):
         y = BACK_OUT + 1.2 + dy
-        shape = cyl_y(1.5, y, y + 12.0, x, z) + cyl_y(2.85, y - 1.65, y, x, z)
+        shape = cyl_y(1.5, y, y + COVER_SCREW, x, z) + cyl_y(2.85, y - 1.65, y, x, z)
         out.append(Part(f"덮개 나사 M3x12 {k + 1}", solid(shape), STEEL, False, "metal"))
     leg_in = SPOT_R - SCREW_LEN
     boss_in = leg_in + 1.6

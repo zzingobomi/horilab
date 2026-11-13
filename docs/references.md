@@ -99,6 +99,6 @@
 - **버스에 다른 서보를 섞으면 문제가 난다.** 전압판이 다르면 과전압 경고가 나고, 펌웨어가 다르면 통신 오류가 난다 ([lerobot#1010](https://github.com/huggingface/lerobot/issues/1010)).
 - **끝까지 밀어 영점을 잡는 자동 캘리브레이션이 위험하다.** 시작 자세에 따라 팔을 책상에 눌렀다 (ElRobot). 영점은 핀으로 잡는다.
 - **베이스가 흔들리거나 넘어진다** (PAROL6, myCobot). PAROL6은 베이스를 옆으로 밀어 들리거나 밀리지 않는지 본다.
-- **D405 커넥터가 떨어진다.** USB 2로 떨어지거나 끊기는 문제가 있다. 나사 고정 케이블을 세게 조여 커넥터 납땜이 떨어진 예도 있다 ([librealsense#14406](https://github.com/realsenseai/librealsense/issues/14406)).
+- **D405 커넥터가 떨어진다.** USB 2로 떨어지거나 끊기는 문제가 있다. 나사 고정 케이블을 세게 조여 커넥터 납땜이 떨어진 예도 있다 ([librealsense#14406](https://github.com/realsenseai/librealsense/issues/14406)). 선을 고르는 조사와 다른 로봇의 사례(ALOHA 2, Stretch 3)는 [0031](decisions/0031-wiring.md#d405-선)에 있다.
 - **출력한 감속기와 휘는 프레임은 반복 정밀도를 망친다** (Faze4 저자). 이 팔은 감속을 서보 안에서만 한다.
 - **부품표, 나사 목록, 설명서가 없다.** 가장 흔한 불평이다. 부품표와 조립 순서를 같이 만든다 ([design.md](design.md#설계-방식)).

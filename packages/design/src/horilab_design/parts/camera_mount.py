@@ -5,7 +5,7 @@ M3 구멍 둘(간격 20 mm)에 받침의 뒤에서 나사를 조인다. 받침�
 둘로 단다. 커넥터가 있는 옆면은 J5 쪽(-x)을 본다.
 
 카메라의 치수는 공식 사양서와 CAD에서 읽은 값이고(docs/hardware.md의 D405), 플러그의 폭과 두께는 USB 3.0 규격의
-한계다. 꺾임 보호의 길이와 ㄱ자 플러그의 길이는 가정이다 (PLUG_*: 가진 선을 재서 확인한다).
+한계다. 플러그는 가진 기본 선의 곧은 플러그이고, 꺾임 보호의 길이는 가정이다 (PLUG_*: 가진 선을 재서 확인한다).
 
 좌표는 joint.py의 서보 좌표다 (y가 J6 축, 플랜지 면이 y = ATOP, -x가 J5 쪽).
 
@@ -33,7 +33,6 @@ CONN_BACK = 6.82  # 옆면 커넥터의 가운데: 뒷면에서
 PLUG_W, PLUG_T = 16.0, 8.5  # 플러그 몸통의 폭(카메라의 세로 방향)과 두께(깊이 방향): 규격의 한계
 PLUG_LEN = 18.5  # 곧은 플러그의 몸통이 옆면에서 나온 길이: 규격의 참고 값
 PLUG_RELIEF = 12.0  # 그 뒤에 선이 굽지 못하는 길이 (꺾임 보호. 규격에 없는 가정)
-PLUG_ANGLED = 12.0  # ㄱ자 플러그가 옆면에서 나온 길이
 
 # ---- 카메라 자리 ----
 TILT = 20.0  # 광축을 도구 축 쪽으로 기울인 각 [°] (0017)
@@ -163,12 +162,12 @@ def hardware() -> list[j.Part]:
 
 
 def assembly(model: ServoModel = "STS3215") -> list[j.Part]:
-    """J6 조립(parts/flange.py)에 D405와 받침을 더한 것. 플러그는 ㄱ자로 가정한 길이만 넣는다."""
+    """J6 조립(parts/flange.py)에 D405와 받침을 더한 것. 플러그는 가진 선의 곧은 플러그다 (길이는 가정)."""
     parts = flange.assembly(model)
     parts += [
         j.Part("D405 받침", mount(), color="cap"),
         j.Part("D405", camera(), color="servo"),
-        j.Part("D405 플러그", plug(PLUG_ANGLED), color="plug"),
+        j.Part("D405 플러그", plug(), color="plug"),
     ]
     return parts + hardware()
 

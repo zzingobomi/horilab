@@ -27,9 +27,12 @@ NECK_END = -40.0  # 집의 목이 관으로 이어지는 x
 BED = 256.0  # 출력 범위 [mm]
 # 발의 선 통로 (0031): 발 끝벽 밑의 구멍과, 거기서 혼 볼트 머리 위 구멍까지 발 바닥을 뚫은 긴 틈이다.
 # 플러그는 혼 볼트 머리 위 구멍으로 넣고, 선은 링크를 원판에 얹기 전에 이 틈으로 밀어 끝벽 밑으로 뺀다
-# (플러그를 좁은 구멍에 꿰지 않는다). 영점 핀 귀(|z| 4.4까지)를 비켜 한쪽에 둔다
-FOOT_SLOT_Z = (6.5, 11.5)
-FOOT_SLOT_H = 3.0  # 끝벽 밑 구멍의 높이 (선 두께 1.3)
+# (플러그를 좁은 구멍에 꿰지 않는다). 영점 핀 귀(|z| 4.4까지)를 비켜 한쪽에 둔다. 폭 5.7은 선 폭 4.75에 여유 0.95다
+FOOT_SLOT_Z = (7.0, 12.7)
+FOOT_SLOT_H = 3.0  # 끝벽 밑 구멍의 높이 (선 두께 1.5)
+FOOT_SLOT_OPEN = (
+    2.5  # 긴 틈이 혼 볼트 머리 위 구멍 속으로 들어온 길이: 선(두께 1.5)을 세워서 옆으로 민다
+)
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,11 @@ LINKS: dict[str, tuple[float, float, Foot]] = {
     "upper_arm": (220.0, 20.0, SHOULDER_FOOT),
     "forearm": (180.0, 18.0, STS_FOOT),
 }
+
+
+def slot_reach(foot: Foot) -> float:
+    """발 바닥의 긴 틈이 끝나는 곳 (앞 관절 축에서 끝벽 쪽으로). 혼 볼트 머리 위 구멍 속으로 FOOT_SLOT_OPEN 들어온다."""
+    return math.sqrt(foot.head_r**2 - FOOT_SLOT_Z[0] ** 2) - FOOT_SLOT_OPEN
 
 
 def _chamfer_x(x0: float, x1: float, y_top: float, hz: float, c: float) -> Compound:
@@ -126,8 +134,8 @@ def link(length: float, tube_r: float, foot: Foot = STS_FOOT) -> Compound:
     h = solid(
         h - box(xa - hx - 1, xa - hx + WALL + 0.01, j.FRONT - FOOT_SLOT_H, j.FRONT + 1, z0, z1)
     )
-    # 긴 틈은 혼 볼트 머리 위 구멍과 1 mm 넘게 겹쳐서, 구멍에서 끝벽까지 선을 옆으로 밀어 넣을 수 있다
-    reach = math.sqrt(foot.head_r**2 - z0**2) - 1.0
+    # 긴 틈은 혼 볼트 머리 위 구멍과 겹쳐서, 구멍에서 끝벽까지 선을 옆으로 밀어 넣을 수 있다
+    reach = slot_reach(foot)
     h = solid(h - box(xa - hx + WALL, xa - reach, j.FRONT - WALL - 1, j.FRONT + 1, z0, z1))
     return j.cut_joint_features(h, window=True)
 

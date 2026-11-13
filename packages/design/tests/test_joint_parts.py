@@ -7,7 +7,7 @@ import pytest
 from horilab_design.parts import joint as j
 from horilab_design.parts import links, wrist
 from horilab_design.printcheck import overhangs
-from horilab_design.values import ServoModel
+from horilab_design.values import ServoModel, load_measured
 
 BED = 256.0  # 출력 범위 [mm]
 
@@ -68,11 +68,56 @@ def test_zero_pin_sits_in_both_holes_at_the_pin_pose() -> None:
     assert 0.1 < pin.shape.distance_to(child) < 0.25
 
 
+def test_servo_sits_where_the_measured_horn_height_puts_it() -> None:
+    measured = load_measured()
+    depth = measured.servo_depth
+    assert depth is not None
+    # 혼 윗면을 낮은 뒷면(두께 29)에서 잰 것으로 읽으면, 혼이 앞면 라벨 판보다 높은 양이 깊이 막대로 잰 값과 맞는다
+    low, high = depth.horn_above_label_mm
+    for model in j.STS_MODELS:
+        assert low - 0.15 <= j.HORN_TOP[model] - j.LABEL <= high + 0.15, model
+    # 도면: 혼 윗면은 낮은 앞면에서 약 4.3 (축 3.4 + 혼의 남는 살 0.9), 보스 끝은 낮은 뒷면에서 4.1
+    for model in j.STS_MODELS:
+        assert j.HORN_TOP[model] - j.F29 == pytest.approx(4.3, abs=0.15), model
+    boss = measured.servo_body["STS3215"].horn_to_boss_mm
+    assert boss is not None
+    assert j.HORN_TOP["STS3215"] - boss == pytest.approx(j.BOSS_TIP, abs=0.05)
+    # 몸통은 두께의 가운데가 원점이고, 두께 32인 면이 낮은 면보다 앞뒤로 1.5씩 높다
+    assert (j.L0, j.F29, j.L1, j.F32) == (-14.5, 14.5, -16.0, 16.0)
+    # 관절의 길이는 혼 윗면 ~ 꽂아 눕힌 선(39.00)에서 나와서 그대로다
+    assert j.ATOP - j.BACK_OUT == pytest.approx(58.9, abs=0.01)
+
+
+def test_horn_screw_head_and_back_side_fit() -> None:
+    # 혼 가운데 나사 머리(지름 5.15, 혼 윗면 위로 2.0까지)가 허브 판 속에 들고, 조인 뒤의 저널 끝과 0.5 넘게 뜬다
+    assert (j.HEAD_D, j.HEAD_H) == (5.15, 2.0)
+    assert j.B0 - (j.SEAT + j.HEAD_H) >= 0.5
+    assert 3.6 - j.HEAD_D / 2 >= 0.8  # 허브 판 가운데 구멍과 머리 사이
+    # 뒷면: 꽂은 플러그는 커넥터가 있는 뒷면에서 2.6 나오고, 눕힌 선의 윗면은 잰 값이다
+    assert j.L1 - j.PLUG_TOP == pytest.approx(2.62, abs=0.01)
+    assert j.PLUG_TOP - j.WIRE_TOP == pytest.approx(j.WIRE_T)
+    # 서보 받침: 먼 가로대의 선 자리는 눕힌 선 밑보다 낮고, 그 밑에 판이 2 mm 넘게 남는다
+    groove = j.L1 - j.PLATE_T + j.WIRE_GROOVE
+    assert groove - j.PLUG_TOP >= 0.3 and j.PLATE_T - j.WIRE_GROOVE >= 2.0
+    # 서보 뒷면 나사 M2 × 4: 머리(높이 2.0까지)는 판 속 자리에 들어 뒷덮개와 1.5 넘게 뜨고, 서보에 2.5 ~ 3.5 물린다
+    head_top = j.L1 - j.PLATE_T + j.M2_SINK - 2.0
+    assert head_top - j.BACK_IN >= 1.5
+    assert j.PLATE_T - j.M2_SINK >= 1.2 - 1e-9
+    assert 2.5 <= j.M2_SCREW - (j.PLATE_T - j.M2_SINK) <= 3.5
+    # 판 위를 지나는 선(두께 1.5)과 뒷덮개 사이
+    assert (j.L1 - j.PLATE_T - j.WIRE_T) - j.BACK_IN >= 0.5
+    # 뒷덮개 나사 M3 × 12의 끝이 받침의 기둥 속에서 끝난다
+    tip = j.BACK_OUT + 1.2 + j.COVER_SCREW
+    assert j.L1 + 6.0 < tip < j.L1 + 7.0
+
+
 def test_screw_lengths_match_the_stack() -> None:
-    # 혼 볼트 M3 × 20: 머리는 출력 원판 윗면, 끝은 혼(윗면 SEAT, 두께 약 2.6)에 2.4 ~ 3.0 들어간다.
-    # 더 들어가면 혼 밑의 서보 앞면(틈 0.3)에 닿는다
+    # 혼 볼트 M3 × 20: 머리는 출력 원판 윗면, 끝은 혼(윗면 SEAT, 테 두께 2.5)에 2.4 ~ 2.9 들어간다.
+    # 혼의 테 뒤로 서보 앞면까지는 1.7 mm가 비어 있다
     engaged = 20.0 - (j.ATOP - j.SEAT)
     assert 2.4 <= engaged <= 2.9
+    for model in j.STS_MODELS:
+        assert (j.SEAT - engaged) - (j.F29 + j.servo_dy(model)) > 1.0, model
     # 자식 몸통 나사 M3 × 10: 너트를 끝까지 지나가고, 원통 앞 끝 쪽 틈으로 0.2 넘게 나오지 않는다
     tip = j.ATOP + j.EAR_T - j.BODY_SCREW
     assert j.SEAM - 0.2 <= tip <= j.SEAM + 0.3

@@ -6,10 +6,12 @@
 - 관절마다: 나가는 자리와 들어가는 자리 사이에 필요한 선 길이(관절 각의 함수), 가장 길 때, 범위 가운데에서 남는 길이.
 - 선마다: 몸통 속 길(부품 좌표의 꺾은선)과 관절을 넘는 길이를 더해, 가진 선(20 cm, 300 mm, 900 mm)으로 닿는지.
 - 살 위 통로: 멈춤 기둥과 귀가 지나가지 않는 폭.
-- D405 선: 두 몸통 사이 층의 높이로 정해지는 굵기 한도와, 팔을 따라 베이스까지의 길이.
+- D405 선: 서보 선처럼 테에 감을 수 있는지 (두 몸통 사이 층의 높이, 범위 가운데에서 생기는 고리의 반지름),
+  팔을 따라 베이스까지 가는 가장 짧은 길의 길이. 가진 기본 선(지름 5.12 mm, 1 m)은 테에 감지 못해 관절마다
+  밖으로 넘긴다 (0031).
 
 좌표는 부품 코드와 같다 (parts/joint.py의 서보 좌표, mm). 몸통 속 길의 점은 그 부품의 치수에서 낸다.
-서보 선의 폭과 두께, D405 선의 굵기는 가정이다 (가진 선을 재서 확인한다).
+서보 선의 폭과 두께, D405 선의 지름은 잰 값이다 (data/measured.toml). D405 선의 무게는 가정이다.
 
     uv run python -m horilab_design.studies.wiring
 """
@@ -28,6 +30,7 @@ from horilab_design.parts import joint as j
 from horilab_design.parts import links as lp
 from horilab_design.parts import shoulder as sp
 from horilab_design.parts import wrist as wp
+from horilab_design.values import load_measured
 
 Point = tuple[float, float, float]
 
@@ -38,16 +41,20 @@ CABLES_MM = (200.0, 300.0, 900.0)
 SPARE = 15.0  # 선마다 남겨 둘 길이: 조립 오차, 꺾이는 자리의 둥근 몫, 커넥터를 당기지 않을 여유
 PLUG_X = -14.2  # 꽂은 플러그의 가운데 (서보 좌표 x)
 PLUG_Z = 4.95  # 커넥터 둘의 가운데 |z|
-PLUG_Y = j.L1 - 4.2  # 플러그 뒤 끝 (선이 나오는 곳)
+PLUG_Y = j.PLUG_TOP  # 플러그 뒤 끝 (선이 나오는 곳)
 BACK_Y = (j.WIRE_TOP + PLUG_Y) / 2  # 뒷면에 눕힌 선의 가운데
-D405_D = 4.5  # D405 기본 선의 지름 (가정. 재서 바꾼다)
-D405_THIN_D = 3.2  # Newnex U3S7AS1MCI의 지름 (판매 자료, docs/bom.md)
-D405_STOCK_MM, D405_THIN_MM = 1000.0, 2000.0
+_D405 = load_measured().d405_cable
+assert _D405 is not None
+D405_D = _D405.diameter_mm  # 가진 D405 기본 선의 지름 (잰 값, 5.12)
+D405_STOCK_MM = 1000.0  # 그 선의 길이 (사양)
 LAYER_GAP = 2.0  # 두 몸통 사이 층에서 선 위에 남길 틈 (0017의 움직이는 틈)
+BEND_RATIO = (
+    10.0  # 움직이는 고리의 반지름은 선 지름의 10 ~ 12배 이상 (docs/design.md의 "D405 케이블")
+)
 # 무게: 20 cm 서보 선이 3.5 g이다 (실측). 플러그 하나를 0.45 g으로 어림하면 선은 1 m에 14.4 g이다
 SERVO_WIRE_KG_M = (3.5 - 2 * 0.45) / (200.0 - 2 * PLUG[0])
 PLUG_KG = 0.45e-3
-D405_KG_M = 0.030  # D405 선 1 m의 무게 (가정: 지름 4.5 mm USB 3 선. 재서 바꾼다)
+D405_KG_M = 0.030  # D405 선 1 m의 무게 (가정. 가진 선을 저울로 재서 바꾼다)
 
 
 def length(points: list[Point]) -> float:
@@ -128,8 +135,9 @@ def crossings() -> dict[str, Crossing]:
     # J5: 손목 2는 뒷덮개 쪽 모서리(앞 관절 원판 가장자리와 덮개 사이)로 들어온다
     r5, a5 = _az(j.BACK_IN + 1.5 - wp.AX_Y, wp.SIDE_LANE)
     out["J5"] = Crossing("J5", j.R_DRUM, -notch_x, 180.0, r5, a5, rise)
-    # J6: 그리퍼 몸통의 판을 튼 자리로 들어가 서보 뒷면 커넥터에 꽂힌다
-    r6, a6 = _az(-fp.ADAPTER_R, PLUG_Z)
+    # J6: 그리퍼 몸통의 판을 튼 자리로 들어가 서보 뒷면 커넥터에 꽂힌다. 튼 자리는 폭이 21 mm라 선이 그 안에서
+    # 짧은 쪽으로 온다. 가운데로 들어온다고 보면 어느 쪽으로 감겨도 실제보다 길게 센다
+    r6, a6 = _az(-fp.ADAPTER_R, 0.0)
     out["J6"] = Crossing("J6", j.R_DRUM, -notch_x, 180.0, r6, a6, 2.0)
     return out
 
@@ -202,7 +210,7 @@ def link_in(name: str) -> list[Point]:
     xa, xf = -span, _far_gap()
     yc = j.FRONT - (tube_r - lp.EMBED)  # 관 가운데
     z = sum(lp.FOOT_SLOT_Z) / 2
-    reach = math.sqrt(foot.head_r**2 - lp.FOOT_SLOT_Z[0] ** 2) - 1.0
+    reach = lp.slot_reach(foot)
     return [
         (xa - foot.hx, j.FRONT - 1.3, z),
         (xa - reach - 2.0, j.FRONT - 1.3, z),  # 긴 틈을 따라 발 속으로
@@ -267,9 +275,9 @@ def gripper_tail() -> list[Point]:
     """그리퍼: 판을 튼 자리의 가장자리 → 서보 뒷면 커넥터 (도구 좌표를 J6의 서보 좌표로: 플랜지 면이 ATOP)."""
     y = j.ATOP
     return [
-        (-fp.ADAPTER_R, y + 2.0, PLUG_Z),
+        (-fp.ADAPTER_R, y + 2.0, 0.0),
         (PLUG_X - 2.0, y + 2.0, PLUG_Z),
-        (PLUG_X, y + gp.H_BACK - 4.2, PLUG_Z),
+        (PLUG_X, y + gp.H_PLUG, PLUG_Z),
     ]
 
 
@@ -362,14 +370,16 @@ def wires() -> list[Wire]:
 # 살 위 통로와 D405 선
 
 
-def corridor(drum_r: float, post_r: float, q_deg: float) -> tuple[float, float]:
+def corridor(
+    drum_r: float, post_r: float, q_deg: float, ear_hw: float = j.EAR_HW
+) -> tuple[float, float]:
     """관절 각 q에서 살 가운데 선(180°)과 (멈춤 기둥, 귀의 옆면) 사이 거리 [mm]. 귀는 테의 면에서 잰다.
 
-    선은 이 폭 안에서 살을 넘는다. 기둥은 살 윗면부터 테 밑까지, 귀는 테 높이를 지나간다.
+    선은 이 폭 안에서 살을 넘는다. 기둥은 살 윗면부터 테 밑까지, 귀(반폭 ear_hw)는 테 높이를 지나간다.
     """
     d = math.radians(180.0 - abs(q_deg))
     post = post_r * math.sin(d) - j.BOSS_R
-    ear = drum_r * math.sin(d) - 4.6 * math.cos(d)
+    ear = drum_r * math.sin(d) - ear_hw * math.cos(d)
     return post, ear
 
 
@@ -384,10 +394,10 @@ def exit_to_ear(z_exit: float, q_deg: float) -> float:
     az_t = az_e + math.acos(r / r_e)  # 선이 테에 닿는 곳
     tx, tz = r * math.cos(az_t), r * math.sin(az_t)
     q = math.radians(q_deg)
-    cx, cz = j.R_POST * math.cos(q), j.R_POST * math.sin(q)  # 귀 끝의 둥근 자리 (반지름 4.6)
+    cx, cz = j.R_POST * math.cos(q), j.R_POST * math.sin(q)  # 귀 끝의 둥근 자리 (반지름 EAR_HW)
     dx, dz = tx - ex, tz - ez
     t = max(0.0, min(1.0, ((cx - ex) * dx + (cz - ez) * dz) / (dx * dx + dz * dz)))
-    return math.hypot(ex + t * dx - cx, ez + t * dz - cz) - 4.6
+    return math.hypot(ex + t * dx - cx, ez + t * dz - cz) - j.EAR_HW
 
 
 def layer_height() -> float:
@@ -400,16 +410,42 @@ def d405_max_diameter() -> float:
     return layer_height() - LAYER_GAP
 
 
-def d405_path(wire_d: float) -> list[tuple[str, float]]:
-    """D405 선이 팔 겉을 따라 베이스의 띠 밑 누르개까지 가는 길이 (관절마다 가장 길 때).
+def loop_radius(chord: float, arc: float) -> float:
+    """두 끝 사이(chord)에 길이 arc인 선이 둥근 호 하나로 놓일 때의 반지름. 호가 가장 완만한 모양이다."""
+    if arc <= chord:
+        return math.inf
+    lo, hi = (
+        arc / (2 * math.pi),
+        1e6,
+    )  # 2R·sin(arc / 2R) = chord. 반지름이 클수록 호가 펴져 현이 길다
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        if 2 * mid * math.sin(arc / (2 * mid)) < chord:
+            lo = mid
+        else:
+            hi = mid
+    return hi
 
-    관절을 넘는 자리는 서보 선과 같은 방위각이고, 링크에서는 납작한 면 옆을 따라간다.
+
+def d405_mid_loop(c: Crossing, wire_d: float) -> float:
+    """D405 선을 서보 선처럼 테에 감을 때, 범위 가운데에서 남는 선이 만드는 고리의 반지름 [mm].
+
+    멈춤 각에 맞춘 길이의 선이 범위 가운데에서는 가까이 붙은 두 자리 사이에 다 남는다.
+    """
+    return loop_radius(c.length(0.0, wire_d), c.longest(wire_d))
+
+
+def d405_path(wire_d: float) -> list[tuple[str, float]]:
+    """D405 선이 팔을 따라 베이스의 띠 밑 누르개까지 가는 가장 짧은 길의 길이 (관절마다 테에 감길 때, 가장 길 때).
+
+    관절을 넘는 자리는 서보 선과 같은 방위각이고, 링크에서는 납작한 면 옆을 따라간다. 가진 선은 테에 감지
+    못해 관절마다 밖으로 넘기므로(0031) 실제 길은 이보다 길다. 선의 무게를 링크마다 나누는 데에도 쓴다.
     """
     x = crossings()
     span_u, _, foot_u = lp.LINKS["upper_arm"]
     span_f, _, foot_f = lp.LINKS["forearm"]
     win = -sum(j.WIN_X) / 2
-    cam = cmt.CAM_W / 2 + cmt.PLUG_ANGLED  # J6 축에서 ㄱ자 플러그의 끝까지 (J5 쪽)
+    cam = cmt.CAM_W / 2 + cmt.PLUG_LEN + cmt.PLUG_RELIEF  # J6 축에서 곧은 플러그의 끝까지 (J5 쪽)
     # 손목 2: 플러그에서 몸통 옆을 따라 뒷덮개 쪽 발 모서리까지
     w2 = math.dist((-cam, cmt.LENS[1] - 10.0, cmt.LENS[2]), (wp.X_FOOT, j.BACK_OUT, -wp.SIDE_LANE))
     return [
@@ -430,7 +466,8 @@ def wire_masses() -> dict[str, float]:
     """팔 전체 모델(studies/ur_arm.py)에 넣을 선의 무게 [kg]: 위팔과 아래팔은 (가운데, 끝 집), 손목 몸통 둘.
 
     서보 선은 고른 선의 길이 전체(남는 길이는 그 선이 지나는 관이나 몸통 속에 접어 둔다)와 플러그, D405 선은 겉을
-    따라가는 길이다. J6 → 그리퍼 선은 그리퍼의 무게에 들어 있다. J2보다 아래(J1 몸통, 베이스)의 선은 넣지 않는다.
+    따라가는 가장 짧은 길의 길이다 (밖으로 넘기는 고리를 그린 뒤에 그 길이로 바꾼다. 1 m에 D405_KG_M도 가정이다).
+    J6 → 그리퍼 선은 그리퍼의 무게에 들어 있다. J2보다 아래(J1 몸통, 베이스)의 선은 넣지 않는다.
     """
     by = {w.name: w for w in wires()}
 
@@ -487,8 +524,11 @@ def report() -> None:
         + ")"
     )
     print("\n## 살 위 통로: 살 가운데 선에서 (멈춤 기둥, 귀)까지 [mm]")
-    for name, r, post in (("STS 관절", j.R_DRUM, j.R_POST), ("어깨", sp.R_DRUM, sp.R_POST)):
-        soft, hard = corridor(r, post, j.SOFT_DEG), corridor(r, post, j.STOP_DEG)
+    for name, r, post, ear in (
+        ("STS 관절", j.R_DRUM, j.R_POST, j.EAR_HW),
+        ("어깨", sp.R_DRUM, sp.R_POST, sp.EAR_HW),
+    ):
+        soft, hard = corridor(r, post, j.SOFT_DEG, ear), corridor(r, post, j.STOP_DEG, ear)
         print(
             f"- {name}: 프로그램 한계에서 {soft[0]:.1f}, {soft[1]:.1f} / 멈춤 각에서 {hard[0]:.1f}, {hard[1]:.1f} "
             f"(서보 선 반폭 {j.WIRE_W / 2:.2f})"
@@ -499,22 +539,29 @@ def report() -> None:
         f"옆 홈 {exit_to_ear(side, j.SOFT_DEG):.1f} / {exit_to_ear(side, j.STOP_DEG):.1f}, "
         f"가운데 홈 {exit_to_ear(0.0, j.SOFT_DEG):.1f} / {exit_to_ear(0.0, j.STOP_DEG):.1f}"
     )
+    d = D405_D
     print(
-        f"\n## D405 선: 두 몸통 사이 층 {layer_height():.1f} mm, 감길 수 있는 지름 한도 {d405_max_diameter():.1f} mm"
+        f"\n## D405 선 (가진 기본 선, 지름 {d} mm, {D405_STOCK_MM:.0f} mm)을 서보 선처럼 테에 감을 수 있는지"
     )
-    for label, d, have in (
-        ("기본 선 (가정)", D405_D, D405_STOCK_MM),
-        ("얇은 선", D405_THIN_D, D405_THIN_MM),
-    ):
-        path = d405_path(d)
-        total = sum(v for _, v in path)
-        r_bend = j.R_DRUM + d / 2
-        print(
-            f"- {label} 지름 {d}: 카메라에서 띠 밑 누르개까지 {total:.0f} mm (선 {have:.0f} mm에서 "
-            f"{have - total:.0f} 남는다), 테에 감기는 굽힘 반지름 {r_bend:.1f} mm (지름의 {r_bend / d:.1f}배), "
-            f"J1 가운데에서 남는 길이 {x['J1'].slack(0.0, d):.0f} mm"
-        )
-        print("  " + ", ".join(f"{n} {v:.0f}" for n, v in path))
+    print(
+        f"- 굵기: 두 몸통 사이 층 {layer_height():.1f} mm에 감길 수 있는 지름 한도 {d405_max_diameter():.1f} mm "
+        f"(선 위에 {LAYER_GAP:.0f} mm를 남긴다)"
+    )
+    print(
+        f"- 굽힘: 움직이는 고리의 반지름 기준 {BEND_RATIO * d:.0f} mm (지름의 {BEND_RATIO:.0f}배). 테에 감기면 "
+        + ", ".join(f"{k} {c.drum_r + d / 2:.0f}" for k, c in x.items() if k != "J6")
+    )
+    print(
+        "- 범위 가운데에서 남는 선이 만드는 고리의 반지름: "
+        + ", ".join(f"{k} {d405_mid_loop(c, d):.0f}" for k, c in x.items() if k != "J6")
+    )
+    path = d405_path(d)
+    total = sum(v for _, v in path)
+    print(
+        f"- 길이: 테에 감는 가장 짧은 길로도 카메라에서 띠 밑 누르개까지 {total:.0f} mm "
+        f"(선 {D405_STOCK_MM:.0f} mm에서 {D405_STOCK_MM - total:.0f})"
+    )
+    print("  " + ", ".join(f"{n} {v:.0f}" for n, v in path))
     masses = wire_masses()
     print()
     print(

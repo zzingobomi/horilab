@@ -132,9 +132,37 @@ class ServoBody(_Values):
     """캘리퍼스로 잰 서보 몸통 치수 [mm] (docs/hardware.md의 "기구 치수")."""
 
     far_thickness_mm: float = Field(gt=0)  # 라벨 쪽 끝 두께: 앞면 ~ 뒷면의 볼록한 판
-    horn_to_back_mm: float = Field(gt=0)  # 출력 혼 윗면 ~ 뒷면 (축 가까운 쪽)
+    horn_to_back_mm: float = Field(gt=0)  # 출력 혼 윗면 ~ 출력축 둘레의 낮은 뒷면 (두께 29인 면)
     horn_to_wire_mm: float | None = Field(default=None, gt=0)  # 출력 혼 윗면 ~ 뒷면에 꽂아 눕힌 선
     horn_to_boss_mm: float | None = Field(default=None, gt=0)  # 출력 혼 윗면 ~ 뒷면 보스 끝
+
+
+class ServoDepth(_Values):
+    """깊이 막대로 잰 STS 서보의 단차 [mm]. 값이 오르내려서 (작은 값, 큰 값)이다."""
+
+    horn_above_label_mm: tuple[float, float]  # 출력 혼 윗면 ~ 앞면 라벨 판
+    horn_screw_head_mm: tuple[float, float]  # 혼 가운데 나사 머리가 혼 윗면 위로 나온 높이
+    horn_screw_head_diameter_mm: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> ServoDepth:
+        for low, high in (self.horn_above_label_mm, self.horn_screw_head_mm):
+            if not 0 < low <= high:
+                raise ValueError(f"(작은 값, 큰 값)이어야 한다: {(low, high)}")
+        return self
+
+
+class ServoWire(_Values):
+    """서보 선 한 줄 [mm]: 세 가닥을 나란히 놓은 폭과 두께."""
+
+    width_mm: float = Field(gt=0)
+    thickness_mm: float = Field(gt=0)
+
+
+class Cable(_Values):
+    """둥근 선 [mm]."""
+
+    diameter_mm: float = Field(gt=0)
 
 
 class ServoPlug(_Values):
@@ -152,6 +180,9 @@ class Measured(_Values):
         str, float
     ] = {}  # 출력물 무게 (STL 파일 이름 → g). 무게 어림을 맞춰 보는 데 쓴다
     servo_body: dict[ServoModel, ServoBody] = {}
+    servo_depth: ServoDepth | None = None
+    servo_wire: ServoWire | None = None
+    d405_cable: Cable | None = None
     servo_plug: ServoPlug | None = None
     fit: dict[Filament, PrintFit] = {}
 

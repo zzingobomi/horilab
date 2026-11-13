@@ -40,9 +40,12 @@ def test_each_wire_reaches_with_a_cable_on_hand() -> None:
 
 
 def test_wire_crosses_the_web_where_the_stop_never_sweeps() -> None:
-    for drum_r, post_r in ((j.R_DRUM, j.R_POST), (sp.R_DRUM, sp.R_POST)):
-        post_soft, ear_soft = wr.corridor(drum_r, post_r, j.SOFT_DEG)
-        post_hard, ear_hard = wr.corridor(drum_r, post_r, j.STOP_DEG)
+    for drum_r, post_r, ear in (
+        (j.R_DRUM, j.R_POST, j.EAR_HW),
+        (sp.R_DRUM, sp.R_POST, sp.EAR_HW),
+    ):
+        post_soft, ear_soft = wr.corridor(drum_r, post_r, j.SOFT_DEG, ear)
+        post_hard, ear_hard = wr.corridor(drum_r, post_r, j.STOP_DEG, ear)
         # 프로그램 한계에서는 선 옆으로 1.5 mm 넘게 남고, 멈춤 각에서도 선에 닿지 않는다
         assert min(post_soft, ear_soft) - j.WIRE_W / 2 > 1.5
         assert min(post_hard, ear_hard) - j.WIRE_W / 2 > 0.4
@@ -55,6 +58,19 @@ def test_wire_crosses_the_web_where_the_stop_never_sweeps() -> None:
     assert wr.exit_to_ear(0.0, j.STOP_DEG) - j.WIRE_W / 2 > 5.0
     # 손목 몸통의 가운데 홈과 링크의 선 창은 선 폭보다 넓고, 플러그는 창을 지나간다
     assert 2 * wrist.EXIT_HW > j.WIRE_W + 1.0
+    # 손목 몸통의 옆 홈과 링크 발의 선 틈도 선 폭(잰 값 4.75)보다 넓다. 긴 틈은 선을 세워 밀어 넣을 만큼 구멍과 겹친다
+    assert wrist.NOTCH[1] - wrist.NOTCH[0] > j.WIRE_W + 0.9
+    assert links.FOOT_SLOT_Z[1] - links.FOOT_SLOT_Z[0] > j.WIRE_W + 0.9
+    assert links.FOOT_SLOT_OPEN > j.WIRE_T + 0.9 and links.FOOT_SLOT_H > j.WIRE_T + 1.0
+    for foot in (links.STS_FOOT, links.SHOULDER_FOOT):
+        assert (
+            links.FOOT_SLOT_Z[1] <= foot.hw - links.WALL + 1e-9
+        )  # 발 상자의 안쪽 벽을 넘지 않는다
+    # 서보 먼 끝 밑의 길은 혼 볼트 머리와 목 안쪽 벽 사이이고, 선 폭이 겨우 든다
+    head_edge = max(abs(z) for _x, z in j.bolt_xz()) + 2.85
+    assert j.NECK_IN - head_edge > j.WIRE_W
+    assert wrist.SIDE_LANE == pytest.approx((head_edge + j.NECK_IN) / 2, abs=0.05)
+    assert wrist.HEAD > j.WIRE_T + 1.0
     assert 2 * j.WIN_Z >= wr.PLUG[2] + 1.0 and j.WIN_X[1] - j.WIN_X[0] >= wr.PLUG[1] + 0.5
     assert 2 * sp.WIN_Z >= wr.PLUG[2] + 1.0 and sp.WIN_X[1] - sp.WIN_X[0] >= wr.PLUG[1] + 0.5
 
@@ -64,14 +80,21 @@ def test_gap_under_the_brim_is_too_narrow_for_a_wire() -> None:
     assert j.LIP_GAP >= 0.6  # 도는 원판과 서 있는 원통 사이의 축 방향 틈
 
 
-def test_d405_cable_limits() -> None:
-    # 두 몸통 사이 층(5.8 mm)에 감기려면 선이 3.8 mm보다 가늘어야 한다
+def test_d405_cable_cannot_wrap_the_brims() -> None:
+    # 두 몸통 사이 층(5.8 mm)에 감기려면 선이 3.8 mm보다 가늘어야 한다. 가진 기본 선은 5.12 mm다
     assert wr.layer_height() == pytest.approx(j.GAP + j.BRIM_T)
     assert wr.d405_max_diameter() == pytest.approx(3.8)
-    assert wr.D405_THIN_D < wr.d405_max_diameter() < wr.D405_D
-    # 기본 선 1 m는 베이스의 띠 밑 누르개까지 닿지 않고, 2 m 선은 90 cm 넘게 남는다
+    assert wr.D405_D == pytest.approx(5.12)
+    assert wr.D405_D > wr.d405_max_diameter()
+    # 테에 감으면 범위 가운데에서 남는 선이 반지름 30 mm 아래의 고리가 된다. 움직이는 고리의 기준은 지름의 10배다
+    x = wr.crossings()
+    for name in ("J1", "J2", "J3", "J4", "J5"):
+        assert wr.d405_mid_loop(x[name], wr.D405_D) < 30.0 < wr.BEND_RATIO * wr.D405_D, name
+    # 고리 식: 반원(현 2R, 호 πR)이면 R이 나오고, 선이 두 끝 사이보다 짧으면 고리가 없다
+    assert wr.loop_radius(40.0, math.pi * 20.0) == pytest.approx(20.0, rel=1e-6)
+    assert wr.loop_radius(50.0, 40.0) == math.inf
+    # 기본 선 1 m는 가장 짧은 길(테에 감는 길)로도 베이스의 띠 밑 누르개까지 닿지 않는다
     assert sum(v for _, v in wr.d405_path(wr.D405_D)) > wr.D405_STOCK_MM
-    assert wr.D405_THIN_MM - sum(v for _, v in wr.d405_path(wr.D405_THIN_D)) > 900.0
 
 
 def test_wire_masses_for_the_arm_model() -> None:

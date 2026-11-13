@@ -45,12 +45,13 @@ def test_flange_turns_freely_and_stops_on_the_web(parts: list[j.Part]) -> None:
 
 @pytest.mark.slow
 def test_flange_clears_the_stop_ear_of_the_joint_before(parts: list[j.Part]) -> None:
-    # 손목 2 몸통이 앉은 J5 출력 원판의 멈춤 귀는 플랜지 쪽을 보고, 끝이 플랜지 면과 같은 높이까지 온다.
+    # 손목 2 몸통이 앉은 J5 출력 원판의 멈춤 귀는 플랜지 쪽을 보고, 끝이 플랜지 면 바로 밑(0.6 mm)까지 온다.
     # 플랜지 원판의 귀 둘과 어댑터 판, 손나사는 그 귀와 2 mm 넘게 떨어져 돈다
     before = wrist.parent_disc()
     ear = next(p for p in before if p.name == "앞 관절의 출력 원판")
     tip = ear.shape.bounding_box().max.Y
-    assert tip == pytest.approx(j.ATOP, abs=0.05)
+    assert tip == pytest.approx(wrist.AX_Y + j.R_POST + j.EAR_HW, abs=0.05)
+    assert 0.0 < j.ATOP - tip < 1.0
     # 바깥 상자끼리 3 mm 넘게 떨어진 쌍은 틈이 2 mm를 넘으니 재지 않는다 (지금은 모든 쌍이 그렇다)
     gaps = [
         shape.distance_to(b.shape)

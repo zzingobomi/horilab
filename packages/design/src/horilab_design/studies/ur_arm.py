@@ -23,7 +23,7 @@
     uv run python -m horilab_design.studies.ur_arm calib         # 손목 카메라의 캘리브레이션 자세 (0018)
 
 뒤에 키=값을 붙여 바꿔 볼 수 있다 (길이는 mm, 무게는 g):
-    shoulder=180 upper=230 fore=170 extra=30 tube_scale=0.62 plug=straight wires=0
+    shoulder=180 upper=230 fore=170 extra=30 tube_scale=0.62 plug=none wires=0
     ranges=,-160:160,-160:160,20:340,-160:160,-160:160
 """
 
@@ -76,12 +76,12 @@ BEARING_MASS: dict[ServoModel, float] = {
     "STS3250": 0.024,
     "ST-3120": 0.031,
 }  # NSK 카탈로그
-# 원통 속 부품과 나사: 누름 틀 4.1, 서보 받침 3.3, 뒷덮개 5.3, 벽 나사 3.9, 너트 1.5, 서보 뒷면 나사 0.8, 덮개 나사 1.8
+# 원통 속 부품과 나사: 누름 틀 4.1, 서보 받침 3.2, 뒷덮개 5.3, 벽 나사 3.9, 너트 1.5, 서보 뒷면 나사 0.8, 덮개 나사 1.8
 INNER_MASS = 21.0 * G
 WRIST_BODY_MASS = 26.6 * G  # 손목 몸통 (원통 옆의 돋움 둘 포함)
-# 자식 쪽: 출력 원판 11.8, 허브 판 1.4, 혼(가운데 나사 포함, 실측) 2.0, 혼 볼트 넷 5.4, 몸통 나사 넷 3.4, 너트 1.3,
+# 자식 쪽: 출력 원판 11.8, 허브 판 1.3, 혼(가운데 나사 포함, 실측) 2.0, 혼 볼트 넷 5.4, 몸통 나사 넷 3.4, 너트 1.3,
 # 멈춤 나사와 너트 1.2
-OUT_MASS = 26.5 * G
+OUT_MASS = 26.4 * G
 # 어깨 (uv run python -m horilab_design.parts.shoulder).
 # 부모 쪽: 집(J1 몸통의 윗부분) 54.7, 누름 틀 4.2, 서보 받침 9.2, 뒷덮개 12.3, 벽 나사 여섯 4.6, 너트 여섯 1.8,
 # 서보 뒷면 나사 여섯 2.9, 덮개 나사 둘 2.0
@@ -94,39 +94,39 @@ SHOULDER_OUT_MASS = 47.1 * G
 SHOULDER_PLANE = sp.J1_PLANE * MM
 # J1 관절 (uv run python -m horilab_design.parts.base). 돌림판 윗면의 높이는 그 쌓임에서 나온다
 TABLE_TOP = bp.TOP_H * MM
-# J1의 도는 쪽: 돌림판 34.5, 허브 4.5, 사이 고리 11.8, 혼 2.0, 조임 볼트와 와셔·혼 나사·멈춤 나사·J1 몸통 나사와 너트 23.9
-J1_TABLE_MASS = 76.8 * G
-# J1 몸통(89.3)에서 어깨 집(54.7, SHOULDER_HOUSE_MASS에 들었다)을 뺀 몫: 돌림판까지 내려온 목과 바닥판
-J1_FOOT_MASS = 34.6 * G
+# J1의 도는 쪽: 돌림판 34.5, 허브 4.2, 사이 고리 11.8, 혼 2.0, 조임 볼트와 와셔·혼 나사·멈춤 나사·J1 몸통 나사와 너트 23.9
+J1_TABLE_MASS = 76.4 * G
+# J1 몸통(89.8)에서 어깨 집(54.7, SHOULDER_HOUSE_MASS에 들었다)을 뺀 몫: 돌림판까지 내려온 목과 바닥판
+J1_FOOT_MASS = 35.1 * G
 # 링크 한 부품을 세 덩어리로 나눈 값: 끝 집 쪽 22.8 g(끝 관절 축에서 10 mm 앞 관절 쪽), 관(길이당 무게 × 관 길이.
-# 관은 발 상자 끝에서 끝 집의 목(축에서 40 mm)까지다), 발(앞 관절 축). 220 mm 위팔 92.9 g · 부피 중심 114.7 mm,
-# 180 mm 아래팔 72.2 g · 88.3 mm와 맞는다. 길이 후보를 견줄 때 관만 길어진다.
+# 관은 발 상자 끝에서 끝 집의 목(축에서 40 mm)까지다), 발(앞 관절 축). 220 mm 위팔 92.7 g · 부피 중심 114.4 mm,
+# 180 mm 아래팔 72.0 g · 87.9 mm와 맞는다. 길이 후보를 견줄 때 관만 길어진다.
 LINK_HOUSE_MASS = 22.8 * G
 LINK_TUBE: dict[
     str, tuple[float, float, float]
 ] = {  # (관 kg/m, 발 kg, 부피 중심의 서보 좌표 y [m])
-    "upper": (0.320, 22.7 * G, 0.0129),
-    "fore": (0.287, 16.7 * G, 0.0134),
+    "upper": (0.320, 22.4 * G, 0.0128),
+    "fore": (0.287, 16.7 * G, 0.0133),
 }
 D405_PLATE_MASS = 12.1 * G  # D405 받침 8.5 (parts/camera_mount.py)과 나사 넷, 너트 둘 3.6
-# J6의 자식 쪽 (uv run python -m horilab_design.parts.flange): 플랜지 원판 12.6, 허브 판 1.4, 혼 2.0, 혼 볼트 넷 5.4,
+# J6의 자식 쪽 (uv run python -m horilab_design.parts.flange): 플랜지 원판 12.6, 허브 판 1.3, 혼 2.0, 혼 볼트 넷 5.4,
 # 너트 둘 0.7, 멈춤 나사와 너트 1.2, 도구 핀 둘 2.2. 손나사 둘과 손잡이는 도구의 무게에 들어 있다
-FLANGE_MASS = 25.5 * G
+FLANGE_MASS = 25.4 * G
 # 평행 그리퍼의 무게 덩어리 (uv run python -m horilab_design.parts.gripper): (무게 kg, 도구 좌표의 무게 중심 mm).
 # 도구 좌표는 x가 손가락이 벌어지는 쪽(J6의 멈춤 귀 쪽), H가 플랜지 면에서 도구 쪽, z가 D405의 반대쪽이다
 GRIPPER_LUMPS: dict[str, tuple[float, Vec3]] = {
-    "몸통, 손나사, 선": (25.8 * G, (-6.9, 12.5, 0.7)),
-    "서보와 혼": (58.65 * G, (-12.8, 24.4, 0.0)),
-    "랙 집과 속 부품, 나사": (37.9 * G, (1.0, 47.0, 0.0)),
+    "몸통, 손나사, 선": (25.8 * G, (-6.9, 12.7, 0.7)),
+    "서보와 혼": (58.65 * G, (-12.8, 24.5, 0.0)),
+    "랙 집과 속 부품, 나사": (37.0 * G, (1.0, 47.2, 0.0)),
     "손가락": (7.2 * G, (0.0, 71.5, 0.0)),
 }
-# D405의 옆면에서 선이 굽기 시작하는 곳까지 [m] (가정: parts/camera_mount.py의 PLUG_*). 기본은 ㄱ자 플러그다
+# D405의 옆면에서 선이 굽기 시작하는 곳까지 [m] (가정: parts/camera_mount.py의 PLUG_*). 가진 기본 선의 곧은
+# 플러그다 (새 선은 사지 않는다, 0031)
 PLUGS = {
-    "angled": cmt.PLUG_ANGLED * MM,
     "straight": (cmt.PLUG_LEN + cmt.PLUG_RELIEF) * MM,
     "none": 0.0,
 }
-PLUG_NAMES = {"angled": "ㄱ자", "straight": "곧은 것", "none": "없음"}
+PLUG_NAMES = {"straight": "곧은 것", "none": "없음"}
 HEAD = wp.HEAD * MM  # 출력 원판 윗면에서 다음 서보 먼 끝까지
 # 발 상자의 (반 길이, 반폭, 윗모서리를 깎은 깊이): 위팔은 어깨 출력 원판에, 아래팔은 STS 출력 원판에 앉는다
 FEET = {
@@ -137,7 +137,6 @@ NECK_HW = jp.NECK_HW * MM  # STS 집의 목 반폭
 SCREW_HEAD = 1.65 * MM  # M3 둥근머리의 높이
 EAR_T = jp.EAR_T * MM  # 자식 몸통의 귀 (출력 원판과 같은 원)
 PIN_UP = 3.0 * MM  # 영점 핀이 귀 위로 나온 길이
-EAR_HW = 4.6 * MM  # 멈춤 기둥 귀의 반폭
 PIN_HW = 4.4 * MM  # 영점 핀 귀의 반폭
 STOP_SCREW = (1.8 * MM, 10.0 * MM)  # 멈춤 나사 M3 × 10: 머리 자리의 깊이, 길이
 # 도구 좌표 (x, H, z)를 링크 6 좌표 (-z, 플랜지 면 + H, x)로 옮기는 회전
@@ -204,9 +203,9 @@ class Concept:
     sign4: int = 1  # J4 출력이 보는 쪽 (+1: 위팔 쪽으로 돌아온다)
     tube_scale: float = 1.0  # 관 무게에 곱하는 값 (벽을 얇게 할 때)
     extra: float = 0.0  # 플랜지에 더 다는 무게 [kg] (형상에 없는 것: 선, 나사)
-    # D405의 플러그 (PLUGS): "angled"(ㄱ자, 가정), "straight"(가진 곧은 플러그 선), "none"(넣지 않음).
+    # D405의 플러그 (PLUGS): "straight"(가진 곧은 플러그 선), "none"(넣지 않음).
     # 커넥터가 있는 옆면은 J5 쪽을 본다 (0029)
-    plug: str = "angled"
+    plug: str = "straight"
     wires: bool = True  # 선의 무게를 넣는다 (0031)
     ranges_deg: tuple[tuple[float, float], ...] = DEFAULT_RANGES  # (가운데, 반폭)
 
@@ -465,12 +464,15 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
         f = m.frame()
         volumes = [(x1 - x0) * (y1 - y0) * (z1 - z0) for x0, x1, y0, y1, z0, z1 in shape.zones]
         mass = servo_mass(model, servos, measured)
+        # STS 서보의 외형(packaging.py)은 혼 윗면을 두께 32인 뒷면에서 잰 것으로 읽은 자리다. 관절 CAD는 낮은
+        # 뒷면에서 잰 것으로 읽어(docs/hardware.md의 "혼 높이") 몸통이 그보다 뒤에 있다
+        dy = 0.0 if model == "ST-3120" else (jp.L1 - pk.STS_BACK) * MM
         for k, (x0, x1, y0, y1, z0, z1) in enumerate(shape.zones):
             b.box(
                 j - 1,
                 f"J{j}/servo_{k}",
-                (x0, y0, z0),
-                (x1, y1, z1),
+                (x0, y0 + dy, z0),
+                (x1, y1 + dy, z1),
                 material="servo",
                 mass=mass * volumes[k] / sum(volumes),
                 frame=f,
@@ -585,11 +587,12 @@ def build(c: Concept, tool: Tool) -> tuple[Robot, list[Prim]]:
         )
         # 멈춤 기둥의 귀: 출력 원판 테에서 가까운 끝 쪽(관절 각 0)으로 나온다
         r_post = cad.R_POST * MM
+        ear_hw = cad.EAR_HW * MM  # 멈춤 기둥 귀의 반폭
         b.box(
             j,
             f"J{j}/stopear",
-            (s.radius - 3.6 * MM, s.seam, -EAR_HW),
-            (r_post + EAR_HW, s.atop, EAR_HW),
+            (s.radius - 3.6 * MM, s.seam, -ear_hw),
+            (r_post + ear_hw, s.atop, ear_hw),
             mass=0.0,
             frame=fs,
             group=group,

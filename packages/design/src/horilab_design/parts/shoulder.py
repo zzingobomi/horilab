@@ -125,6 +125,7 @@ PAD_GAP = 0.35
 
 # ---- 기계 멈춤, 영점 핀, 위팔 나사 ----
 R_POST = R_DRUM + 4.4  # 멈춤 기둥 중심 33.0
+EAR_HW = 4.6  # 멈춤 기둥 귀의 반폭 (원판이 커서 STS 관절보다 넓게 둬도 선과 1.6 mm 뜬다)
 POST_TIP = SEAM - 4.5  # 기둥 돋움의 끝. 그 아래 너트 2.4
 WEB_HALF = 180.0 - j.STOP_DEG - math.degrees(math.asin(j.BOSS_R / R_POST))  # 살의 반각 11.4°
 CH_R1 = R_POST + 4.8  # 홈 바깥 반지름
@@ -272,7 +273,8 @@ def out_disc() -> Compound:
     a += cyl_y(R_DRUM, SEAM, ATOP)
     # 선이 틈으로 빠지지 않게 막는 테두리 (joint.py의 출력 원판과 같다)
     a += j.ring(R_DRUM, R_DRUM - j.LIP_W, FRONT + j.LIP_GAP, SEAM + 0.01)
-    a += box(R_DRUM - 3.6, R_POST, SEAM, ATOP, -4.6, 4.6) + cyl_y(4.6, SEAM, ATOP, R_POST, 0.0)
+    a += box(R_DRUM - 3.6, R_POST, SEAM, ATOP, -EAR_HW, EAR_HW)
+    a += cyl_y(EAR_HW, SEAM, ATOP, R_POST, 0.0)
     a += cyl_y(j.BOSS_R, POST_TIP, SEAM + 0.01, R_POST, 0.0)  # 멈춤 기둥 (속에 M3 나사)
     a -= cyl_y(j.M3_FREE / 2, POST_TIP - 1, ATOP + 1, R_POST, 0.0)
     a -= cyl_y(3.1, ATOP - 1.8, ATOP + 1, R_POST, 0.0)  # 기둥 나사 머리 자리

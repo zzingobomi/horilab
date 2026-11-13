@@ -57,8 +57,9 @@ HOUSE_HW = WALL_IN + TUB_WALL  # 랙 집의 반폭 18.31
 ADAPTER_T = flange.ADAPTER_T  # 6.2
 BACK_GAP = 2.0  # 판 밑면과 서보 뒷면 사이 (서보 뒷면 보스는 판 속 자리에 든다)
 H_BACK = ADAPTER_T + BACK_GAP  # 서보의 두께 32인 뒷면 8.2
+H_PLUG = H_BACK - (j.L1 - j.PLUG_TOP)  # 꽂은 플러그의 뒤 끝 (뒷면에서 2.6 나온다) 5.6
 H_FRONT = H_BACK + (j.F32 - j.L1)  # 서보의 두께 32인 앞면 = 바닥판 윗면 40.2
-H_HORN = H_BACK + (j.HORN_TOP[MODEL] - j.L1)  # 혼 윗면 41.41
+H_HORN = H_BACK + (j.HORN_TOP[MODEL] - j.L1)  # 혼 윗면 42.91 (바닥판 밑면보다 0.3 나온다)
 FLOOR_T = 2.4
 H_FLOOR = H_FRONT + FLOOR_T  # 바닥판 밑면 = 통로 천장 42.6
 SLIDE_GAP = 0.1  # 받침과 통로의 위아래 틈 (한쪽)
@@ -74,6 +75,8 @@ PIN_FACE = (H_FLOOR + 0.4, H_PLATE0 - 0.4)  # 피니언 이의 높이 범위 43.
 HUB_R = 10.0  # 피니언이 혼에 앉는 목 (혼 볼트 구멍 둘레를 덮는다)
 PINION_SCREWS = (8.0, 6.0)  # 혼 볼트로 쓸 길이 후보 (가진 것)
 HEAD_REC = 1.95  # 나사 머리(높이 1.65)가 면 밑으로 들어가는 깊이
+# 피니언 밑의 혼 가운데 나사 머리 자리: 반지름과 깊이 (머리는 지름 5.15, 혼 윗면 위로 2.0까지)
+HORN_HEAD_REC = (3.3, j.HEAD_H + 0.5)
 
 # ---- 손가락 ----
 STROKE = 30.0  # 손가락 하나가 가는 거리 (열림 폭 60 mm)
@@ -125,8 +128,8 @@ SERVO_GAP = 0.3  # 서보 둘레 여유
 CRADLE_X = (-j.FAR - SERVO_GAP, j.NEAR + SERVO_GAP)  # 틀 안쪽 (-35.41, 10.41)
 CRADLE_Z = j.HW + SERVO_GAP  # 12.66
 WALL = 2.0
-# 틀의 서보 먼 끝 쪽 밑을 45°로 깎기 시작하는 자리 (축에서). 앞 관절(J5) 출력 원판의 멈춤 귀 끝이 플랜지 면과
-# 같은 높이까지, 축에서 37.7 mm부터 온다. J6가 돌 때 틀의 밑이 그 위를 2 mm 넘게 띄우고 지나가게 한다
+# 틀의 서보 먼 끝 쪽 밑을 45°로 깎기 시작하는 자리 (축에서). 앞 관절(J5) 출력 원판의 멈춤 귀 끝이 플랜지 면
+# 바로 밑(0.6 mm)까지, 축에서 37.7 mm부터 온다. J6가 돌 때 틀의 밑이 그 위를 2 mm 넘게 띄우고 지나가게 한다
 RELIEF_X = 31.0
 NOTCH_X = -10.8  # 판을 튼 자리의 안쪽 끝 (커넥터 구멍은 x -16.3 ~ -11.7)
 NOTCH_HW = 10.5
@@ -148,7 +151,6 @@ TUB_CHAMFER = 2.0  # 랙 집 밑 긴 모서리를 깎은 길이 (D405가 그 모
 SLOT_NUT = (5.6, 2.8)  # 옆에서 밀어 넣는 너트 홈 (임시: 검정 시험편 값으로 바꾼다)
 PROVISIONAL = (
     "SLOT_NUT (검정 fit1 너트 홈)",
-    "혼 높이 (hardware.md의 '혼 높이': 피니언의 목 길이와 나사 길이가 따라 바뀐다)",
     "가진 M3 × 12 (손가락, 귀)와 M3 × 8 수량",
     *j.PROVISIONAL[3:],
 )
@@ -233,7 +235,7 @@ def pinion_turn(opening: float) -> float:
 
 
 def pinion_screw() -> tuple[float, float]:
-    """피니언을 혼에 묶는 나사의 (길이, 혼에 물린 길이). 혼의 테는 2.5 mm이고 그 뒤로 1.7 mm가 비어 있다."""
+    """피니언을 혼에 묶는 나사의 (길이, 혼에 물린 길이). 혼의 테는 2.5 mm이고 그 뒤로 1.7 mm가 비어 있다 (STS3215)."""
     length = PIN_FACE[1] - H_HORN
     for screw in PINION_SCREWS:
         bite = screw + HEAD_REC - length
@@ -379,7 +381,8 @@ def pinion() -> Compound:
     for x, z in j.bolt_xz():
         p = solid(p - cyl_y(j.M3_FREE / 2, _y(H_HORN) - 1, y1 + 1, x, z))
         p = solid(p - cyl_y(3.1, y1 - HEAD_REC, y1 + 1, x, z))
-    p = solid(p - cyl_y(3.3, _y(H_HORN) - 0.01, _y(H_HORN) + 1.3))  # 혼 가운데 나사 머리
+    r_head, d_head = HORN_HEAD_REC
+    p = solid(p - cyl_y(r_head, _y(H_HORN) - 1, _y(H_HORN) + d_head))  # 혼 가운데 나사 머리
     return p
 
 
@@ -481,7 +484,7 @@ def servo_parts() -> dict[str, Compound]:
     """서보 몸통, 혼, 꽂은 플러그 (검사와 그림에 쓴다)."""
     sv = j.servo(MODEL)
     dy = _y(H_HORN) - j.SEAT
-    plug = box(-16.6, -11.85, _y(H_BACK - 4.2), _y(H_BACK + 0.5), PLUG_Z[0], PLUG_Z[1])
+    plug = box(-16.6, -11.85, _y(H_PLUG), _y(H_BACK + 0.5), PLUG_Z[0], PLUG_Z[1])
     return {
         "body": solid(Pos(0, dy, 0) * sv["body"]),
         "horn": solid(Pos(0, dy, 0) * sv["horn"]),
@@ -745,7 +748,7 @@ def mass_centers() -> dict[str, Lump]:
     sv = servo_parts()
     car, fin = carriage(), finger()
     hand = [p for p in flange.hardware() if p.name.startswith(("손나사", "손잡이"))]
-    plug_at = (-14.2, H_BACK - 4.2, (PLUG_Z[0] + PLUG_Z[1]) / 2)
+    plug_at = (-14.2, H_PLUG, (PLUG_Z[0] + PLUG_Z[1]) / 2)
     body = [(grams["gripper_frame"], at(made["gripper_frame"][0])), (CABLE_G, plug_at)]
     house = [(grams[n], at(made[n][0])) for n in ("gripper_floor", "gripper_tub", "gripper_pinion")]
     house += [(grams["gripper_slider"], at(c)) for c in (car, _flip(car))]
