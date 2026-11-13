@@ -7,5 +7,5 @@ pub mod fake;
 mod packet;
 pub mod registers;
 
-pub use bus::{Bus, Error, LinkStats, Port, Reply, ScanResult, SerialLink, SyncRead};
+pub use bus::{Bus, Error, LinkStats, Port, Reply, ScanResult, SerialLink, ServoBus, SyncRead};
 pub use registers::{Area, Encoding, Fault, Register};

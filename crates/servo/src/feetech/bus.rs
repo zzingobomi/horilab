@@ -670,3 +670,65 @@ fn to_bytes(register: Register, value: i32) -> Result<Vec<u8>, Error> {
         vec![low, high]
     })
 }
+
+/// 서보와 거래하는 버스 ([0033](../../../../docs/decisions/0033-planning-and-simulation.md)): 실물 Feetech 버스와
+/// 시뮬레이션이 같은 거래를 낸다. 관절 층과 실행 루프는 이 거래만 쓰므로, 그 위의 코드(ID 대응, 영점·방향 변환,
+/// 보호 비트, 통신 실패, 실행 루프)가 실물과 시뮬레이션에서 같다.
+pub trait ServoBus {
+    /// 서보가 응답하면 모델 번호.
+    fn ping(&mut self, id: u8) -> Result<u16, Error>;
+    /// 한 서보의 레지스터들을 읽는다.
+    fn read(&mut self, id: u8, registers: &[Register]) -> Result<Reply, Error>;
+    /// 여러 서보의 같은 레지스터들을 한 번에 읽는다. 서보마다 결과다.
+    fn sync_read(&mut self, ids: &[u8], registers: &[Register]) -> Result<SyncRead, Error>;
+    /// RAM 레지스터 하나를 쓰고 응답의 상태 바이트를 받는다.
+    fn write(&mut self, id: u8, register: Register, value: i32) -> Result<Fault, Error>;
+    /// 여러 서보의 같은 RAM 레지스터를 한 번에 쓴다.
+    fn sync_write(&mut self, register: Register, values: &[(u8, i32)]) -> Result<(), Error>;
+    /// 잠근 채 바꿔 보기 (전원을 끄면 사라진다).
+    fn write_trial(&mut self, id: u8, values: &[(Register, i32)]) -> Result<(), Error>;
+    /// 주소 0부터 메모리 표 끝까지의 바이트.
+    fn dump(&mut self, id: u8) -> Result<Vec<u8>, Error>;
+    /// 서보마다 통신 성적. 안전 검사는 연속 실패를 본다.
+    fn stats(&self) -> &BTreeMap<u8, LinkStats>;
+    /// 기다린다.
+    fn pause(&mut self, duration: Duration);
+}
+
+impl<P: Port> ServoBus for Bus<P> {
+    fn ping(&mut self, id: u8) -> Result<u16, Error> {
+        Bus::ping(self, id)
+    }
+
+    fn read(&mut self, id: u8, registers: &[Register]) -> Result<Reply, Error> {
+        Bus::read(self, id, registers)
+    }
+
+    fn sync_read(&mut self, ids: &[u8], registers: &[Register]) -> Result<SyncRead, Error> {
+        Bus::sync_read(self, ids, registers)
+    }
+
+    fn write(&mut self, id: u8, register: Register, value: i32) -> Result<Fault, Error> {
+        Bus::write(self, id, register, value)
+    }
+
+    fn sync_write(&mut self, register: Register, values: &[(u8, i32)]) -> Result<(), Error> {
+        Bus::sync_write(self, register, values)
+    }
+
+    fn write_trial(&mut self, id: u8, values: &[(Register, i32)]) -> Result<(), Error> {
+        Bus::write_trial(self, id, values)
+    }
+
+    fn dump(&mut self, id: u8) -> Result<Vec<u8>, Error> {
+        Bus::dump(self, id)
+    }
+
+    fn stats(&self) -> &BTreeMap<u8, LinkStats> {
+        Bus::stats(self)
+    }
+
+    fn pause(&mut self, duration: Duration) {
+        Bus::pause(self, duration);
+    }
+}

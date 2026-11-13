@@ -15,7 +15,7 @@
 //!   닿으면 닿음, 그 전에 막혀 부하가 오르면 잡음이다 (0023). 정지나 고장에도 쥔 채 둔다.
 //! - 시간은 부르는 쪽이 준다. 실물에서는 주기마다, 시험에서는 가짜 시계로 [`RunLoop::tick`]을 부른다.
 
-use horilab_servo::feetech::Port;
+use horilab_servo::feetech::ServoBus;
 
 use crate::joints::{Joints, MAX_FAILURES, Snapshot};
 use crate::settings::{GripperSettings, LoopSettings};
@@ -76,8 +76,8 @@ struct Playing {
 }
 
 /// 실행 루프.
-pub struct RunLoop<P: Port> {
-    joints: Joints<P>,
+pub struct RunLoop<B: ServoBus> {
+    joints: Joints<B>,
     /// 팔 관절의 서보 ID (궤적의 관절 순서)
     ids: Vec<u8>,
     settings: LoopSettings,
@@ -96,11 +96,11 @@ pub struct RunLoop<P: Port> {
     missed: u64,
 }
 
-impl<P: Port> RunLoop<P> {
+impl<B: ServoBus> RunLoop<B> {
     /// 관절 층의 서보를 모두 켜거나 이어받고(0009의 시작 절차), 지금 목표를 붙잡는다. 영점을 잰 로봇 관절만
     /// 받는다. 그리퍼가 있으면 그 서보도 관절 층에 있어야 한다.
     pub fn start(
-        mut joints: Joints<P>,
+        mut joints: Joints<B>,
         settings: LoopSettings,
         gripper: Option<&GripperSettings>,
     ) -> Result<Self, String> {
@@ -581,6 +581,7 @@ fn sample(trajectory: &Trajectory, time: f64) -> (Vec<f64>, bool) {
 
 #[cfg(test)]
 mod tests {
+    use horilab_servo::feetech::Bus;
     use horilab_servo::feetech::fake::{FakePort, FakeServo, open_fake_bus};
     use horilab_servo::feetech::registers as reg;
 
@@ -602,7 +603,7 @@ mod tests {
     const DT: f64 = 0.01;
 
     /// J3과 J4 (둘 다 옛 시험의 J3 한계 -30°~118°, 영점 2048에서 0°)
-    fn two_joints_with(settings: LoopSettings) -> RunLoop<FakePort> {
+    fn two_joints_with(settings: LoopSettings) -> RunLoop<Bus<FakePort>> {
         let j3 = Settings::parse(TEST_J3)
             .unwrap()
             .joint("j3")
@@ -632,7 +633,7 @@ mod tests {
         .unwrap()
     }
 
-    fn two_joints() -> RunLoop<FakePort> {
+    fn two_joints() -> RunLoop<Bus<FakePort>> {
         two_joints_with(SETTINGS)
     }
 
@@ -642,16 +643,16 @@ mod tests {
         }
     }
 
-    fn fake(run: &mut RunLoop<FakePort>, index: usize) -> &mut FakeServo {
+    fn fake(run: &mut RunLoop<Bus<FakePort>>, index: usize) -> &mut FakeServo {
         &mut run.joints.wire().servos[index]
     }
 
-    fn position(run: &mut RunLoop<FakePort>, index: usize) -> i32 {
+    fn position(run: &mut RunLoop<Bus<FakePort>>, index: usize) -> i32 {
         fake(run, index).get(reg::PRESENT_POSITION)
     }
 
     /// 붙잡을 때까지 박자를 돌린다 (넉넉히 1000박자까지).
-    fn until_holding(run: &mut RunLoop<FakePort>) {
+    fn until_holding(run: &mut RunLoop<Bus<FakePort>>) {
         for _ in 0..1000 {
             if run.tick(DT) == &Mode::Holding {
                 return;
@@ -893,7 +894,7 @@ mod tests {
     }
 
     /// J3과 그리퍼(ID 11, 닫은 자리 2048)
-    fn with_gripper() -> RunLoop<FakePort> {
+    fn with_gripper() -> RunLoop<Bus<FakePort>> {
         let settings = Settings::parse(&format!("{TEST_J3}{TEST_GRIPPER}")).unwrap();
         let gripper = settings.gripper.clone().unwrap();
         let mut j3 = settings.joint("j3").unwrap().clone();
@@ -915,7 +916,7 @@ mod tests {
         RunLoop::start(joints, SETTINGS, Some(&gripper)).unwrap()
     }
 
-    fn until_grip_settles(run: &mut RunLoop<FakePort>) -> Grip {
+    fn until_grip_settles(run: &mut RunLoop<Bus<FakePort>>) -> Grip {
         for _ in 0..1000 {
             run.tick(DT);
             let (_, state) = run.gripper().unwrap();

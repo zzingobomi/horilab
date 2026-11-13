@@ -328,7 +328,10 @@ fn apply(options: &Options) -> Result<(), String> {
 }
 
 /// 맨 서보 하나를 연다: 응답하는 모델을 읽어 맨 서보로 관절 층을 만든다. 서보가 응답하지 않으면 없다.
-fn open_bench(options: &Options, id: u8) -> Result<Option<(Joints<SerialLink>, u16)>, String> {
+/// 시리얼 어댑터에 물린 서보의 관절 층.
+type SerialJoints = Joints<Bus<SerialLink>>;
+
+fn open_bench(options: &Options, id: u8) -> Result<Option<(SerialJoints, u16)>, String> {
     let port = options.port.as_deref().unwrap_or_default();
     let mut bus = Bus::open(port, BAUD_RATES[0].1, LATENCY).map_err(|e| e.to_string())?;
     let model = match bus.ping(id) {

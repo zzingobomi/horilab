@@ -38,7 +38,7 @@ horilab/
 ├── Cargo.toml, rust-toolchain.toml   Rust 워크스페이스 (로봇 쪽 프로그램)
 ├── crates/
 │   ├── servo/        서보 버스: 메모리 표, 동기 읽기·쓰기, EEPROM 절차, 가짜 서보 (0024)
-│   ├── controller/   컨트롤러: 실행 루프, 안전 검사, 조종권, API 서버(펜던트 화면, WSS), 기록, 서보 준비·맨 서보 확인 명령
+│   ├── controller/   컨트롤러: 실행 루프, 안전 검사, 경로 계획(IK, 궤적, 0033), 조종권, API 서버(펜던트 화면, WSS), 기록, 서보 준비·맨 서보 확인 명령
 │   └── bench/        파이에서 미리 재는 시험 프로그램: 교차 빌드 확인, 실행 루프 부하 시험 (0026)
 ├── pendant/          펜던트 화면 (웹, R3F). 컨트롤러가 HTTPS로 내보낸다 (0023)
 ├── pyproject.toml, uv.lock, .python-version   Python 워크스페이스 (PC)

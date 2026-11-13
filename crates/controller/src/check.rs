@@ -17,8 +17,8 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use horilab_servo::feetech::Port;
 use horilab_servo::feetech::registers::{self as reg, Area, Fault, Register};
+use horilab_servo::feetech::{Bus, Port};
 use serde_json::{Map, Value, json};
 
 use crate::joints::{Enabled, Joints, Snapshot};
@@ -434,7 +434,7 @@ fn first_time(points: &[(f64, Snapshot)], condition: impl Fn(&Snapshot) -> bool)
 
 /// 맨 서보 확인 하나.
 pub struct Check<P: Port, C: Console, K: Clock> {
-    joints: Joints<P>,
+    joints: Joints<Bus<P>>,
     id: u8,
     console: C,
     clock: K,
@@ -448,7 +448,7 @@ pub struct Check<P: Port, C: Console, K: Clock> {
 }
 
 impl<P: Port, C: Console, K: Clock> Check<P, C, K> {
-    pub fn new(joints: Joints<P>, id: u8, console: C, clock: K, log: Log) -> Self {
+    pub fn new(joints: Joints<Bus<P>>, id: u8, console: C, clock: K, log: Log) -> Self {
         Self {
             joints,
             id,
@@ -1301,7 +1301,7 @@ pub fn ask_situation(console: &mut dyn Console) -> Option<&'static str> {
 ///
 /// `previous`는 그 확인의 results다. 잠금 단계에서 바꾼 P 게인과, 처음에 뜬 덤프의 EEPROM을 지금과 견준다.
 pub fn state_report<P: Port>(
-    joints: &mut Joints<P>,
+    joints: &mut Joints<Bus<P>>,
     id: u8,
     console: &mut dyn Console,
     previous: Option<&Value>,
@@ -1423,7 +1423,7 @@ mod tests {
         path
     }
 
-    fn bench(servo: FakeServo) -> Joints<FakePort> {
+    fn bench(servo: FakeServo) -> Joints<Bus<FakePort>> {
         let id = servo.id();
         Joints::open(
             open_fake_bus([servo]),

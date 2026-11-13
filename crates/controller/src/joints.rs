@@ -14,9 +14,9 @@
 
 use std::time::Duration;
 
+use horilab_servo::feetech::ServoBus;
 use horilab_servo::feetech::bus::Reply;
 use horilab_servo::feetech::registers::{self as reg, Fault, Register};
-use horilab_servo::feetech::{Bus, Port};
 
 use crate::prepare::model_name;
 use crate::settings::{Calibration, Joint};
@@ -216,16 +216,16 @@ const SNAPSHOT: [Register; 14] = [
 ];
 
 /// 관절 층: 버스 하나와 그 위의 서보들.
-pub struct Joints<P: Port> {
-    bus: Bus<P>,
+pub struct Joints<B: ServoBus> {
+    bus: B,
     servos: Vec<Servo>,
     caps: Caps,
     stopped: Option<String>,
 }
 
-impl<P: Port> Joints<P> {
+impl<B: ServoBus> Joints<B> {
     /// 서보마다 응답과 모델을 확인하고 연다.
-    pub fn open(mut bus: Bus<P>, servos: Vec<Servo>, caps: Caps) -> Result<Self, String> {
+    pub fn open(mut bus: B, servos: Vec<Servo>, caps: Caps) -> Result<Self, String> {
         for servo in &servos {
             let model = bus
                 .ping(servo.id)
@@ -347,7 +347,7 @@ fn snapshot_of(reply: &Reply) -> Snapshot {
     }
 }
 
-impl<P: Port> Joints<P> {
+impl<B: ServoBus> Joints<B> {
     /// EEPROM이나 RAM 레지스터를 읽는다 (서보를 움직이지 않는다).
     pub fn read(&mut self, id: u8, registers: &[Register]) -> Result<Vec<(Register, i32)>, String> {
         let name = self.servo(id)?.name.clone();
@@ -509,7 +509,7 @@ impl<P: Port> Joints<P> {
 }
 
 #[cfg(test)]
-impl Joints<horilab_servo::feetech::fake::FakePort> {
+impl Joints<horilab_servo::feetech::Bus<horilab_servo::feetech::fake::FakePort>> {
     /// 시험에서 가짜 서보 상태를 보고 고장을 넣는다.
     pub(crate) fn wire(&mut self) -> &mut horilab_servo::feetech::fake::FakeWire {
         self.bus.wire()
@@ -518,12 +518,13 @@ impl Joints<horilab_servo::feetech::fake::FakePort> {
 
 #[cfg(test)]
 mod tests {
+    use horilab_servo::feetech::Bus;
     use horilab_servo::feetech::fake::{FakePort, FakeServo, open_fake_bus};
 
     use super::*;
     use crate::settings::{Direction, Settings, TEST_J3};
 
-    fn bench(servo: FakeServo) -> Joints<FakePort> {
+    fn bench(servo: FakeServo) -> Joints<Bus<FakePort>> {
         let id = servo.id();
         Joints::open(
             open_fake_bus([servo]),
