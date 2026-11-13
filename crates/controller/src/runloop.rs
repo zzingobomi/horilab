@@ -11,12 +11,14 @@
 //!   자세가 정해지면 그리로 내린다, 0028). 알림 기준을 넘은 온도와 기준보다 낮은 전압은 알린다.
 //! - 처짐 보정: 붙잡고 있는 동안 서보가 읽은 위치와 목표의 차이를 쌓아 쓰는 목표를 고친다 (0012). 움직이는
 //!   동안에는 쌓은 값을 그대로 쓰고, 이득이 0이면 끈다.
+//! - 그리퍼 서보는 관절과 같은 박자로 읽고 쓴다. 명령은 열림 폭이고, 정한 빠르기로 그 폭까지 간다. 목표 폭에
+//!   닿으면 닿음, 그 전에 막혀 부하가 오르면 잡음이다 (0023). 정지나 고장에도 쥔 채 둔다.
 //! - 시간은 부르는 쪽이 준다. 실물에서는 주기마다, 시험에서는 가짜 시계로 [`RunLoop::tick`]을 부른다.
 
 use horilab_servo::feetech::Port;
 
 use crate::joints::{Joints, MAX_FAILURES, Snapshot};
-use crate::settings::LoopSettings;
+use crate::settings::{GripperSettings, LoopSettings};
 
 /// 시간이 붙은 관절 궤적: 점마다 시작에서의 시각 [s]과 관절 각 [rad] (루프의 관절 순서).
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +39,34 @@ pub enum Mode {
     Fault(String),
 }
 
+/// 그리퍼의 상태.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Grip {
+    /// 명령을 기다린다
+    Idle,
+    /// 목표 폭으로 가는 중
+    Moving,
+    /// 목표 폭에 닿았다 (가는 길에 막힌 것이 없었다). 열림 폭 [mm]
+    Reached(f64),
+    /// 목표 폭 전에 막혀 부하가 올랐다: 잡았다. 열림 폭 [mm]
+    Grasped(f64),
+}
+
+struct Gripper {
+    id: u8,
+    /// 피니언 반지름 [mm]: 열림 폭 = 2 × 반지름 × 각
+    radius: f64,
+    max_width: f64,
+    /// 열고 닫는 빠르기 [mm/s]
+    speed: f64,
+    tolerance: f64,
+    /// 지금 쓰는 목표 각 [rad] (닫은 자리에서)
+    goal: f64,
+    /// 가려는 열림 폭 [mm]
+    target: f64,
+    state: Grip,
+}
+
 struct Playing {
     trajectory: Trajectory,
     /// 궤적 안의 시각 [s]
@@ -48,8 +78,10 @@ struct Playing {
 /// 실행 루프.
 pub struct RunLoop<P: Port> {
     joints: Joints<P>,
+    /// 팔 관절의 서보 ID (궤적의 관절 순서)
     ids: Vec<u8>,
     settings: LoopSettings,
+    gripper: Option<Gripper>,
     /// 지금 따르는 목표 [rad] (관절 순서)
     targets: Vec<f64>,
     /// 처짐 보정 [rad]: 서보에 쓰는 목표는 targets + corrections다
@@ -66,10 +98,14 @@ pub struct RunLoop<P: Port> {
 
 impl<P: Port> RunLoop<P> {
     /// 관절 층의 서보를 모두 켜거나 이어받고(0009의 시작 절차), 지금 목표를 붙잡는다. 영점을 잰 로봇 관절만
-    /// 받는다.
-    pub fn start(mut joints: Joints<P>, settings: LoopSettings) -> Result<Self, String> {
-        let ids = joints.ids();
-        for &id in &ids {
+    /// 받는다. 그리퍼가 있으면 그 서보도 관절 층에 있어야 한다.
+    pub fn start(
+        mut joints: Joints<P>,
+        settings: LoopSettings,
+        gripper: Option<&GripperSettings>,
+    ) -> Result<Self, String> {
+        let all = joints.ids();
+        for &id in &all {
             if joints.servo(id)?.is_bench() {
                 return Err(format!(
                     "서보 {id}: 실행 루프는 영점을 잰 로봇 관절만 다룬다"
@@ -77,10 +113,31 @@ impl<P: Port> RunLoop<P> {
             }
             joints.enable(id)?;
         }
+        let gripper_id = gripper.map(|g| g.joint.id);
+        if let Some(id) = gripper_id
+            && !all.contains(&id)
+        {
+            return Err(format!("그리퍼 서보 {id}가 관절 층에 없다"));
+        }
+        let ids = all
+            .into_iter()
+            .filter(|&id| Some(id) != gripper_id)
+            .collect();
+        let gripper = gripper.map(|g| Gripper {
+            id: g.joint.id,
+            radius: g.pinion_radius,
+            max_width: g.max_width,
+            speed: g.speed,
+            tolerance: g.grasp_tolerance,
+            goal: 0.0,
+            target: 0.0,
+            state: Grip::Idle,
+        });
         let mut run = Self {
             joints,
             ids,
             settings,
+            gripper,
             targets: Vec::new(),
             corrections: Vec::new(),
             states: Vec::new(),
@@ -105,6 +162,30 @@ impl<P: Port> RunLoop<P> {
     /// 마지막 박자에 읽은 상태.
     pub fn states(&self) -> &[(u8, Snapshot)] {
         &self.states
+    }
+
+    /// 그리퍼의 열림 폭 [mm](마지막에 읽은 위치)과 상태. 그리퍼가 없으면 없다.
+    pub fn gripper(&self) -> Option<(f64, Grip)> {
+        let gripper = self.gripper.as_ref()?;
+        let width = self.width_now(gripper.id, gripper.radius)?;
+        Some((width, gripper.state))
+    }
+
+    /// 그리퍼를 열림 폭 `width` [mm]로 움직인다. 가는 길에 막혀 부하가 오르면 잡은 것이다 (박스를 안에서
+    /// 벌려 잡을 때도 같다, 0030). 고장이면 받지 않는다.
+    pub fn grip(&mut self, width: f64) -> Result<(), String> {
+        if let Mode::Fault(reason) = &self.mode {
+            return Err(format!("고장이라 그리퍼를 움직이지 않는다: {reason}"));
+        }
+        let Some(gripper) = &mut self.gripper else {
+            return Err("그리퍼가 없다".to_owned());
+        };
+        if !(width.is_finite() && (0.0..=gripper.max_width).contains(&width)) {
+            return Err(format!("열림 폭은 0~{} mm다: {width}", gripper.max_width));
+        }
+        gripper.target = width;
+        gripper.state = Grip::Moving;
+        Ok(())
     }
 
     /// 지금 알릴 것: 쉬는 까닭, 알림 기준에 닿은 온도, 기준보다 낮은 전압.
@@ -157,19 +238,11 @@ impl<P: Port> RunLoop<P> {
         self.watch_heat();
         self.advance(dt);
         self.correct_sag(dt);
-        let goals: Result<Vec<(u8, i32)>, String> = self
-            .ids
-            .iter()
-            .zip(self.targets.iter().zip(&self.corrections))
-            .map(|(&id, (&angle, &correction))| {
-                let servo = self.joints.servo(id)?;
-                servo
-                    .raw_at(angle + correction)
-                    .map(|raw| (id, raw.clamp(servo.min_raw, servo.max_raw)))
-                    .ok_or_else(|| format!("{}: 영점이 없다", servo.name))
-            })
-            .collect();
-        if let Err(e) = goals.and_then(|goals| self.joints.write_goals(&goals)) {
+        self.advance_gripper(dt);
+        if let Err(e) = self
+            .goals()
+            .and_then(|goals| self.joints.write_goals(&goals))
+        {
             self.fault(e);
         }
         &self.mode
@@ -220,13 +293,30 @@ impl<P: Port> RunLoop<P> {
     /// 서보마다 남은 목표를 읽어 붙잡는다. 남은 목표에 처짐 보정이 들어 있으므로 보정은 0에서 다시 쌓는다.
     fn hold_present_goals(&mut self) -> Result<(), String> {
         let states = self.joints.read_all()?;
-        let mut targets = Vec::new();
-        for (id, state) in &states {
-            let servo = self.joints.servo(*id)?;
-            let angle = servo
+        let goal_of = |id: u8| -> Result<f64, String> {
+            let state = states
+                .iter()
+                .find(|(known, _)| *known == id)
+                .map(|(_, state)| state)
+                .ok_or_else(|| format!("서보 {id}의 상태가 없다"))?;
+            let servo = self.joints.servo(id)?;
+            servo
                 .angle_at(state.goal_position)
-                .ok_or_else(|| format!("{}: 영점이 없다", servo.name))?;
-            targets.push(angle);
+                .ok_or_else(|| format!("{}: 영점이 없다", servo.name))
+        };
+        let targets = self
+            .ids
+            .iter()
+            .map(|&id| goal_of(id))
+            .collect::<Result<Vec<f64>, String>>()?;
+        let gripper_goal = match &self.gripper {
+            Some(gripper) => Some(goal_of(gripper.id)?),
+            None => None,
+        };
+        if let (Some(gripper), Some(goal)) = (&mut self.gripper, gripper_goal) {
+            gripper.goal = goal;
+            gripper.target = 2.0 * gripper.radius * goal;
+            gripper.state = Grip::Idle;
         }
         self.corrections = vec![0.0; targets.len()];
         self.targets = targets;
@@ -313,19 +403,91 @@ impl<P: Port> RunLoop<P> {
         if gain <= 0.0 || self.mode != Mode::Holding {
             return;
         }
-        for (index, (id, state)) in self.states.iter().enumerate() {
-            let Some(measured) = self
-                .joints
-                .servo(*id)
-                .ok()
-                .and_then(|servo| servo.angle_at(state.position))
-            else {
+        for (index, &id) in self.ids.iter().enumerate() {
+            let Some(measured) = self.angle_now(id) else {
                 continue;
             };
             let error = self.targets[index] - measured;
             self.corrections[index] =
                 (self.corrections[index] + gain * error * dt).clamp(-max, max);
         }
+    }
+
+    /// 마지막에 읽은 서보 위치의 각 [rad].
+    fn angle_now(&self, id: u8) -> Option<f64> {
+        let (_, state) = self.states.iter().find(|(known, _)| *known == id)?;
+        self.joints.servo(id).ok()?.angle_at(state.position)
+    }
+
+    /// 마지막에 읽은 그리퍼의 열림 폭 [mm].
+    fn width_now(&self, id: u8, radius: f64) -> Option<f64> {
+        self.angle_now(id).map(|angle| 2.0 * radius * angle)
+    }
+
+    /// 그리퍼 목표를 빠르기만큼 옮긴다. 목표 폭의 목표를 쓴 뒤의 박자부터, 새로 읽은 위치와 부하로 닿았는지
+    /// 잡았는지 본다 (목표를 쓰기 전에 읽은 상태로 보면 한 박자 늦은 값이다).
+    fn advance_gripper(&mut self, dt: f64) {
+        let Some(gripper) = &self.gripper else {
+            return;
+        };
+        if gripper.state != Grip::Moving {
+            return;
+        }
+        let (id, radius, tolerance) = (gripper.id, gripper.radius, gripper.tolerance);
+        let end = gripper.target / (2.0 * radius);
+        let step = gripper.speed / (2.0 * radius) * dt;
+        // 목표 폭에 이르면 목표를 끝 값 그대로 두므로, 다음 박자부터는 차이가 정확히 0이다
+        let written = gripper.goal == end;
+        let goal = if (end - gripper.goal).abs() <= step {
+            end
+        } else {
+            gripper.goal + step.copysign(end - gripper.goal)
+        };
+        let target = gripper.target;
+        let judged = if written {
+            self.judge_grip(id, radius, target, tolerance)
+        } else {
+            None
+        };
+        if let Some(gripper) = &mut self.gripper {
+            gripper.goal = goal;
+            if let Some(state) = judged {
+                gripper.state = state;
+            }
+        }
+    }
+
+    /// 목표 폭에 이른 뒤의 판정: 폭이 목표 안이면 닿음, 멈춘 채 토크 한도 가까이 밀고 있으면 잡음.
+    fn judge_grip(&self, id: u8, radius: f64, target: f64, tolerance: f64) -> Option<Grip> {
+        let width = self.width_now(id, radius)?;
+        if (width - target).abs() <= tolerance {
+            return Some(Grip::Reached(width));
+        }
+        let (_, state) = self.states.iter().find(|(known, _)| *known == id)?;
+        let pushing = state.torque_limit > 0 && state.load.abs() * 10 >= state.torque_limit * 8;
+        (pushing && !state.moving).then_some(Grip::Grasped(width))
+    }
+
+    /// 이번 박자에 쓸 목표: 팔 관절(목표 + 처짐 보정)과 그리퍼. 한계 안으로 자른다.
+    fn goals(&self) -> Result<Vec<(u8, i32)>, String> {
+        let arm = self
+            .ids
+            .iter()
+            .zip(self.targets.iter().zip(&self.corrections))
+            .map(|(&id, (&angle, &correction))| (id, angle + correction));
+        let gripper = self
+            .gripper
+            .as_ref()
+            .map(|gripper| (gripper.id, gripper.goal));
+        arm.chain(gripper)
+            .map(|(id, angle)| {
+                let servo = self.joints.servo(id)?;
+                servo
+                    .raw_at(angle)
+                    .map(|raw| (id, raw.clamp(servo.min_raw, servo.max_raw)))
+                    .ok_or_else(|| format!("{}: 영점이 없다", servo.name))
+            })
+            .collect()
     }
 
     fn fault(&mut self, reason: String) {
@@ -424,7 +586,7 @@ mod tests {
 
     use super::*;
     use crate::joints::{BENCH_CAPS, Servo};
-    use crate::settings::{Calibration, Direction, RAD_PER_STEP, Settings, TEST_J3};
+    use crate::settings::{Calibration, Direction, RAD_PER_STEP, Settings, TEST_GRIPPER, TEST_J3};
 
     /// 시험용 기준값 (로봇 설정의 시험값보다 빠르게 움직여 시험을 짧게 한다)
     const SETTINGS: LoopSettings = LoopSettings {
@@ -465,6 +627,7 @@ mod tests {
         RunLoop::start(
             Joints::open(bus, servos.to_vec(), BENCH_CAPS).unwrap(),
             settings,
+            None,
         )
         .unwrap()
     }
@@ -727,5 +890,87 @@ mod tests {
             run.tick(DT);
         }
         assert_eq!(position(&mut run, 0), 2038);
+    }
+
+    /// J3과 그리퍼(ID 11, 닫은 자리 2048)
+    fn with_gripper() -> RunLoop<FakePort> {
+        let settings = Settings::parse(&format!("{TEST_J3}{TEST_GRIPPER}")).unwrap();
+        let gripper = settings.gripper.clone().unwrap();
+        let mut j3 = settings.joint("j3").unwrap().clone();
+        j3.calibration = Some(Calibration {
+            pin: 0.0,
+            zero_raw: 2048,
+            direction: Direction::Same,
+            position_offset: 0,
+        });
+        let servos = vec![
+            Servo::from_joint(&j3).unwrap(),
+            Servo::from_joint(&gripper.joint).unwrap(),
+        ];
+        let bus = open_fake_bus([
+            FakeServo::with(3, 2825, 2048),
+            FakeServo::with(11, 2825, 2048),
+        ]);
+        let joints = Joints::open(bus, servos, BENCH_CAPS).unwrap();
+        RunLoop::start(joints, SETTINGS, Some(&gripper)).unwrap()
+    }
+
+    fn until_grip_settles(run: &mut RunLoop<FakePort>) -> Grip {
+        for _ in 0..1000 {
+            run.tick(DT);
+            let (_, state) = run.gripper().unwrap();
+            if state != Grip::Moving {
+                return state;
+            }
+        }
+        panic!("그리퍼가 멈추지 않았다");
+    }
+
+    #[test]
+    fn gripper_opens_to_a_width_at_its_speed() {
+        let mut run = with_gripper();
+        assert_eq!(run.gripper(), Some((0.0, Grip::Idle)));
+        assert_eq!(run.targets().len(), 1); // 궤적은 팔 관절만
+        run.grip(30.0).unwrap();
+        for _ in 0..50 {
+            run.tick(DT);
+        }
+        let (width, state) = run.gripper().unwrap();
+        assert_eq!(state, Grip::Moving);
+        assert!((width - 10.0).abs() < 0.5, "{width}"); // 20 mm/s로 0.5 s
+        let Grip::Reached(width) = until_grip_settles(&mut run) else {
+            panic!("닿지 않았다");
+        };
+        assert!((width - 30.0).abs() < 0.1, "{width}");
+        assert!(run.grip(61.0).unwrap_err().contains("0~60 mm"));
+    }
+
+    #[test]
+    fn gripper_grasps_when_blocked_and_keeps_holding_through_a_stop() {
+        let mut run = with_gripper();
+        run.grip(40.0).unwrap();
+        for _ in 0..60 {
+            run.tick(DT);
+        }
+        fake(&mut run, 1).held = true; // 손가락이 물체에 닿았다
+        let Grip::Grasped(width) = until_grip_settles(&mut run) else {
+            panic!("잡지 않았다");
+        };
+        assert!((10.0..14.0).contains(&width), "{width}");
+        // 팔이 멈추거나 고장 나도 쥔 채 둔다 (목표와 토크 한도가 그대로다)
+        let goal = fake(&mut run, 1).get(reg::GOAL_POSITION);
+        run.submit(Trajectory {
+            points: vec![(0.0, vec![0.0]), (1.0, vec![0.5])],
+        })
+        .unwrap();
+        run.tick(DT);
+        run.stop();
+        until_holding(&mut run);
+        assert_eq!(fake(&mut run, 1).get(reg::GOAL_POSITION), goal);
+        fake(&mut run, 0).power_cycle();
+        assert!(matches!(run.tick(DT), Mode::Fault(_)));
+        let servo = fake(&mut run, 1);
+        assert_eq!(servo.get(reg::GOAL_POSITION), goal);
+        assert_eq!(servo.get(reg::TORQUE_LIMIT), 150);
     }
 }

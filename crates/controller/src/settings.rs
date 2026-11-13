@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 use std::f64::consts::TAU;
 use std::fs;
+use std::ops::RangeInclusive;
 use std::path::Path;
 
 use horilab_servo::feetech::registers::{self as reg, Area, MODELS, Register, STEPS_PER_TURN};
@@ -16,6 +17,9 @@ use serde::Deserialize;
 
 /// 관절 이름. MJCF, URDF, 메시지와 같은 이름이고(docs/conventions.md), 서보 ID는 관절 번호다 (0024).
 pub const JOINT_NAMES: [&str; 6] = ["j1", "j2", "j3", "j4", "j5", "j6"];
+
+/// 그리퍼 서보의 ID: 11부터 그리퍼마다 하나씩 다르다 (0024)
+const GRIPPER_IDS: RangeInclusive<u8> = 11..=19;
 
 /// 서보 값 한 칸 [rad]
 pub const RAD_PER_STEP: f64 = TAU / STEPS_PER_TURN as f64;
@@ -42,6 +46,24 @@ pub struct Settings {
     pub run_loop: LoopSettings,
     /// 관절 번호 순
     pub joints: Vec<Joint>,
+    /// 달린 그리퍼 (서보가 있는 도구)
+    pub gripper: Option<GripperSettings>,
+}
+
+/// 그리퍼 (0030, 0032). 서보는 관절처럼 다룬다: 관절 각은 손가락이 맞닿은 자리(영점)에서 돈 각이고, 소프트
+/// 한계는 0 ~ 다 벌림, 토크 한도는 쥐는 힘이다. 열림 폭은 피니언으로 바꾼다.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GripperSettings {
+    /// 그리퍼 서보 (이름은 gripper)
+    pub joint: Joint,
+    /// 피니언의 피치 반지름 [mm]. 손가락 둘이 대칭으로 움직여 열림 폭 = 2 × 반지름 × 각
+    pub pinion_radius: f64,
+    /// 다 벌린 열림 폭 [mm]
+    pub max_width: f64,
+    /// 열고 닫는 빠르기 [mm/s]
+    pub speed: f64,
+    /// 목표 폭에서 이만큼 안이면 닿은 것이고, 그 전에 막혀 부하가 오르면 잡은 것이다 [mm]
+    pub grasp_tolerance: f64,
 }
 
 /// 실행 루프의 기준값 (docs/decisions/0032-run-loop.md). 재기 전의 값은 로봇 설정에 시험값이라고 적는다.
@@ -315,6 +337,16 @@ impl Settings {
                 Err(found) => problems.extend(found),
             }
         }
+        let gripper = match &file.gripper {
+            None => None,
+            Some(gripper) => match gripper.check(clearance, &models) {
+                Ok(gripper) => Some(gripper),
+                Err(found) => {
+                    problems.extend(found);
+                    None
+                }
+            },
+        };
         if !problems.is_empty() {
             return Err(format!(
                 "고칠 것 {}가지\n- {}",
@@ -327,6 +359,7 @@ impl Settings {
             boundary_clearance: clearance,
             run_loop: run_loop.expect("문제가 없으면 읽었다"),
             joints,
+            gripper,
         })
     }
 
@@ -382,6 +415,24 @@ impl Settings {
                 deg(joint.pin)
             ));
         }
+        if let Some(gripper) = &self.gripper {
+            let zero = match gripper.joint.calibration {
+                None => "닫은 자리를 아직 재지 않았다 (재기 전에는 움직이지 않는다)".to_owned(),
+                Some(c) => format!(
+                    "닫은 자리의 서보 값 {} (위치 오프셋 {}), 방향 {:+}",
+                    c.zero_raw,
+                    c.position_offset,
+                    c.direction.number()
+                ),
+            };
+            lines.push(format!(
+                "그리퍼  ID {}  {}  열림 폭 0~{} mm  쥐는 힘 {}%  {zero}",
+                gripper.joint.id,
+                gripper.joint.model,
+                gripper.max_width,
+                f64::from(gripper.joint.torque_limit.unwrap_or_default()) / 10.0
+            ));
+        }
         lines.join("\n") + "\n"
     }
 }
@@ -401,6 +452,7 @@ struct SettingsFile {
     #[serde(default)]
     models: BTreeMap<String, ModelFile>,
     joints: BTreeMap<String, JointFile>,
+    gripper: Option<GripperFile>,
 }
 
 #[derive(Deserialize)]
@@ -464,6 +516,83 @@ impl LoopFile {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct GripperFile {
+    id: u8,
+    model: String,
+    pinion_radius_mm: f64,
+    max_width_mm: f64,
+    force_percent: f64,
+    speed_mm_s: f64,
+    grasp_tolerance_mm: f64,
+    zero_raw: Option<u16>,
+    direction: Option<i8>,
+    position_offset: Option<i32>,
+    #[serde(default)]
+    registers: BTreeMap<String, i64>,
+}
+
+impl GripperFile {
+    fn check(
+        &self,
+        clearance: f64,
+        models: &BTreeMap<&str, Vec<(Register, i32)>>,
+    ) -> Result<GripperSettings, Vec<String>> {
+        let mut problems = Vec::new();
+        for (key, value) in [
+            ("pinion_radius_mm", self.pinion_radius_mm),
+            ("max_width_mm", self.max_width_mm),
+            ("speed_mm_s", self.speed_mm_s),
+            ("grasp_tolerance_mm", self.grasp_tolerance_mm),
+        ] {
+            if !(value.is_finite() && value > 0.0) {
+                problems.push(format!("gripper.{key}는 0보다 크다: {value}"));
+            }
+        }
+        if !problems.is_empty() {
+            return Err(problems);
+        }
+        // 서보는 관절처럼 검사한다: 각 0(손가락이 맞닿은 자리) ~ 다 벌린 각, 토크 한도는 쥐는 힘
+        let open = self.max_width_mm / (2.0 * self.pinion_radius_mm);
+        let servo = JointFile {
+            id: self.id,
+            model: self.model.clone(),
+            soft_limits_deg: [0.0, open.to_degrees()],
+            pin_deg: 0.0,
+            zero_raw: self.zero_raw,
+            direction: self.direction,
+            position_offset: self.position_offset,
+            torque_limit_percent: Some(self.force_percent),
+            registers: self.registers.clone(),
+        };
+        let rule = format!("{}~{} 가운데 하나", GRIPPER_IDS.start(), GRIPPER_IDS.end());
+        let joint = servo.check_servo("gripper", (GRIPPER_IDS, rule), clearance, models)?;
+        // 쥔 채 버티는 힘이 과부하 기준에 닿으면 서보 보호가 걸려 힘이 빠진다 (0024)
+        let overload = joint
+            .eeprom
+            .iter()
+            .find(|(register, _)| *register == reg::OVERLOAD_TORQUE)
+            .map(|&(_, value)| value);
+        if let Some(overload) = overload
+            && self.force_percent >= f64::from(overload)
+        {
+            return Err(vec![format!(
+                "gripper: force_percent {}는 과부하 기준 {overload} %보다 낮아야 한다 \
+                 (쥔 채 버티면 서보 보호가 걸린다)",
+                self.force_percent
+            )]);
+        }
+        Ok(GripperSettings {
+            joint,
+            pinion_radius: self.pinion_radius_mm,
+            max_width: self.max_width_mm,
+            speed: self.speed_mm_s,
+            grasp_tolerance: self.grasp_tolerance_mm,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ModelFile {
     #[serde(default)]
     registers: BTreeMap<String, i64>,
@@ -497,15 +626,28 @@ impl JointFile {
                 JOINT_NAMES.join(", ")
             )]);
         };
-        let name = JOINT_NAMES[index];
+        let number = u8::try_from(index + 1).unwrap_or(u8::MAX);
+        let rule = format!("관절 번호와 같은 {number}");
+        self.check_servo(
+            JOINT_NAMES[index],
+            (number..=number, rule),
+            clearance,
+            models,
+        )
+    }
+
+    /// 서보 하나의 설정을 검사한다 (관절과 그리퍼). `ids`는 받는 ID의 범위와 그 설명이다.
+    fn check_servo(
+        &self,
+        name: &'static str,
+        (ids, id_rule): (RangeInclusive<u8>, String),
+        clearance: f64,
+        models: &BTreeMap<&str, Vec<(Register, i32)>>,
+    ) -> Result<Joint, Vec<String>> {
         let mut problems = Vec::new();
 
-        let number = index + 1;
-        if usize::from(self.id) != number {
-            problems.push(format!(
-                "{name}: id는 관절 번호와 같은 {number}이다: {}",
-                self.id
-            ));
+        if !ids.contains(&self.id) {
+            problems.push(format!("{name}: id는 {id_rule}이다: {}", self.id));
         }
 
         let model = MODELS.iter().find(|(_, model)| *model == self.model);
@@ -694,6 +836,22 @@ id = 3
 model = "STS3250"
 soft_limits_deg = [-30, 118]
 pin_deg = 0
+"#;
+
+/// 시험용 그리퍼 (가짜 서보가 STS3250이라 같은 모델로 둔다)
+#[cfg(test)]
+pub(crate) const TEST_GRIPPER: &str = r#"
+[gripper]
+id = 11
+model = "STS3250"
+pinion_radius_mm = 12.5
+max_width_mm = 60
+force_percent = 15
+speed_mm_s = 20
+grasp_tolerance_mm = 1.0
+zero_raw = 2048
+direction = 1
+position_offset = 0
 "#;
 
 #[cfg(test)]
@@ -998,6 +1156,28 @@ mod tests {
         assert!(settings.summary().contains("토크 한도 45%"));
         let message = error(&j3_with("torque_limit_percent = 120"));
         assert!(message.contains("100 이하다: 120"), "{message}");
+    }
+
+    #[test]
+    fn gripper_is_read_as_a_servo_with_width() {
+        let settings = Settings::parse(&format!("{J3}{TEST_GRIPPER}")).unwrap();
+        let gripper = settings.gripper.unwrap();
+        assert_eq!((gripper.joint.name, gripper.joint.id), ("gripper", 11));
+        assert!(close(gripper.joint.upper, 60.0 / 25.0)); // 2.4 rad = 137.5°
+        assert_eq!(gripper.joint.torque_limit, Some(150));
+        assert!(Settings::parse(J3).unwrap().gripper.is_none());
+        let message = error(&format!(
+            "{J3}{}",
+            TEST_GRIPPER.replace("id = 11", "id = 5")
+        ));
+        assert!(
+            message.contains("gripper: id는 11~19 가운데 하나이다: 5"),
+            "{message}"
+        );
+        // 쥐는 힘이 과부하 기준(메모리 표 80 %)에 닿으면 쥔 채 버티지 못한다
+        let text = TEST_GRIPPER.replace("force_percent = 15", "force_percent = 80");
+        let message = error(&format!("{J3}{text}"));
+        assert!(message.contains("과부하 기준 80 %보다 낮아야"), "{message}");
     }
 
     #[test]

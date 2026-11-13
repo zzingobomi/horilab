@@ -50,6 +50,10 @@ dead_zone_negative = 0 # 27 (표 1)
 protection_current = 310 # 28: 6.5 mA 단위로 약 2.0 A (표 511)
 overcurrent_protection_time = 250 # 38: 10 ms 단위로 2.5 s (표 200)
 
+# 그리퍼는 달 때 [gripper]로 더한다 (0030, 0032): id(11부터), model, pinion_radius_mm(설계 12.5),
+# max_width_mm(설계 60), force_percent(쥐는 힘, 과부하 기준보다 낮게), speed_mm_s, grasp_tolerance_mm, 그리고
+# 닫은 자리(손가락이 맞닿은 자리)를 영점처럼 재서 적는 position_offset, zero_raw, direction.
+
 [joints.j3]
 id = 3 # 서보 ID는 관절 번호다 (0024)
 model = "STS3250"

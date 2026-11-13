@@ -9,7 +9,7 @@
 //! - 토크를 켜거나 토크가 켜진 채 목표를 쓰면 현재 위치가 곧바로 목표가 된다. 목표는 각도 한계 안으로
 //!   잘리고(위치 모드는 0/4095 경계를 넘지 않는다), 각도 한계가 0과 0이면 경계를 넘어 돈다. 지금 위치가 한계
 //!   밖인 채 토크를 켜면 한계까지 간다. 전원을 넣은 직후의 목표는 0이다.
-//! - 붙잡힌 혼(`held`)은 목표로 가지 못한다. [`FakeServo::overload`]는 붙잡힌 채 보호 시간이 지난 것이다:
+//! - 붙잡힌 혼(`held`)은 목표로 가지 못하고 토크 한도껏 민다 (부하 = 토크 한도). [`FakeServo::overload`]는 붙잡힌 채 보호 시간이 지난 것이다:
 //!   과부하 비트가 켜지고, 힘을 빼는 조건(19)에 과부하가 있으면 힘(부하)이 보호 뒤 토크(34)로 줄어 토크를
 //!   껐다 켤 때까지 목표로 가지 않는다. 토크 스위치와 토크 한도 값은 그대로다. [`FakeServo::set_voltage`]는
 //!   입력 전압 범위 밖에서 전압 비트를 켠다 (토크와 통신은 그대로다).
@@ -298,12 +298,25 @@ impl FakeServo {
 
     /// 토크가 켜져 있고 붙잡히거나 과부하 보호에 묶이지 않았으면 목표로 곧바로 간다.
     fn follow_goal(&mut self) {
-        if self.torque_on() && !self.held && !self.overload_latched {
-            let goal = self.reachable(self.get(reg::GOAL_POSITION));
-            let at = (goal - self.sag).clamp(0, reg::STEPS_PER_TURN as i32 - 1);
-            self.set(reg::PRESENT_POSITION, at);
-            self.set(reg::PRESENT_GOAL, goal);
+        if !self.torque_on() || self.overload_latched {
+            return;
         }
+        let goal = self.reachable(self.get(reg::GOAL_POSITION));
+        if self.held {
+            // 붙잡힌 혼: 목표로 가지 못하고 토크 한도껏 민다
+            let pushing = goal != self.get(reg::PRESENT_POSITION);
+            let load = if pushing {
+                self.get(reg::TORQUE_LIMIT)
+            } else {
+                0
+            };
+            self.set(reg::PRESENT_LOAD, load);
+            return;
+        }
+        let at = (goal - self.sag).clamp(0, reg::STEPS_PER_TURN as i32 - 1);
+        self.set(reg::PRESENT_POSITION, at);
+        self.set(reg::PRESENT_GOAL, goal);
+        self.set(reg::PRESENT_LOAD, 0);
     }
 
     fn set_status(&mut self, bit: reg::Fault, on: bool) {
