@@ -114,7 +114,8 @@ def teardrop(origin: Point, axis: Point, length: float, diameter: float, roof: P
     45° 지붕을 내서 서포트 없이 뽑힌다."""
     r = diameter / 2
     c = r * math.cos(math.pi / 4)
-    profile = Circle(r) + Polygon((-c, c), (0.0, r * math.sqrt(2)), (c, c), align=None)
+    # 지붕 삼각형은 반시계 방향으로 준다. 시계 방향이면 면이 뒤집혀 원과 반대쪽으로 밀린다
+    profile = Circle(r) + Polygon((-c, c), (c, c), (0.0, r * math.sqrt(2)), align=None)
     body = extrude(cast(Sketch, profile), amount=length)  # 지붕은 지역 +Y, 민 방향은 지역 +Z
     va, vr = Vector(*axis), Vector(*roof)
     # 지역 z = axis, 지역 y = roof가 되도록 지역 x = roof × axis (y = z × x)
@@ -130,8 +131,8 @@ def teardrop_y(diameter: float, y0: float, y1: float, x: float, z: float, roof: 
     """
     r = diameter / 2
     c = r * math.cos(math.pi / 4)
-    profile = Circle(r) + Polygon((-c, c), (0.0, r * math.sqrt(2)), (c, c), align=None)
+    profile = Circle(r) + Polygon((-c, c), (c, c), (0.0, r * math.sqrt(2)), align=None)
     body = extrude(cast(Sketch, profile), amount=y1 - y0)  # 지붕은 +Y, 민 방향은 +Z
     rx, _, rz = roof
-    x_dir = (rz, 0.0, -rx)  # roof × (0, 1, 0): 이 틀에서 지역 y가 roof, 지역 z가 세계 y다
+    x_dir = (-rz, 0.0, rx)  # roof × (0, 1, 0): 이 틀에서 지역 y가 roof, 지역 z가 세계 y다
     return solid(body.moved(Location(Plane(origin=(x, y0, z), x_dir=x_dir, z_dir=(0.0, 1.0, 0.0)))))

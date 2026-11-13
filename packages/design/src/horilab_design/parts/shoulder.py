@@ -5,7 +5,8 @@ STS 관절(parts/joint.py)과 같은 짜임이고, 다른 점은 이렇다:
 - 누름 틀의 다리와 벽 나사는 서보 앞면과 베어링 사이에 있다. 서보 옆을 지나지 않는다.
 - 서보 받침은 뒷면 M2.5 여섯에 달고 벽 나사 셋으로 잠근다. 커넥터가 옆면에 있어 뒷면에는 선이 없다.
 - 집의 목은 J1 몸통이다. 옆면 커넥터의 플러그와 선이 들어가게 목이 원통만큼 넓고, 서보 먼 끝은 목 속의
-  받침 턱 둘이 옆에서 잡는다 (서보가 미는 토크의 뒷받침).
+  받침 턱 둘이 옆에서 잡는다 (서보가 미는 토크의 뒷받침). 돌림판에 앉는 바닥판까지 더한 J1 몸통은
+  parts/base.py가 그린다.
 
 좌표(mm): x는 출력축에서 서보의 가까운 끝 쪽(+15.9), y는 출력축 방향(혼 쪽이 +), z = x × y.
 원점은 출력축 위, 몸체 두께(48)의 가운데다. 서보 먼 끝(-x)이 아래(J1 쪽)를 본다.
@@ -64,7 +65,6 @@ PROVISIONAL = (
     "CONN_X, CONN_Y",
     "BEARING_BORE",
     "JOURNAL_D",
-    "NECK_X (J1 몸통과 만나는 자리)",
 )
 
 # ---- 베어링과 축 방향 쌓임 ----
@@ -81,6 +81,10 @@ B0 = SEAT + RELIEF + FLANGE_T  # 베어링 뒷면
 FRONT = B0 + BRG_B + j.LIP_T  # 원통 앞 끝 (집을 뽑을 때 바닥)
 SEAM = FRONT + j.GAP  # 출력 원판 테의 밑면
 ATOP = SEAM + j.BRIM_T  # 출력 원판 윗면 = 위팔이 앉는 면
+# 위팔의 납작한 면(출력 원판 윗면)이 J1 축에서 떨어진 거리. 쌓임이 길어진 만큼 서보를 출력 반대쪽으로 물려서
+# 이 값을 지킨다 (0029: 골격과 손목 오프셋이 그대로다). J1 축은 이 좌표에서 y = J1_AXIS_Y를 지난다
+J1_PLANE = 41.5
+J1_AXIS_Y = ATOP - J1_PLANE
 R_BORE = BEARING_BORE / 2
 WALL = 2.55
 R_DRUM = R_BORE + WALL  # 원통 바깥 반지름 28.6
@@ -112,7 +116,9 @@ NECK_TOP_X = -8.0  # 목 상자가 원통 속에서 시작하는 x
 NECK_IN = 24.5  # 목 안쪽 반폭: 옆면 15 + 플러그 4.2 + 꺾인 선 5 + 틈
 NECK_HW = NECK_IN + 2.6  # 목 바깥 반폭 27.1
 NECK_FRONT_IN = FRONT - 2.4  # 목 앞벽의 안쪽 면
-NECK_X = -58.0  # 목의 아래 끝 (임시: 베이스를 그리며 J1 몸통과 만나는 자리로 바꾼다)
+# 목의 아래 끝. 어깨만 따로 볼 때의 값이다. 뽑는 부품은 목이 돌림판까지 내려오고 바닥판이 달린 J1 몸통이고,
+# 그 길이는 J1 관절의 쌓임에서 나온다 (parts/base.py의 NECK_X와 j1_body)
+NECK_X = -58.0
 PAD_X = (-FAR, -36.0)  # 서보 먼 끝을 옆에서 잡는 턱
 PAD_Y = (-8.0, HT)
 PAD_GAP = 0.35
@@ -520,15 +526,15 @@ def clearances(
     return out
 
 
-# 뽑는 부품: 이름 → (형상, 뽑을 때 위를 보는 방향, 색, 프리셋)
+# 뽑는 부품: 이름 → (형상, 뽑을 때 위를 보는 방향, 색, 프리셋).
+# 집과 뒷덮개는 여기 없다. 뽑는 것은 목이 돌림판까지 내려오고 바닥판이 달린 J1 몸통과 그 뒷덮개다
+# (parts/base.py의 printed: j1_body, j1_cover)
 def printed() -> dict[str, tuple[Compound, tuple[float, float, float], str, str]]:
     return {
-        "shoulder_house": (house(), (0.0, -1.0, 0.0), "white", "strength"),
         "shoulder_out_disc": (out_disc(), (0.0, -1.0, 0.0), "black", "strength"),
         "shoulder_hub_plate": (hub_plate(), (0.0, -1.0, 0.0), "black", "strength"),
         "shoulder_retainer": (retainer(), (0.0, -1.0, 0.0), "black", "strength"),
         "shoulder_carrier": (carrier(), (0.0, 1.0, 0.0), "black", "strength"),
-        "shoulder_cover": (back_cover(), (0.0, 1.0, 0.0), "black", "standard"),
     }
 
 

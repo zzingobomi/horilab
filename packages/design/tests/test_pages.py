@@ -53,6 +53,12 @@ def test_shoulder_page_has_every_part_of_the_shoulder() -> None:
 
 
 @pytest.mark.slow
+def test_base_page_has_every_part_of_j1() -> None:
+    names = ("베이스 몸통", "돌림판", "허브", "사이 고리", "누름 틀", "서보 받침", "J1 몸통")
+    _check_joint_page(joint_page.base_data(), names)
+
+
+@pytest.mark.slow
 def test_arm_page_solves_every_box_stacking_pose() -> None:
     data = arm_page.page_data()
     variant = data["variants"][0]

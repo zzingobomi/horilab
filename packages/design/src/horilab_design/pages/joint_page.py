@@ -1,4 +1,4 @@
-"""관절 3D 페이지: 조립 단계, 펼치기, 관절 돌려 보기, 반으로 잘라 보기. 첫 관절(손목 몸통 둘)과 어깨를 만든다.
+"""관절 3D 페이지: 조립 단계, 펼치기, 관절 돌려 보기, 반으로 잘라 보기. 첫 관절(손목 몸통 둘), 어깨, J1을 만든다.
 
 틀 joint_page.html의 __MESH_JSON__ 자리에 데이터를 넣는다:
 - parts: 부품마다 이름(n), 색 구실(c), 자식과 함께 도는지(m), 무게(g), 꼭짓점(v), 삼각형(i). 좌표는 서보 좌표 mm다 (y가 출력축).
@@ -15,6 +15,7 @@ import json
 from build123d import Compound
 
 from horilab_design.pages import HERE, OUT_DIR
+from horilab_design.parts import base as bs
 from horilab_design.parts import joint as j
 from horilab_design.parts import links, wrist
 from horilab_design.parts import shoulder as sh
@@ -33,14 +34,20 @@ PRINTED = {
     "뒷덮개": "wrist_cover",
 }
 SHOULDER_PRINTED = {
-    "어깨 집": "shoulder_house",
     "허브 판": "shoulder_hub_plate",
     "출력 원판": "shoulder_out_disc",
     "누름 틀": "shoulder_retainer",
     "서보 받침": "shoulder_carrier",
-    "뒷덮개": "shoulder_cover",
 }
 ARM_STUB = 62.0  # 어깨 페이지에 보이는 위팔의 길이 (관절 축에서 관 쪽으로)
+BASE_PRINTED = {
+    "베이스 몸통": "base_core",
+    "돌림판": "base_turntable",
+    "허브": "base_hub",
+    "사이 고리": "base_spacer",
+    "누름 틀": "base_retainer",
+    "J1 몸통": "j1_body",
+}
 
 
 def _meshes(parts: list[j.Part], masses: dict[str, float]) -> list[dict]:
@@ -229,6 +236,9 @@ def shoulder_data() -> dict:
         name: printed_mass_g(s, up, preset) for name, (s, up, _c, preset) in sh.printed().items()
     }
     masses = {name: by_file[file] for name, file in SHOULDER_PRINTED.items()}
+    # 집과 뒷덮개는 이 페이지에 보이는 모양(목이 짧다)의 무게다. 뽑는 것은 J1 관절 페이지의 J1 몸통이다
+    masses["어깨 집"] = printed_mass_g(sh.house(), (0.0, -1.0, 0.0))
+    masses["뒷덮개"] = printed_mass_g(sh.back_cover(), (0.0, 1.0, 0.0), "standard")
     roles = [
         _role("어깨 집", 0, 0, shell=True),
         _role("베어링", 1, -40, pre=True),
@@ -352,7 +362,7 @@ def shoulder_data() -> dict:
         "todo": [
             "서보가 오면 잴 것: 혼 윗면 높이(도면으로 9.9 ~ 10.2 mm), 옆면 커넥터 자리, 혼 가운데 나사 머리.",
             f"6808 자리와 저널의 지름은 시험편으로 맞춥니다 (지금은 {sh.BEARING_BORE}, {sh.JOURNAL_D}).",
-            "목의 아래 끝이 J1 몸통(돌림판)과 만나는 자리는 베이스를 그리며 정합니다.",
+            "어깨 집은 J1 몸통의 윗부분입니다. 돌림판까지 내려온 목과 바닥판은 J1 관절 페이지에 있습니다.",
             "선은 그림에 넣지 않았습니다 (플러그와 선이 차지하는 자리만 반투명으로 보입니다).",
         ],
         "frame": {"y0": -36, "y1": 96, "w": 132, "cx": 2},
@@ -365,9 +375,180 @@ def shoulder_data() -> dict:
     }
 
 
+def base_data(model: ServoModel = "STS3215") -> dict:
+    """J1 관절 (베이스 몸통, 6806 둘, 돌림판, J1 몸통)."""
+    by_file = {
+        name: printed_mass_g(s, up, preset) for name, (s, up, _c, preset) in bs.printed().items()
+    }
+    masses = {name: by_file[file] for name, file in BASE_PRINTED.items()}
+    carrier, up, _c, preset = wrist.printed()["carrier"]
+    masses["서보 받침"] = printed_mass_g(carrier, up, preset)
+    roles = [
+        _role("베이스 몸통", 0, 0, shell=True),
+        _role("베어링 6806 (위)", 1, -94),
+        _role("사이 고리", 1, -102),
+        _role("베어링 6806 (아래)", 1, -110),
+        _role("누름 틀", 2, -118),
+        _role("너트 (누름 틀)", 2, -118),
+        _role("돌림판", 3, 50),
+        _role("J1 몸통 나사", 3, 30, pre=True),
+        _role("너트 (J1 몸통)", 3, 136, pre=True),
+        _role("J1 몸통", 3, 120),
+        _role("멈춤 나사 M3x10", 3, 50),
+        _role("너트 (멈춤 기둥)", 3, 50),
+        _role("허브", 4, -150),
+        _role("혼 나사", 4, -136, pre=True),
+        _role("너트 (허브)", 4, -150, pre=True),
+        _role("서보 몸통", 4, -150),
+        _role("혼", 4, -150),
+        _role("플러그", 4, -150),
+        _role("선 자리", 4, -150),
+        _role("서보 받침", 4, -168),
+        _role("너트 (서보 받침)", 4, -168),
+        _role("M2x6", 4, -180, pre=True),
+        _role("조임 볼트", 5, 104, pre=True),
+        _role("와셔", 5, 96, pre=True),
+        _role("어깨 서보", 7, 120),
+        _role("영점 핀", 7, 160, pre=True, hideUntil=7, pinOnly=True),
+    ]
+    # 벽 나사 다섯: 1·3·5번은 누름 틀(2단계), 2·4번은 서보 받침(6단계). 몸통의 굴 밖으로 빠진다
+    for k, (direction, step) in enumerate(
+        (
+            ([0, 0, 2.2], 2),
+            ([0, 0, 2.2], 6),
+            ([0, 0, -2.2], 2),
+            ([0, 0, -2.2], 6),
+            ([2.2, 0, 0], 2),
+        ),
+        start=1,
+    ):
+        roles.append(_role(f"벽 나사 {k}", step, 0, rad=direction))
+    steps = [
+        _step(
+            "다 조립한 모습",
+            "다 조립한 모습",
+            "J1 관절입니다. 아래의 검정 원기둥이 책상에 고정되는 베이스 몸통이고, 그 위의 검정 원판이 돌림판, 흰 부품이 "
+            "J1 몸통(위쪽이 어깨 집)입니다. 펼치기 막대를 밀면 부품이 끼우는 방향대로 흩어지고, 관절 돌리기 막대로 "
+            "돌리면 163°에서 멈춤 기둥이 살에 닿습니다.",
+        ),
+        _step(
+            "베어링 둘",
+            "1. 베어링 둘과 사이 고리",
+            "베이스 몸통을 뒤집어 놓고(윗면이 바닥), 베어링(6806) → 사이 고리 → 베어링 순서로 넣습니다. 첫 베어링은 "
+            "몸통의 턱에 닿고, 사이 고리는 두 베어링의 안쪽 링 사이에 놓입니다.",
+        ),
+        _step(
+            "누름 틀",
+            "2. 누름 틀",
+            "너트 3개를 다리 안쪽 홈에 끼운 누름 틀을 넣습니다. 베어링 쪽으로 민 채, 몸통 옆의 굴로 벽 나사 "
+            "3개(M3 × 8)를 조입니다. 바깥 링 둘이 턱과 틀 사이에 잡힙니다.",
+        ),
+        _step(
+            "돌림판",
+            "3. 돌림판과 J1 몸통",
+            "책상 위에서 먼저 묶습니다. 돌림판의 멈춤 기둥에 M3 × 10 나사와 너트를 조여 두고, J1 몸통 바닥판 "
+            "윗면의 홈에 너트 4개를 끼웁니다. 돌림판을 J1 몸통 밑에 대고 밑에서 M3 × 12 나사 4개를 조입니다. "
+            "베이스 몸통을 바로 세우고, 이 묶음의 저널을 위에서 두 베어링과 사이 고리 속으로 끼웁니다.",
+        ),
+        _step(
+            "서보",
+            "4. 허브를 단 서보",
+            "책상 위에서 허브를 서보 혼에 M3 × 8 나사 4개로 달고, 허브 옆 홈에 너트 4개를 밀어 넣습니다. 서보 "
+            "뒷면에 서보 받침을 M2 × 6 나사 4개로 달고(날개의 너트 2개도 먼저) 선을 꽂습니다. 그대로 아래에서 넣어 "
+            "허브가 아래 베어링의 안쪽 링에 닿게 합니다. 아직 잠그지 않습니다.",
+        ),
+        _step(
+            "조임 볼트",
+            "5. 조임 볼트",
+            "와셔를 낀 M3 × 50 볼트 4개를 J1 몸통 속으로 넣어 돌림판의 구멍에 꽂습니다. J1 몸통의 열린 뒷면으로 "
+            "ㄱ자 육각렌치를 넣어 허브의 너트에 조금씩 번갈아 조입니다. 돌림판, 안쪽 링 둘, 사이 고리, 허브가 한 "
+            "덩어리가 되고 서보가 제자리를 찾습니다.",
+        ),
+        _step(
+            "서보 잠금",
+            "6. 서보 잠금",
+            "몸통 옆의 굴로 벽 나사 2개(M3 × 8)를 조여 서보 받침을 잠급니다. 구멍이 축 방향으로 길어서, 서보가 찾은 "
+            "자리 그대로 잠깁니다.",
+        ),
+        _step(
+            "영점",
+            "7. 영점과 어깨 서보",
+            "영점은 팔이 앞을 보는 자리(0°)에서 J1 몸통 뒤쪽 귀의 구멍과 베이스 몸통의 살 구멍에 핀을 꽂고 "
+            "잡습니다. 어깨 서보는 그 뒤에 J1 몸통에 넣습니다 (어깨 관절 페이지).",
+        ),
+    ]
+    spool = j.GAP + bs.BRIM_T + j.EAR_T
+    dims = [
+        ["베이스 몸통 지름", f"{2 * bs.R_CORE:.0f} mm"],
+        ["돌림판 지름 (선이 감기는 면)", f"{2 * bs.R_TABLE:.0f} mm"],
+        ["몸통 윗면의 높이 (책상에서)", f"{bs.FRONT - bs.Y_DESK:.1f} mm"],
+        ["돌림판 윗면의 높이", f"{bs.TOP_H:.1f} mm"],
+        ["어깨 축의 높이", f"{bs.SHOULDER_H:.0f} mm"],
+        ["두 베어링의 가운데 사이", f"{bs.B1 - bs.B0:.0f} mm"],
+        ["기계 멈춤", f"±{j.STOP_DEG:.0f}° (프로그램 한계 ±{j.SOFT_DEG:.0f}°)"],
+        ["멈춤 기둥 중심, 영점 핀", f"축에서 {bs.R_POST:.0f} mm, {bs.R_PIN:.0f} mm"],
+        ["선이 감기는 면의 높이", f"{spool:.1f} mm"],
+        ["허브와 누름 틀 사이", "1.3 mm"],
+        ["사이 고리와 몸통 사이", f"{j.R_BORE - bs.SPACER_R:.1f} mm"],
+        ["멈춤 기둥과 홈 벽 사이", "1.2 mm"],
+        ["J1 몸통 나사", f"축에서 {bs.R_FOOT:.0f} mm, M3 × 12 넷"],
+        [
+            "J1 몸통 바닥판 ~ 어깨 서보 먼 끝",
+            f"{bs.SHOULDER_H - sh.FAR - bs.TOP_H - bs.FLOOR_T:.1f} mm",
+        ],
+    ]
+    page = {
+        "title": "J1 관절 구조",
+        "h1": "J1 관절 구조 (베이스)",
+        "sub": "팔 전체를 받치고 돌리는 맨 아래 관절입니다. 책상에 무는 판(날개)은 책상 사진과 클램프 치수를 받은 뒤에 "
+        "그립니다. 서보 혼의 높이 값이 오면 허브 모양과 돌림판 높이가 1 mm쯤 달라집니다.",
+        "steps": steps,
+        "roles": roles,
+        "dims": dims,
+        "mass_note": "무게는 전에 뽑아서 잰 부품에 맞춘 어림입니다. 베어링 24 g 둘, 서보는 따로입니다.",
+        "why": [
+            "베어링 둘을 30 mm 띄워 받칩니다. 팔 전체가 기울이려는 힘을 두 베어링이 나눠 받아, J1 축이 덜 기웁니다. "
+            "돌림판의 저널 하나가 두 안쪽 링을 다 지나므로 두 링이 한 원기둥에 앉습니다.",
+            "허브는 혼에 짧은 나사로 먼저 달고, 긴 조임 볼트는 허브 속의 너트(쇠 나사산)에 조입니다. 혼의 얇은 "
+            "나사산(2.5 mm)에 긴 볼트를 걸지 않아도 되고, 볼트 길이가 혼 높이에 매이지 않습니다.",
+            "조임 볼트는 돌림판, 위 안쪽 링, 사이 고리, 아래 안쪽 링, 허브를 한 덩어리로 뭅니다. 바깥 링은 위쪽이 "
+            "몸통의 턱, 아래쪽이 누름 틀입니다. 누름 틀을 밀어 붙인 채 잠가서 베어링의 헐거움을 줄입니다.",
+            "J1 몸통은 돌림판에 축 가까이(21 mm)의 나사 넷으로 답니다. 가장자리에서 잡으면 돌림판의 얇은 테가 "
+            "팔 무게에 휘기 때문입니다. 나사는 돌림판 밑에서 올라와 J1 몸통의 두꺼운 바닥판(9.8 mm) 속 너트에 "
+            "물리므로, 둘을 책상 위에서 먼저 묶습니다.",
+            "서보, 누름 틀, 서보 받침은 STS 관절과 같은 짜임입니다. 서보 자리에는 STS3250도 들어가서, 정밀도가 "
+            "모자라면 J1 서보를 바꿀 수 있습니다.",
+            "베이스 몸통은 두꺼운 원기둥입니다. 무게가 문제 되지 않는 자리라 베어링 둘레를 두껍게 했고, 벽 나사는 "
+            "몸통 옆의 네모 굴 속에 앉습니다.",
+            "기계 멈춤 기둥은 돌림판 밑면에 있고, 몸통 윗면의 둥근 홈을 돌다가 뒤쪽에 남긴 살에 닿습니다. 영점 "
+            "핀은 J1 몸통의 뒤쪽 귀(두께 6.2 mm)에서 그 살에 꽂습니다.",
+            "선은 돌림판의 테와 J1 몸통 귀의 둘레에 감깁니다. 반지름이 39 mm라 D405 선의 굽힘 기준(40 mm)과 "
+            "맞고, 높이 12 mm에 D405 선과 서보 선 둘이 나란히 듭니다. 돌림판 아래 가장자리의 턱이 선이 틈으로 "
+            "빠지는 것을 막습니다.",
+            "돌림판 테의 가는 홈은 J1의 틈을 한쪽으로 미는 스프링(또는 추를 단 줄)의 자리입니다. 다 만든 팔의 반복 "
+            "정밀도가 모자랄 때만 답니다.",
+        ],
+        "todo": [
+            "책상에 무는 판과 날개는 책상 사진과 클램프 치수가 오면 그립니다 (지금은 몸통 밑에 4 mm 자리만 뒀습니다).",
+            "선이 몸통에서 나오는 자리와 J1 몸통으로 들어가는 구멍은 배선을 그릴 때 정합니다.",
+            "조임 볼트 M3 × 50 4개는 가진 것이 없습니다. 팔 전체의 살 것 목록에 넣습니다.",
+            f"베어링 자리와 저널의 지름은 검정 시험편 값이 오면 넣습니다 (지금은 {j.BEARING_BORE}, {j.JOURNAL_D}).",
+            "허브 옆 홈의 너트 자리는 검정 너트 홈 시험편 값으로 바꿉니다.",
+        ],
+        "frame": {"y0": -30, "y1": 176, "w": 124, "cx": 0},
+        "pin_pose": 0,
+        "axis": "위가 J1 몸통(어깨 쪽), 아래가 책상",
+    }
+    return {
+        "meta": {"model": model, "stop": j.STOP_DEG},
+        "parts": _meshes(bs.assembly(model), masses),
+        "page": page,
+    }
+
+
 def render(kind: str = "first") -> str:
-    """kind가 "first"면 첫 관절, "shoulder"면 어깨."""
-    data = shoulder_data() if kind == "shoulder" else mesh_data()
+    """kind가 "first"면 첫 관절, "shoulder"면 어깨, "base"면 J1."""
+    data = {"shoulder": shoulder_data, "base": base_data}.get(kind, mesh_data)()
     template = (HERE / "joint_page.html").read_text(encoding="utf-8")
     body = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     # <script type="application/json"> 안이라 "<"만 바꿔 둔다
@@ -377,7 +558,11 @@ def render(kind: str = "first") -> str:
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    for kind, name in (("first", "joint.html"), ("shoulder", "shoulder.html")):
+    for kind, name in (
+        ("first", "joint.html"),
+        ("shoulder", "shoulder.html"),
+        ("base", "base.html"),
+    ):
         out = OUT_DIR / name
         out.write_text(render(kind), encoding="utf-8", newline="\n")
         print(f"썼다: {out} ({out.stat().st_size / 1000:.0f} kB)")

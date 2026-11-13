@@ -82,7 +82,7 @@ ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 7
 
   <div class="stage" id="stage">
     <canvas id="c" aria-label="관절 부품을 보여 주는 3D 그림"></canvas>
-    <p class="axis">위가 출력 쪽(자식), 아래가 뒷덮개</p>
+    <p class="axis" id="axis">위가 출력 쪽(자식), 아래가 뒷덮개</p>
     <p class="hint">끌면 돌아가고, 휠로 확대됩니다</p>
     <p class="nogl" id="nogl" hidden>3D 그림을 띄우지 못했습니다. 아래 글과 표를 봐 주세요.</p>
   </div>
@@ -147,6 +147,7 @@ ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 7
   document.title = PAGE.title;
   $('h1').textContent = PAGE.h1;
   $('sub').textContent = PAGE.sub;
+  if (PAGE.axis) $('axis').textContent = PAGE.axis;
   $('massNote').textContent = PAGE.mass_note;
   [['why', PAGE.why], ['todo', PAGE.todo]].forEach((pair) => {
     pair[1].forEach((line) => { const li = document.createElement('li'); li.textContent = line; $(pair[0]).appendChild(li); });

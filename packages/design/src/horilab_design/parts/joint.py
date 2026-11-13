@@ -328,12 +328,15 @@ def out_disc() -> Compound:
     return solid(a)
 
 
-def retainer() -> Compound:
-    """누름 틀: 바깥 링 뒷면을 받치는 고리와 다리 셋 (벽 나사의 너트를 품는다). 고리를 바닥에 두고 뽑는다."""
+def retainer(b0: float = B0) -> Compound:
+    """누름 틀: 바깥 링 뒷면을 받치는 고리와 다리 셋 (벽 나사의 너트를 품는다). 고리를 바닥에 두고 뽑는다.
+
+    b0은 고리가 받치는 베어링 뒷면이다 (J1은 허브가 두꺼워 고리가 더 길다, parts/base.py).
+    """
     r_out = R_BORE - 0.15
     leg_in = SPOT_R - SCREW_LEN  # 나사 끝이 닿는 면 = 다리 안쪽 면 (15.0)
     # 원기둥 면의 이음선(방위각 0°)을 나사 구멍 자리에서 45° 돌려 둔다. 이음선 위에 구멍을 내면 형상이 깨진다
-    part = solid(Rot(0, 45, 0) * ring(r_out, R_STEP + 1.3, RET_Y[1], B0))
+    part = solid(Rot(0, 45, 0) * ring(r_out, R_STEP + 1.3, RET_Y[1], b0))
     seg = solid(Rot(0, 45, 0) * cyl_y(r_out, RET_Y[0], RET_Y[1] + 0.01))
     legs = box(-8.0, 8.0, RET_Y[0], RET_Y[1] + 0.01, leg_in, 30)
     legs += box(-8.0, 8.0, RET_Y[0], RET_Y[1] + 0.01, -30, -leg_in)

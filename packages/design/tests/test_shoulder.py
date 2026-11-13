@@ -109,9 +109,10 @@ def test_shoulder_mass_constants_match_the_cad(parts: list[j.Part]) -> None:
     screws = [p for p in parts if p.density > 0 and "핀" not in p.name]
     static = sum(p.mass_g for p in screws if not p.moving)
     moving = sum(p.mass_g for p in screws if p.moving)
-    house = (
-        sum(printed[f"shoulder_{n}"] for n in ("house", "retainer", "carrier", "cover")) + static
-    )
+    # 집과 뒷덮개는 어깨만 따로 본 모양이다 (뽑는 J1 몸통에서 더 든 몫은 ur_arm.J1_FOOT_MASS)
+    house = printed_mass_g(s.house(), (0.0, -1.0, 0.0))
+    cover = printed_mass_g(s.back_cover(), (0.0, 1.0, 0.0), "standard")
+    house += printed["shoulder_retainer"] + printed["shoulder_carrier"] + cover + static
     assert house == pytest.approx(ur_arm.SHOULDER_HOUSE_MASS * 1000, abs=2.0)
     out = printed["shoulder_out_disc"] + printed["shoulder_hub_plate"] + moving + HORN_MASS_G
     assert out == pytest.approx(ur_arm.SHOULDER_OUT_MASS * 1000, abs=2.0)
