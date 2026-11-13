@@ -38,8 +38,31 @@ const NOT_IN_FILE: [Register; 5] = [
 pub struct Settings {
     /// 서보 값의 0/4095 경계를 소프트 한계에서 떨어뜨릴 각도 [rad]
     pub boundary_clearance: f64,
+    /// 실행 루프의 기준값 (0032)
+    pub run_loop: LoopSettings,
     /// 관절 번호 순
     pub joints: Vec<Joint>,
+}
+
+/// 실행 루프의 기준값 (docs/decisions/0032-run-loop.md). 재기 전의 값은 로봇 설정에 시험값이라고 적는다.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LoopSettings {
+    /// 관절 속도 한계 [rad/s]
+    pub max_speed: f64,
+    /// 궤적의 첫 점이 지금 목표에서 이만큼까지 떨어져도 받는다 [rad]
+    pub start_tolerance: f64,
+    /// 정지 명령에서 재생 빠르기를 0으로 줄이는 시간 [s]
+    pub stop_time: f64,
+    /// 서보 온도가 이 이상이면 알린다 [°C]
+    pub temperature_warn: f64,
+    /// 서보 온도가 이 이상이면 멈추고 쉰다 [°C]. 쉬는 자세가 정해지기 전에는 그 자리에서 버틴다
+    pub temperature_rest: f64,
+    /// 서보 전압이 이보다 낮으면 알린다 [V]
+    pub voltage_warn: f64,
+    /// 처짐 보정의 이득 [1/s]. 0이면 끈다 (0012)
+    pub sag_gain: f64,
+    /// 처짐 보정의 최대 크기 [rad]
+    pub sag_max: f64,
 }
 
 /// 관절 하나.
@@ -60,6 +83,8 @@ pub struct Joint {
     pub pin: f64,
     /// 영점과 방향. 영점 핀으로 재기 전에는 없고, 없으면 이 관절은 움직이지 않는다
     pub calibration: Option<Calibration>,
+    /// 토크 한도 [0.1 %] (RAM 48). 없으면 관절 층의 상한을 쓴다 (0027, 0032)
+    pub torque_limit: Option<i32>,
     /// 서보에 구울 EEPROM 값 (값 적용의 목표, 주소 순). ID와 통신 속도는 빠진다
     pub eeprom: Vec<(Register, i32)>,
 }
@@ -255,6 +280,13 @@ impl Settings {
         }
         let clearance = clearance_deg.to_radians();
         let mut problems = Vec::new();
+        let run_loop = match file.run_loop.check() {
+            Ok(values) => Some(values),
+            Err(found) => {
+                problems.extend(found);
+                None
+            }
+        };
 
         let mut models: BTreeMap<&str, Vec<(Register, i32)>> = BTreeMap::new();
         for (name, model) in &file.models {
@@ -293,6 +325,7 @@ impl Settings {
         joints.sort_by_key(|joint| joint.id);
         Ok(Self {
             boundary_clearance: clearance,
+            run_loop: run_loop.expect("문제가 없으면 읽었다"),
             joints,
         })
     }
@@ -307,6 +340,20 @@ impl Settings {
             "0/4095 경계 여유: 소프트 한계 밖 {}",
             deg(self.boundary_clearance)
         )];
+        let r = &self.run_loop;
+        let sag = if r.sag_gain > 0.0 {
+            format!("이득 {}/s, 최대 {}", r.sag_gain, deg(r.sag_max))
+        } else {
+            "꺼짐".to_owned()
+        };
+        lines.push(format!(
+            "실행 루프: 속도 한계 {}/s, 정지 {} s, 온도 알림 {}°C와 쉬기 {}°C, 전압 알림 {} V, 처짐 보정 {sag}",
+            deg(r.max_speed),
+            r.stop_time,
+            r.temperature_warn,
+            r.temperature_rest,
+            r.voltage_warn
+        ));
         for joint in &self.joints {
             let calibration = match joint.calibration {
                 None => "영점과 방향을 아직 재지 않았다 (재기 전에는 움직이지 않는다)".to_owned(),
@@ -322,8 +369,11 @@ impl Settings {
                     )
                 }
             };
+            let torque = joint.torque_limit.map_or_else(String::new, |limit| {
+                format!("  토크 한도 {}%", f64::from(limit) / 10.0)
+            });
             lines.push(format!(
-                "{}  ID {}  {}  소프트 한계 {}~{}  영점 핀 {}  {calibration}",
+                "{}  ID {}  {}  소프트 한계 {}~{}  영점 핀 {}  {calibration}{torque}",
                 joint.name,
                 joint.id,
                 joint.model,
@@ -347,9 +397,69 @@ fn deg(rad: f64) -> String {
 #[serde(deny_unknown_fields)]
 struct SettingsFile {
     boundary_clearance_deg: f64,
+    run_loop: LoopFile,
     #[serde(default)]
     models: BTreeMap<String, ModelFile>,
     joints: BTreeMap<String, JointFile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LoopFile {
+    max_speed_deg_s: f64,
+    start_tolerance_deg: f64,
+    stop_time_s: f64,
+    temperature_warn_c: f64,
+    temperature_rest_c: f64,
+    voltage_warn_v: f64,
+    sag_gain_per_s: f64,
+    sag_max_deg: f64,
+}
+
+impl LoopFile {
+    fn check(&self) -> Result<LoopSettings, Vec<String>> {
+        let mut problems = Vec::new();
+        let positive = [
+            ("max_speed_deg_s", self.max_speed_deg_s),
+            ("start_tolerance_deg", self.start_tolerance_deg),
+            ("stop_time_s", self.stop_time_s),
+            ("temperature_warn_c", self.temperature_warn_c),
+            ("temperature_rest_c", self.temperature_rest_c),
+            ("voltage_warn_v", self.voltage_warn_v),
+        ];
+        for (name, value) in positive {
+            if !(value.is_finite() && value > 0.0) {
+                problems.push(format!("run_loop.{name}는 0보다 크다: {value}"));
+            }
+        }
+        for (name, value) in [
+            ("sag_gain_per_s", self.sag_gain_per_s),
+            ("sag_max_deg", self.sag_max_deg),
+        ] {
+            if !(value.is_finite() && value >= 0.0) {
+                problems.push(format!("run_loop.{name}는 0 이상이다: {value}"));
+            }
+        }
+        if self.temperature_rest_c <= self.temperature_warn_c {
+            problems.push(format!(
+                "run_loop.temperature_rest_c({})는 temperature_warn_c({})보다 높다",
+                self.temperature_rest_c, self.temperature_warn_c
+            ));
+        }
+        if !problems.is_empty() {
+            return Err(problems);
+        }
+        Ok(LoopSettings {
+            max_speed: self.max_speed_deg_s.to_radians(),
+            start_tolerance: self.start_tolerance_deg.to_radians(),
+            stop_time: self.stop_time_s,
+            temperature_warn: self.temperature_warn_c,
+            temperature_rest: self.temperature_rest_c,
+            voltage_warn: self.voltage_warn_v,
+            sag_gain: self.sag_gain_per_s,
+            sag_max: self.sag_max_deg.to_radians(),
+        })
+    }
 }
 
 #[derive(Deserialize)]
@@ -369,6 +479,7 @@ struct JointFile {
     zero_raw: Option<u16>,
     direction: Option<i8>,
     position_offset: Option<i32>,
+    torque_limit_percent: Option<f64>,
     #[serde(default)]
     registers: BTreeMap<String, i64>,
 }
@@ -491,6 +602,19 @@ impl JointFile {
             ));
         }
 
+        let torque_limit = match self.torque_limit_percent {
+            None => None,
+            Some(percent) if percent.is_finite() && percent > 0.0 && percent <= 100.0 => {
+                Some((percent * 10.0).round() as i32)
+            }
+            Some(percent) => {
+                problems.push(format!(
+                    "{name}: torque_limit_percent는 0보다 크고 100 이하다: {percent}"
+                ));
+                None
+            }
+        };
+
         let joint_values = check_registers(&format!("joints.{name}.registers"), &self.registers)
             .unwrap_or_else(|found| {
                 problems.extend(found);
@@ -526,6 +650,7 @@ impl JointFile {
             upper,
             pin,
             calibration,
+            torque_limit,
             eeprom,
         })
     }
@@ -535,6 +660,16 @@ impl JointFile {
 #[cfg(test)]
 pub(crate) const TEST_J3: &str = r#"
 boundary_clearance_deg = 15
+
+[run_loop]
+max_speed_deg_s = 30
+start_tolerance_deg = 0.5
+stop_time_s = 0.3
+temperature_warn_c = 50
+temperature_rest_c = 55
+voltage_warn_v = 11.0
+sag_gain_per_s = 0
+sag_max_deg = 3
 
 [models.STS3250.registers]
 response_delay = 0
@@ -592,6 +727,13 @@ mod tests {
         assert!(close(j3.lower, (-30f64).to_radians()));
         assert!(close(j3.upper, 118f64.to_radians()));
         assert!(close(j3.pin, 0.0));
+        assert_eq!(j3.torque_limit, None);
+        let r = settings.run_loop;
+        assert!(close(r.max_speed, 30f64.to_radians()) && close(r.sag_max, 3f64.to_radians()));
+        assert_eq!(
+            (r.temperature_warn, r.temperature_rest, r.sag_gain),
+            (50.0, 55.0, 0.0)
+        );
         assert_eq!(j3.calibration, None);
         assert!(settings.joint("j2").is_none());
     }
@@ -747,7 +889,8 @@ mod tests {
         let message = error(&(text + "zero_raw = 3000\ndirection = 1\nposition_offset = 0\n"));
         assert!(message.starts_with("고칠 것 3가지"), "{message}");
         assert!(message.contains("여야 한다 (가운데 1547)"), "{message}");
-        let message = error("boundary_clearance_deg = 45\n[joints]\n");
+        let head = J3.split("[models").next().unwrap();
+        let message = error(&format!("{head}[joints]\n"));
         assert!(message.contains("관절이 하나도 없다"), "{message}");
     }
 
@@ -830,6 +973,31 @@ mod tests {
         assert_eq!(((low + high) / 2.0).round(), 2571.0);
         let message = error(&J3.replace("pin_deg = 0", "pin_deg = 120"));
         assert!(message.contains("pin_deg"), "{message}");
+    }
+
+    #[test]
+    fn run_loop_values_are_checked() {
+        let message = error(&J3.replace("temperature_rest_c = 55", "temperature_rest_c = 45"));
+        assert!(
+            message.contains("temperature_warn_c(50)보다 높다"),
+            "{message}"
+        );
+        let message = error(&J3.replace("max_speed_deg_s = 30", "max_speed_deg_s = -1"));
+        assert!(
+            message.contains("max_speed_deg_s는 0보다 크다"),
+            "{message}"
+        );
+        let message = error(&J3.replace("sag_gain_per_s = 0", "sag_gain_per_s = -1"));
+        assert!(message.contains("sag_gain_per_s는 0 이상이다"), "{message}");
+    }
+
+    #[test]
+    fn torque_limit_is_a_percent() {
+        let settings = Settings::parse(&j3_with("torque_limit_percent = 45")).unwrap();
+        assert_eq!(settings.joint("j3").unwrap().torque_limit, Some(450));
+        assert!(settings.summary().contains("토크 한도 45%"));
+        let message = error(&j3_with("torque_limit_percent = 120"));
+        assert!(message.contains("100 이하다: 120"), "{message}");
     }
 
     #[test]

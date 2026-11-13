@@ -57,6 +57,8 @@ pub struct Servo {
     /// 이 범위 밖의 목표는 쓰지 않는다 (서보 값)
     pub min_raw: i32,
     pub max_raw: i32,
+    /// 토크 한도 [0.1 %]. 없으면 관절 층의 상한을 쓰고, 상한보다 크면 상한을 쓴다
+    pub torque_limit: Option<i32>,
     calibration: Option<Calibration>,
 }
 
@@ -69,6 +71,7 @@ impl Servo {
             model_number,
             min_raw,
             max_raw,
+            torque_limit: None,
             calibration: None,
         }
     }
@@ -88,6 +91,7 @@ impl Servo {
             model_number: joint.model_number,
             min_raw: a.min(b).ceil() as i32,
             max_raw: a.max(b).floor() as i32,
+            torque_limit: joint.torque_limit,
             calibration: Some(calibration),
         })
     }
@@ -390,7 +394,10 @@ impl<P: Port> Joints<P> {
         }
         let caps = self.caps;
         self.write(id, reg::GOAL_POSITION, state.position)?;
-        self.write(id, reg::TORQUE_LIMIT, caps.torque_limit)?;
+        let torque_limit = servo
+            .torque_limit
+            .map_or(caps.torque_limit, |limit| limit.min(caps.torque_limit));
+        self.write(id, reg::TORQUE_LIMIT, torque_limit)?;
         self.write(id, reg::ACCELERATION, caps.acceleration)?;
         self.write(id, reg::GOAL_SPEED, caps.speed)?;
         // 서보는 쓴 값을 몇 ms 뒤에 반영한다. 전원을 넣고 처음 켤 때 속도와 가속을 쓰고 바로 토크를 켜자,
@@ -612,6 +619,21 @@ mod tests {
         );
         joints.wire().servos[0].set(reg::POSITION_OFFSET, 300);
         assert_eq!(joints.enable(3).unwrap(), Enabled::TurnedOn);
+    }
+
+    #[test]
+    fn joint_torque_limit_is_used_up_to_the_cap() {
+        for (limit, expected) in [
+            (BENCH_CAPS.torque_limit - 50, BENCH_CAPS.torque_limit - 50),
+            (BENCH_CAPS.torque_limit + 50, BENCH_CAPS.torque_limit),
+        ] {
+            let mut servo = Servo::bench(20, 2825, 0, 4095);
+            servo.torque_limit = Some(limit);
+            let mut joints =
+                Joints::open(open_fake_bus([FakeServo::new(20)]), vec![servo], BENCH_CAPS).unwrap();
+            joints.enable(20).unwrap();
+            assert_eq!(joints.snapshot(20).unwrap().torque_limit, expected);
+        }
     }
 
     #[test]

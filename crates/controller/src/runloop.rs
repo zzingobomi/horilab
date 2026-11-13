@@ -1,27 +1,22 @@
-//! 실행 루프 (docs/decisions/0032-run-loop.md의 만드는 순서 1): 박자마다 서보 상태를 모두 읽고, 검사하고,
-//! 궤적의 그 시각 목표를 쓴다. 서보를 움직이는 쓰기는 관절 층([`Joints`])을 지난다 (0009의 한곳 안전 검사).
+//! 실행 루프 (docs/decisions/0032-run-loop.md의 만드는 순서 1, 2): 박자마다 서보 상태를 모두 읽고,
+//! 검사하고, 궤적의 그 시각 목표를 쓴다. 서보를 움직이는 쓰기는 관절 층([`Joints`])을 지난다 (0009의 한곳
+//! 안전 검사). 기준값은 로봇 설정의 [`LoopSettings`]다.
 //!
 //! - 궤적은 점마다 시각 [s]과 관절 각 [rad]이다. 지금 붙잡고 있는 목표에서 시작하고 소프트 한계와 속도
 //!   한계 안이어야 받고, 아니면 실행 전에 통째로 거부한다 (0009). 점 사이는 곧게 잇는다.
 //! - 정지는 같은 길을 따라가며 재생 빠르기를 정지 시간 동안 0으로 줄인 뒤 그 자리에서 버틴다.
 //! - 서보 보호 비트, 꺼진 토크(서보 전원이 꺼졌다 켜짐), 잇단 통신 실패는 고장이다: 새 목표를 쓰지 않고
 //!   (서보는 마지막 목표를 잡고 있다) 까닭을 남긴다. 사람이 [`RunLoop::resume`]으로 푼다.
+//! - 서보 온도가 쉬는 기준에 닿으면 정지해 버티고, 알림 기준 아래로 식을 때까지 새 궤적을 받지 않는다 (쉬는
+//!   자세가 정해지면 그리로 내린다, 0028). 알림 기준을 넘은 온도와 기준보다 낮은 전압은 알린다.
+//! - 처짐 보정: 붙잡고 있는 동안 서보가 읽은 위치와 목표의 차이를 쌓아 쓰는 목표를 고친다 (0012). 움직이는
+//!   동안에는 쌓은 값을 그대로 쓰고, 이득이 0이면 끈다.
 //! - 시간은 부르는 쪽이 준다. 실물에서는 주기마다, 시험에서는 가짜 시계로 [`RunLoop::tick`]을 부른다.
 
 use horilab_servo::feetech::Port;
 
 use crate::joints::{Joints, MAX_FAILURES, Snapshot};
-
-/// 루프의 한계값. 만드는 순서 2에서 로봇 설정으로 옮긴다.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LoopLimits {
-    /// 관절 속도 한계 [rad/s]
-    pub max_speed: f64,
-    /// 궤적의 첫 점이 지금 목표에서 이만큼까지 떨어져도 받는다 [rad]
-    pub start_tolerance: f64,
-    /// 정지 명령에서 재생 빠르기를 0으로 줄이는 시간 [s]
-    pub stop_time: f64,
-}
+use crate::settings::LoopSettings;
 
 /// 시간이 붙은 관절 궤적: 점마다 시작에서의 시각 [s]과 관절 각 [rad] (루프의 관절 순서).
 #[derive(Debug, Clone, PartialEq)]
@@ -54,13 +49,17 @@ struct Playing {
 pub struct RunLoop<P: Port> {
     joints: Joints<P>,
     ids: Vec<u8>,
-    limits: LoopLimits,
-    /// 지금 쓰는 목표 [rad] (관절 순서)
+    settings: LoopSettings,
+    /// 지금 따르는 목표 [rad] (관절 순서)
     targets: Vec<f64>,
+    /// 처짐 보정 [rad]: 서보에 쓰는 목표는 targets + corrections다
+    corrections: Vec<f64>,
     /// 마지막 박자에 읽은 상태
     states: Vec<(u8, Snapshot)>,
     playing: Option<Playing>,
     mode: Mode,
+    /// 서보가 뜨거워 쉬는 까닭. 있으면 새 궤적을 받지 않는다
+    hot: Option<String>,
     /// 상태를 읽지 못한 박자가 잇달아 몇 번인지
     missed: u64,
 }
@@ -68,7 +67,7 @@ pub struct RunLoop<P: Port> {
 impl<P: Port> RunLoop<P> {
     /// 관절 층의 서보를 모두 켜거나 이어받고(0009의 시작 절차), 지금 목표를 붙잡는다. 영점을 잰 로봇 관절만
     /// 받는다.
-    pub fn start(mut joints: Joints<P>, limits: LoopLimits) -> Result<Self, String> {
+    pub fn start(mut joints: Joints<P>, settings: LoopSettings) -> Result<Self, String> {
         let ids = joints.ids();
         for &id in &ids {
             if joints.servo(id)?.is_bench() {
@@ -81,11 +80,13 @@ impl<P: Port> RunLoop<P> {
         let mut run = Self {
             joints,
             ids,
-            limits,
+            settings,
             targets: Vec::new(),
+            corrections: Vec::new(),
             states: Vec::new(),
             playing: None,
             mode: Mode::Holding,
+            hot: None,
             missed: 0,
         };
         run.hold_present_goals()?;
@@ -96,7 +97,7 @@ impl<P: Port> RunLoop<P> {
         &self.mode
     }
 
-    /// 지금 쓰는 목표 [rad] (관절 순서).
+    /// 지금 따르는 목표 [rad] (관절 순서). 처짐 보정은 빠져 있다.
     pub fn targets(&self) -> &[f64] {
         &self.targets
     }
@@ -104,6 +105,30 @@ impl<P: Port> RunLoop<P> {
     /// 마지막 박자에 읽은 상태.
     pub fn states(&self) -> &[(u8, Snapshot)] {
         &self.states
+    }
+
+    /// 지금 알릴 것: 쉬는 까닭, 알림 기준에 닿은 온도, 기준보다 낮은 전압.
+    pub fn warnings(&self) -> Vec<String> {
+        let mut found: Vec<String> = self.hot.iter().cloned().collect();
+        for (id, state) in &self.states {
+            let temperature = f64::from(state.temperature);
+            if temperature >= self.settings.temperature_warn {
+                found.push(format!(
+                    "{}: 온도 {temperature}°C가 알림 기준 {}°C에 닿았다",
+                    self.name(*id),
+                    self.settings.temperature_warn
+                ));
+            }
+            let voltage = f64::from(state.voltage) / 10.0;
+            if voltage < self.settings.voltage_warn {
+                found.push(format!(
+                    "{}: 전압 {voltage} V가 알림 기준 {} V보다 낮다",
+                    self.name(*id),
+                    self.settings.voltage_warn
+                ));
+            }
+        }
+        found
     }
 
     /// 한 박자: 상태를 읽고, 검사하고, 그 시각의 목표를 쓴다. `dt`는 지난 박자에서 흐른 시간 [s]이다.
@@ -129,16 +154,18 @@ impl<P: Port> RunLoop<P> {
             self.fault(reason);
             return &self.mode;
         }
+        self.watch_heat();
         self.advance(dt);
+        self.correct_sag(dt);
         let goals: Result<Vec<(u8, i32)>, String> = self
             .ids
             .iter()
-            .zip(&self.targets)
-            .map(|(&id, &angle)| {
+            .zip(self.targets.iter().zip(&self.corrections))
+            .map(|(&id, (&angle, &correction))| {
                 let servo = self.joints.servo(id)?;
                 servo
-                    .raw_at(angle)
-                    .map(|raw| (id, raw))
+                    .raw_at(angle + correction)
+                    .map(|raw| (id, raw.clamp(servo.min_raw, servo.max_raw)))
                     .ok_or_else(|| format!("{}: 영점이 없다", servo.name))
             })
             .collect();
@@ -149,7 +176,7 @@ impl<P: Port> RunLoop<P> {
     }
 
     /// 궤적을 받는다. 붙잡고 있을 때만 받고, 첫 점이 지금 목표이고 모든 점이 한계 안이어야 한다. 아니면
-    /// 실행 전에 통째로 거부한다 (0009).
+    /// 실행 전에 통째로 거부한다 (0009). 서보가 뜨거워 쉬는 동안에는 받지 않는다.
     pub fn submit(&mut self, trajectory: Trajectory) -> Result<(), String> {
         match &self.mode {
             Mode::Holding => {}
@@ -157,6 +184,11 @@ impl<P: Port> RunLoop<P> {
             Mode::Moving | Mode::Stopping => {
                 return Err("움직이는 중에는 새 궤적을 받지 않는다 (정지한 뒤 보낸다)".to_owned());
             }
+        }
+        if let Some(reason) = &self.hot {
+            return Err(format!(
+                "서보가 뜨거워 쉬는 중이라 궤적을 받지 않는다: {reason}"
+            ));
         }
         self.check_trajectory(&trajectory)?;
         self.playing = Some(Playing {
@@ -185,7 +217,7 @@ impl<P: Port> RunLoop<P> {
         self.hold_present_goals()
     }
 
-    /// 서보마다 남은 목표를 읽어 붙잡는다.
+    /// 서보마다 남은 목표를 읽어 붙잡는다. 남은 목표에 처짐 보정이 들어 있으므로 보정은 0에서 다시 쌓는다.
     fn hold_present_goals(&mut self) -> Result<(), String> {
         let states = self.joints.read_all()?;
         let mut targets = Vec::new();
@@ -196,6 +228,7 @@ impl<P: Port> RunLoop<P> {
                 .ok_or_else(|| format!("{}: 영점이 없다", servo.name))?;
             targets.push(angle);
         }
+        self.corrections = vec![0.0; targets.len()];
         self.targets = targets;
         self.states = states;
         self.playing = None;
@@ -204,23 +237,55 @@ impl<P: Port> RunLoop<P> {
         Ok(())
     }
 
+    fn name(&self, id: u8) -> String {
+        self.joints
+            .servo(id)
+            .map_or_else(|_| format!("서보 {id}"), |servo| servo.name.clone())
+    }
+
     /// 읽은 상태에서 고장을 찾는다: 서보 보호 비트, 꺼진 토크.
     fn check(&self) -> Option<String> {
         self.states.iter().find_map(|(id, state)| {
-            let name = self
-                .joints
-                .servo(*id)
-                .map_or_else(|_| format!("서보 {id}"), |servo| servo.name.clone());
             if !state.status.is_none() {
-                Some(format!("{name}: 서보 보호가 걸렸다 ({})", state.status))
+                Some(format!(
+                    "{}: 서보 보호가 걸렸다 ({})",
+                    self.name(*id),
+                    state.status
+                ))
             } else if !state.torque_on() {
                 Some(format!(
-                    "{name}: 토크가 꺼졌다 (서보 전원이 꺼졌다 켜졌을 수 있다)"
+                    "{}: 토크가 꺼졌다 (서보 전원이 꺼졌다 켜졌을 수 있다)",
+                    self.name(*id)
                 ))
             } else {
                 None
             }
         })
+    }
+
+    /// 가장 뜨거운 서보가 쉬는 기준에 닿으면 정지해 쉬고, 알림 기준 아래로 식으면 쉬기를 푼다.
+    fn watch_heat(&mut self) {
+        let Some((id, temperature)) = self
+            .states
+            .iter()
+            .map(|(id, state)| (*id, state.temperature))
+            .max_by_key(|&(_, temperature)| temperature)
+        else {
+            return;
+        };
+        let temperature = f64::from(temperature);
+        if temperature >= self.settings.temperature_rest {
+            if self.hot.is_none() {
+                self.hot = Some(format!(
+                    "{}: 온도 {temperature}°C가 쉬는 기준 {}°C에 닿았다",
+                    self.name(id),
+                    self.settings.temperature_rest
+                ));
+            }
+            self.stop();
+        } else if temperature < self.settings.temperature_warn {
+            self.hot = None;
+        }
     }
 
     /// 궤적을 `dt`만큼 재생한다. 정지 중이면 재생 빠르기를 줄이고, 끝나거나 멈추면 붙잡는다.
@@ -230,7 +295,7 @@ impl<P: Port> RunLoop<P> {
             return;
         };
         if stopping {
-            playing.rate = (playing.rate - dt / self.limits.stop_time).max(0.0);
+            playing.rate = (playing.rate - dt / self.settings.stop_time).max(0.0);
         }
         playing.time += playing.rate * dt;
         let (targets, end) = sample(&playing.trajectory, playing.time);
@@ -239,6 +304,27 @@ impl<P: Port> RunLoop<P> {
         if done {
             self.playing = None;
             self.mode = Mode::Holding;
+        }
+    }
+
+    /// 붙잡고 있는 동안 서보가 읽은 위치와 목표의 차이를 쌓아 처짐을 보정한다 (0012).
+    fn correct_sag(&mut self, dt: f64) {
+        let (gain, max) = (self.settings.sag_gain, self.settings.sag_max);
+        if gain <= 0.0 || self.mode != Mode::Holding {
+            return;
+        }
+        for (index, (id, state)) in self.states.iter().enumerate() {
+            let Some(measured) = self
+                .joints
+                .servo(*id)
+                .ok()
+                .and_then(|servo| servo.angle_at(state.position))
+            else {
+                continue;
+            };
+            let error = self.targets[index] - measured;
+            self.corrections[index] =
+                (self.corrections[index] + gain * error * dt).clamp(-max, max);
         }
     }
 
@@ -269,11 +355,6 @@ impl<P: Port> RunLoop<P> {
                 return Err("궤적에 수가 아닌 값이 있다".to_owned());
             }
         }
-        let name = |index: usize| {
-            self.joints
-                .servo(self.ids[index])
-                .map_or_else(|_| format!("서보 {}", self.ids[index]), |s| s.name.clone())
-        };
         for pair in points.windows(2) {
             let ((t0, q0), (t1, q1)) = (&pair[0], &pair[1]);
             if t1 <= t0 {
@@ -281,20 +362,20 @@ impl<P: Port> RunLoop<P> {
             }
             for (index, (a, b)) in q0.iter().zip(q1).enumerate() {
                 let speed = (b - a).abs() / (t1 - t0);
-                if speed > self.limits.max_speed {
+                if speed > self.settings.max_speed {
                     return Err(format!(
-                        "{}: {t0}~{t1} s의 속도 {speed:.3} rad/s가 한계 {} rad/s를 넘는다",
-                        name(index),
-                        self.limits.max_speed
+                        "{}: {t0}~{t1} s의 속도 {speed:.3} rad/s가 한계 {:.3} rad/s를 넘는다",
+                        self.name(self.ids[index]),
+                        self.settings.max_speed
                     ));
                 }
             }
         }
         for (index, (&start, &now)) in first.iter().zip(&self.targets).enumerate() {
-            if (start - now).abs() > self.limits.start_tolerance {
+            if (start - now).abs() > self.settings.start_tolerance {
                 return Err(format!(
                     "{}: 첫 점 {start:.4} rad가 지금 목표 {now:.4} rad에서 시작하지 않는다",
-                    name(index)
+                    self.name(self.ids[index])
                 ));
             }
         }
@@ -345,15 +426,21 @@ mod tests {
     use crate::joints::{BENCH_CAPS, Servo};
     use crate::settings::{Calibration, Direction, RAD_PER_STEP, Settings, TEST_J3};
 
-    const LIMITS: LoopLimits = LoopLimits {
+    /// 시험용 기준값 (로봇 설정의 시험값보다 빠르게 움직여 시험을 짧게 한다)
+    const SETTINGS: LoopSettings = LoopSettings {
         max_speed: 2.0,
         start_tolerance: 0.01,
         stop_time: 0.2,
+        temperature_warn: 50.0,
+        temperature_rest: 55.0,
+        voltage_warn: 11.0,
+        sag_gain: 0.0,
+        sag_max: 0.05,
     };
     const DT: f64 = 0.01;
 
     /// J3과 J4 (둘 다 옛 시험의 J3 한계 -30°~118°, 영점 2048에서 0°)
-    fn two_joints() -> RunLoop<FakePort> {
+    fn two_joints_with(settings: LoopSettings) -> RunLoop<FakePort> {
         let j3 = Settings::parse(TEST_J3)
             .unwrap()
             .joint("j3")
@@ -377,9 +464,13 @@ mod tests {
         ]);
         RunLoop::start(
             Joints::open(bus, servos.to_vec(), BENCH_CAPS).unwrap(),
-            LIMITS,
+            settings,
         )
         .unwrap()
+    }
+
+    fn two_joints() -> RunLoop<FakePort> {
+        two_joints_with(SETTINGS)
     }
 
     fn line(to: [f64; 2], seconds: f64) -> Trajectory {
@@ -388,8 +479,12 @@ mod tests {
         }
     }
 
+    fn fake(run: &mut RunLoop<FakePort>, index: usize) -> &mut FakeServo {
+        &mut run.joints.wire().servos[index]
+    }
+
     fn position(run: &mut RunLoop<FakePort>, index: usize) -> i32 {
-        run.joints.wire().servos[index].get(reg::PRESENT_POSITION)
+        fake(run, index).get(reg::PRESENT_POSITION)
     }
 
     /// 붙잡을 때까지 박자를 돌린다 (넉넉히 1000박자까지).
@@ -412,6 +507,7 @@ mod tests {
         assert_eq!(run.mode(), &Mode::Holding);
         assert_eq!(run.targets(), [0.0, 0.0]);
         assert!(run.states().iter().all(|(_, state)| state.torque_on()));
+        assert!(run.warnings().is_empty());
     }
 
     #[test]
@@ -504,10 +600,10 @@ mod tests {
         for _ in 0..10 {
             run.tick(DT);
         }
-        run.joints.wire().servos[1].held = true;
+        fake(&mut run, 1).held = true;
         let held_at = position(&mut run, 1);
         run.tick(DT);
-        run.joints.wire().servos[1].overload(); // 붙잡힌 채 보호 시간이 지났다
+        fake(&mut run, 1).overload(); // 붙잡힌 채 보호 시간이 지났다
         let mode = run.tick(DT).clone();
         assert!(
             matches!(&mode, Mode::Fault(reason) if reason.contains("j4: 서보 보호가 걸렸다 (과부하)")),
@@ -519,14 +615,11 @@ mod tests {
             run.tick(DT);
         }
         assert_eq!(position(&mut run, 0), stopped_at);
-        assert!(
-            run.submit(line([0.0, 0.0], 1.0))
-                .unwrap_err()
-                .contains("고장")
-        );
+        let message = run.submit(line([0.0, 0.0], 1.0)).unwrap_err();
+        assert!(message.contains("고장"), "{message}");
         // 과부하로 묶인 채로는 풀리지 않는다. 원인을 없애고(놓고) 토크를 껐다 켜면 풀린다
         assert!(run.resume().unwrap_err().contains("서보 보호"));
-        let servo = &mut run.joints.wire().servos[1];
+        let servo = fake(&mut run, 1);
         servo.release();
         servo.write(reg::TORQUE_ENABLE.address, &[0]);
         run.resume().unwrap();
@@ -537,7 +630,7 @@ mod tests {
     #[test]
     fn torque_turned_off_is_a_fault() {
         let mut run = two_joints();
-        run.joints.wire().servos[0].power_cycle(); // 서보 전원이 꺼졌다 켜짐
+        fake(&mut run, 0).power_cycle(); // 서보 전원이 꺼졌다 켜짐
         let mode = run.tick(DT).clone();
         assert!(
             matches!(&mode, Mode::Fault(reason) if reason.contains("j3: 토크가 꺼졌다")),
@@ -551,7 +644,7 @@ mod tests {
     #[test]
     fn repeated_read_failures_are_a_fault() {
         let mut run = two_joints();
-        run.joints.wire().servos[0].faults.silent = true;
+        fake(&mut run, 0).faults.silent = true;
         for _ in 1..MAX_FAILURES {
             assert_eq!(run.tick(DT), &Mode::Holding);
         }
@@ -560,8 +653,79 @@ mod tests {
             matches!(&mode, Mode::Fault(reason) if reason.contains("j3")),
             "{mode:?}"
         );
-        run.joints.wire().servos[0].faults.silent = false;
+        fake(&mut run, 0).faults.silent = false;
         run.resume().unwrap();
         assert_eq!(run.tick(DT), &Mode::Holding);
+    }
+
+    #[test]
+    fn a_hot_servo_stops_the_arm_until_it_cools() {
+        let mut run = two_joints();
+        run.submit(line([1.0, 0.5], 1.0)).unwrap();
+        for _ in 0..10 {
+            run.tick(DT);
+        }
+        fake(&mut run, 1).set(reg::PRESENT_TEMPERATURE, 52);
+        run.tick(DT);
+        assert_eq!(run.mode(), &Mode::Moving); // 알림 기준만 넘으면 알리기만 한다
+        let warnings = run.warnings();
+        assert!(
+            warnings[0].contains("j4: 온도 52°C가 알림 기준 50°C"),
+            "{warnings:?}"
+        );
+        fake(&mut run, 1).set(reg::PRESENT_TEMPERATURE, 56);
+        run.tick(DT);
+        assert_eq!(run.mode(), &Mode::Stopping);
+        until_holding(&mut run);
+        let now = run.targets().to_vec();
+        let stay = Trajectory {
+            points: vec![(0.0, now.clone()), (1.0, now)],
+        };
+        let message = run.submit(stay.clone()).unwrap_err();
+        assert!(message.contains("뜨거워"), "{message}");
+        // 알림 기준 아래로 식어야 다시 받는다
+        fake(&mut run, 1).set(reg::PRESENT_TEMPERATURE, 52);
+        run.tick(DT);
+        assert!(run.submit(stay.clone()).is_err());
+        fake(&mut run, 1).set(reg::PRESENT_TEMPERATURE, 45);
+        run.tick(DT);
+        assert!(run.warnings().is_empty());
+        run.submit(stay).unwrap();
+    }
+
+    #[test]
+    fn low_voltage_is_warned_but_does_not_stop() {
+        let mut run = two_joints();
+        fake(&mut run, 0).set(reg::PRESENT_VOLTAGE, 105);
+        run.tick(DT);
+        let warnings = run.warnings();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("j3: 전압 10.5 V가 알림 기준 11 V")),
+            "{warnings:?}"
+        );
+        assert_eq!(run.mode(), &Mode::Holding);
+    }
+
+    #[test]
+    fn sag_correction_raises_the_goal_until_the_servo_reads_the_target() {
+        let mut settings = SETTINGS;
+        settings.sag_gain = 20.0;
+        let mut run = two_joints_with(settings);
+        fake(&mut run, 0).sag = 10; // 짐에 눌려 10칸 처진다
+        for _ in 0..300 {
+            run.tick(DT);
+        }
+        assert_eq!(position(&mut run, 0), 2048); // 서보가 읽는 위치가 목표에 닿았다
+        assert_eq!(fake(&mut run, 0).get(reg::GOAL_POSITION), 2058);
+        assert_eq!(run.targets()[0], 0.0); // 따르는 목표는 그대로다
+        // 처짐 보정이 꺼져 있으면 처진 채 둔다
+        let mut run = two_joints();
+        fake(&mut run, 0).sag = 10;
+        for _ in 0..300 {
+            run.tick(DT);
+        }
+        assert_eq!(position(&mut run, 0), 2038);
     }
 }

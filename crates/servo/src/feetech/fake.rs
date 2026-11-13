@@ -13,6 +13,7 @@
 //!   과부하 비트가 켜지고, 힘을 빼는 조건(19)에 과부하가 있으면 힘(부하)이 보호 뒤 토크(34)로 줄어 토크를
 //!   껐다 켤 때까지 목표로 가지 않는다. 토크 스위치와 토크 한도 값은 그대로다. [`FakeServo::set_voltage`]는
 //!   입력 전압 범위 밖에서 전압 비트를 켠다 (토크와 통신은 그대로다).
+//! - `sag`만큼 짐에 눌려 목표보다 처진 자리에서 선다 (처짐 보정 시험).
 //! - 응답 없음, 깨진 응답, 잘린 응답, 상태 바이트의 오류 비트, 같은 ID 둘, 포트 오류를 일부러 낸다.
 //! - 가짜 포트는 기다리지 않아서, 응답 없음 시험도 바로 끝난다.
 //! - 위치 오프셋을 쓰면 읽는 위치가 그만큼 옮겨진다 (`offset_moves_reading`, 기본으로 켜져 있다). 실물
@@ -69,6 +70,8 @@ pub struct FakeServo {
     pub held: bool,
     /// 과부하 보호로 힘이 줄어 묶인 상태. 토크를 껐다 켜야 풀린다
     overload_latched: bool,
+    /// 짐에 눌려 목표보다 처지는 칸 수 (서보 값이 주는 쪽). 위치 서보는 버티는 토크만큼 처진 채 선다
+    pub sag: i32,
 }
 
 impl FakeServo {
@@ -89,6 +92,7 @@ impl FakeServo {
             offset_wait: None,
             held: false,
             overload_latched: false,
+            sag: 0,
         };
         let defaults = [
             (reg::FIRMWARE_MAJOR, 3),
@@ -295,9 +299,10 @@ impl FakeServo {
     /// 토크가 켜져 있고 붙잡히거나 과부하 보호에 묶이지 않았으면 목표로 곧바로 간다.
     fn follow_goal(&mut self) {
         if self.torque_on() && !self.held && !self.overload_latched {
-            let at = self.reachable(self.get(reg::GOAL_POSITION));
+            let goal = self.reachable(self.get(reg::GOAL_POSITION));
+            let at = (goal - self.sag).clamp(0, reg::STEPS_PER_TURN as i32 - 1);
             self.set(reg::PRESENT_POSITION, at);
-            self.set(reg::PRESENT_GOAL, at);
+            self.set(reg::PRESENT_GOAL, goal);
         }
     }
 
