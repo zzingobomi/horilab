@@ -165,6 +165,10 @@ pub struct RunLoop<B: ServoBus> {
     jog_latch: Option<String>,
     /// 마지막 조그 명령 뒤로 흐른 시간 [s]
     since_jog_command: f64,
+    /// 팔 관절마다 쓴 목표에서 따라가기 오차를 넘어 벗어난 채 흐른 시간 [s]
+    lagging: Vec<f64>,
+    /// 팔 관절마다 부하가 기준 이상인 채 흐른 시간 [s]
+    straining: Vec<f64>,
 }
 
 impl<B: ServoBus> RunLoop<B> {
@@ -175,6 +179,14 @@ impl<B: ServoBus> RunLoop<B> {
         settings: LoopSettings,
         gripper: Option<&GripperSettings>,
     ) -> Result<Self, String> {
+        let caps = joints.caps();
+        if !caps.keeps_up_with(&settings) {
+            return Err(format!(
+                "관절 층의 서보 상한(속도 {} step/s, 가속 {} × 100 step/s²)이 실행 루프의 한계보다 낮다: \
+                 Caps::for_loop로 연다",
+                caps.speed, caps.acceleration
+            ));
+        }
         let all = joints.ids();
         for &id in &all {
             if joints.servo(id)?.is_bench() {
@@ -222,6 +234,8 @@ impl<B: ServoBus> RunLoop<B> {
             missed: 0,
             jog_latch: None,
             since_jog_command: f64::INFINITY,
+            lagging: Vec::new(),
+            straining: Vec::new(),
         };
         run.hold_present_goals()?;
         Ok(run)
@@ -345,6 +359,11 @@ impl<B: ServoBus> RunLoop<B> {
             return &self.mode;
         }
         self.watch_heat();
+        if let Some((index, reason)) = self.watch_effort(dt) {
+            self.relax(index);
+            self.fault(reason);
+            return &self.mode;
+        }
         let before = self.targets.clone();
         let advanced = if self.mode == Mode::Jogging {
             self.advance_jog(dt)
@@ -610,6 +629,8 @@ impl<B: ServoBus> RunLoop<B> {
             gripper.last_position = None;
             gripper.still_ticks = 0;
         }
+        self.lagging = vec![0.0; targets.len()];
+        self.straining = vec![0.0; targets.len()];
         self.corrections = corrections;
         self.targets = targets;
         self.states = states;
@@ -644,6 +665,82 @@ impl<B: ServoBus> RunLoop<B> {
                 None
             }
         })
+    }
+
+    /// 막힘과 부하 (0009): 팔 관절마다 읽은 위치가 지난 박자에 쓴 목표(목표 + 처짐 보정)에서 따라가기 오차를 넘거나,
+    /// 부하가 토크 한도의 기준 몫 이상인 채 정한 시간이 지나면 그 관절과 까닭을 낸다. 그리퍼는 잡을 때 미는 것이
+    /// 일이라 보지 않는다.
+    fn watch_effort(&mut self, dt: f64) -> Option<(usize, String)> {
+        let settings = self.settings;
+        for index in 0..self.ids.len() {
+            let id = self.ids[index];
+            let Some(state) = self
+                .states
+                .iter()
+                .find(|(known, _)| *known == id)
+                .map(|(_, state)| *state)
+            else {
+                continue;
+            };
+            if let Some(measured) = self.angle_now(id) {
+                let error = (measured - (self.targets[index] + self.corrections[index])).abs();
+                self.lagging[index] = if error > settings.following_error {
+                    self.lagging[index] + dt
+                } else {
+                    0.0
+                };
+                if self.lagging[index] >= settings.following_time {
+                    return Some((
+                        index,
+                        format!(
+                            "{}: 목표에서 {:.1}° 벗어난 채 {:.2}초가 지났다 (막혔거나 부딪혔을 수 있다)",
+                            self.name(id),
+                            error.to_degrees(),
+                            self.lagging[index]
+                        ),
+                    ));
+                }
+            }
+            let strained = state.torque_limit > 0
+                && f64::from(state.load.abs())
+                    >= f64::from(state.torque_limit) * settings.load_limit;
+            self.straining[index] = if strained {
+                self.straining[index] + dt
+            } else {
+                0.0
+            };
+            if self.straining[index] >= settings.load_time {
+                return Some((
+                    index,
+                    format!(
+                        "{}: 부하 {}가 토크 한도 {}의 {:.0} % 이상인 채 {:.1}초가 지났다",
+                        self.name(id),
+                        state.load.abs(),
+                        state.torque_limit,
+                        settings.load_limit * 100.0,
+                        self.straining[index]
+                    ),
+                ));
+            }
+        }
+        None
+    }
+
+    /// 막힌 관절이 더 밀지 않게, 그 관절의 목표를 읽은 위치(소프트 한계 안)로 옮겨 한 번 쓴다. 보정은 0으로 두고,
+    /// 다른 관절은 지난 목표 그대로다.
+    fn relax(&mut self, index: usize) {
+        let id = self.ids[index];
+        let (Some(measured), Ok(limits)) = (self.angle_now(id), self.angle_limits()) else {
+            return;
+        };
+        let (low, high) = limits[index];
+        self.targets[index] = measured.clamp(low, high);
+        self.corrections[index] = 0.0;
+        self.playing = None;
+        self.jog = None;
+        if let Ok(goals) = self.goals() {
+            let _ = self.joints.write_goals(&goals);
+        }
     }
 
     /// 가장 뜨거운 서보가 쉬는 기준에 닿으면 정지해 쉬고, 알림 기준 아래로 식으면 쉬기를 푼다.
@@ -1092,7 +1189,7 @@ mod tests {
     use horilab_servo::feetech::registers as reg;
 
     use super::*;
-    use crate::joints::{BENCH_CAPS, Servo, programmed};
+    use crate::joints::{BENCH_CAPS, Caps, Servo, programmed};
     use crate::settings::{Calibration, Direction, RAD_PER_STEP, Settings, TEST_GRIPPER, TEST_J3};
 
     /// 시험용 기준값 (로봇 설정의 시험값보다 빠르게 움직여 시험을 짧게 한다)
@@ -1108,6 +1205,11 @@ mod tests {
         max_jerk: 10.0,
         max_tool_speed: 0.05,
         max_tool_rotation: 0.5,
+        following_error: 0.2,
+        following_time: 0.3,
+        load_limit: 0.95,
+        load_time: 2.0,
+        torque_cap: 400,
     };
     const DT: f64 = 0.01;
 
@@ -1136,7 +1238,7 @@ mod tests {
                 .map(|servo| programmed(FakeServo::with(servo.id, 2825, 2048), servo)),
         );
         RunLoop::start(
-            Joints::open(bus, servos.to_vec(), BENCH_CAPS).unwrap(),
+            Joints::open(bus, servos.to_vec(), Caps::for_loop(&settings)).unwrap(),
             settings,
             None,
         )
@@ -1344,6 +1446,74 @@ mod tests {
     }
 
     #[test]
+    fn a_blocked_joint_is_relaxed_and_faults() {
+        let mut run = two_joints();
+        run.submit(line([1.0, 0.5], 1.0)).unwrap();
+        for _ in 0..20 {
+            run.tick(DT);
+        }
+        // 책상에 닿아 j3가 더 가지 못한다: 목표는 1 rad/s로 앞서 가고 서보는 토크 한도껏 민다
+        fake(&mut run, 0).held = true;
+        let mut ticks = 0;
+        let reason = loop {
+            if let Mode::Fault(reason) = run.tick(DT) {
+                break reason.clone();
+            }
+            ticks += 1;
+            assert!(ticks < 200, "막힌 것을 모른다");
+        };
+        assert!(reason.contains("j3: 목표에서"), "{reason}");
+        // 오차가 0.2 rad를 넘기까지 0.2초, 넘은 채 0.3초
+        assert!((45..=55).contains(&ticks), "{ticks}");
+        // 막힌 관절은 읽은 자리를 목표로 두어 더 밀지 않는다
+        let servo = fake(&mut run, 0);
+        assert_eq!(
+            servo.get(reg::GOAL_POSITION),
+            servo.get(reg::PRESENT_POSITION)
+        );
+    }
+
+    #[test]
+    fn a_joint_straining_while_holding_faults_after_the_load_time() {
+        let mut run = two_joints();
+        // 누가 j3를 밀어 서보가 목표(2048)로 돌아가지 못하고 토크 한도껏 민다 (자리는 오차 기준 안이다)
+        let servo = fake(&mut run, 0);
+        servo.held = true;
+        servo.set(reg::PRESENT_POSITION, 2040);
+        let mut ticks = 0;
+        let reason = loop {
+            if let Mode::Fault(reason) = run.tick(DT) {
+                break reason.clone();
+            }
+            ticks += 1;
+            assert!(ticks < 400, "부하를 모른다");
+        };
+        assert!(reason.contains("j3: 부하"), "{reason}");
+        assert!((195..=205).contains(&ticks), "{ticks}");
+    }
+
+    #[test]
+    fn the_run_loop_needs_servo_caps_that_keep_up() {
+        let mut j3 = Settings::parse(TEST_J3)
+            .unwrap()
+            .joint("j3")
+            .unwrap()
+            .clone();
+        j3.calibration = Some(Calibration {
+            pin: 0.0,
+            zero_raw: 2048,
+            direction: Direction::Same,
+            position_offset: 0,
+        });
+        let servo = Servo::from_joint(&j3).unwrap();
+        let bus = open_fake_bus([programmed(FakeServo::with(3, 2825, 2048), &servo)]);
+        // 맨 서보 확인의 상한(300 step/s = 0.46 rad/s)은 궤적 한계(2 rad/s)를 따라가지 못한다
+        let joints = Joints::open(bus, vec![servo], BENCH_CAPS).unwrap();
+        let refused = RunLoop::start(joints, SETTINGS, None).err().unwrap();
+        assert!(refused.contains("서보 상한"), "{refused}");
+    }
+
+    #[test]
     fn a_servo_latched_by_overload_is_released_by_a_person() {
         let mut run = two_joints();
         fake(&mut run, 0).overload();
@@ -1548,7 +1718,7 @@ mod tests {
                 .iter()
                 .map(|servo| programmed(FakeServo::with(servo.id, 2825, 2048), servo)),
         );
-        let joints = Joints::open(bus, servos, BENCH_CAPS).unwrap();
+        let joints = Joints::open(bus, servos, Caps::for_loop(&SETTINGS)).unwrap();
         RunLoop::start(joints, SETTINGS, Some(&gripper)).unwrap()
     }
 
@@ -1804,7 +1974,7 @@ mod tests {
                 .iter()
                 .map(|servo| programmed(FakeServo::with(servo.id, 2825, 2048), servo)),
         );
-        let joints = Joints::open(bus, servos, BENCH_CAPS).unwrap();
+        let joints = Joints::open(bus, servos, Caps::for_loop(&SETTINGS)).unwrap();
         let mut run = RunLoop::start(joints, SETTINGS, None).unwrap();
         run.set_kinematics(base.kinematics).unwrap();
         run

@@ -95,6 +95,16 @@ pub struct LoopSettings {
     pub max_tool_speed: f64,
     /// 직교 조그와 직선 이동의 손끝 회전 한계 [rad/s]
     pub max_tool_rotation: f64,
+    /// 관절이 쓴 목표에서 이만큼 넘게 벗어난 채 [`LoopSettings::following_time`]이 지나면 막힌 것으로 본다 [rad]
+    pub following_error: f64,
+    /// [s]
+    pub following_time: f64,
+    /// 관절의 부하가 토크 한도의 이 몫 이상인 채 [`LoopSettings::load_time`]이 지나면 멈춘다 (0~1)
+    pub load_limit: f64,
+    /// [s]
+    pub load_time: f64,
+    /// 실행 루프에서 서보 토크 한도의 상한 [0.1 %]. 관절마다 더 낮은 토크 한도를 줄 수 있다
+    pub torque_cap: i32,
 }
 
 /// 관절 하나.
@@ -512,6 +522,11 @@ struct LoopFile {
     max_jerk_deg_s3: f64,
     max_tool_speed_mm_s: f64,
     max_tool_rotation_deg_s: f64,
+    following_error_deg: f64,
+    following_time_s: f64,
+    load_limit_percent: f64,
+    load_time_s: f64,
+    torque_cap_percent: f64,
 }
 
 impl LoopFile {
@@ -527,10 +542,21 @@ impl LoopFile {
             ("max_jerk_deg_s3", self.max_jerk_deg_s3),
             ("max_tool_speed_mm_s", self.max_tool_speed_mm_s),
             ("max_tool_rotation_deg_s", self.max_tool_rotation_deg_s),
+            ("following_error_deg", self.following_error_deg),
+            ("following_time_s", self.following_time_s),
+            ("load_time_s", self.load_time_s),
         ];
         for (name, value) in positive {
             if !(value.is_finite() && value > 0.0) {
                 problems.push(format!("run_loop.{name}는 0보다 크다: {value}"));
+            }
+        }
+        for (name, value) in [
+            ("load_limit_percent", self.load_limit_percent),
+            ("torque_cap_percent", self.torque_cap_percent),
+        ] {
+            if !(value.is_finite() && value > 0.0 && value <= 100.0) {
+                problems.push(format!("run_loop.{name}는 0보다 크고 100 이하다: {value}"));
             }
         }
         for (name, value) in [
@@ -562,6 +588,11 @@ impl LoopFile {
             max_jerk: self.max_jerk_deg_s3.to_radians(),
             max_tool_speed: self.max_tool_speed_mm_s * 1e-3,
             max_tool_rotation: self.max_tool_rotation_deg_s.to_radians(),
+            following_error: self.following_error_deg.to_radians(),
+            following_time: self.following_time_s,
+            load_limit: self.load_limit_percent / 100.0,
+            load_time: self.load_time_s,
+            torque_cap: (self.torque_cap_percent * 10.0).round() as i32,
         })
     }
 }
@@ -867,6 +898,11 @@ max_acceleration_deg_s2 = 60
 max_jerk_deg_s3 = 300
 max_tool_speed_mm_s = 30
 max_tool_rotation_deg_s = 20
+following_error_deg = 10
+following_time_s = 0.3
+load_limit_percent = 95
+load_time_s = 2.0
+torque_cap_percent = 40
 
 [kinematics]
 origins_mm = [[0, 0, 0], [0, 0, 160], [0, 0, 220], [0, 0, 180], [0, 63, 0], [0, 0, 63]]

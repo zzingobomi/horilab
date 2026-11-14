@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-use horilab_controller::joints::{BENCH_CAPS, Joints, Servo};
+use horilab_controller::joints::{Caps, Joints, Servo};
 use horilab_controller::plan::{MotionLimits, move_joints};
 use horilab_controller::runloop::{Mode, RunLoop, Trajectory};
 use horilab_controller::settings::{Calibration, Direction, Joint, LoopSettings, RAD_PER_STEP};
@@ -107,6 +107,11 @@ fn settings(sag_gain: f64) -> LoopSettings {
         max_jerk: 10.0,
         max_tool_speed: 0.05,
         max_tool_rotation: 0.5,
+        following_error: 0.2,
+        following_time: 0.3,
+        load_limit: 0.95,
+        load_time: 2.0,
+        torque_cap: 200,
     }
 }
 
@@ -126,7 +131,7 @@ fn tilt_and_hold(address: &str, sag_gain: f64) -> (f64, i32) {
         .iter()
         .map(|&(name, id)| Servo::from_joint(&joint(name, id)).unwrap())
         .collect();
-    let joints = Joints::open(bus, robot, BENCH_CAPS).unwrap();
+    let joints = Joints::open(bus, robot, Caps::for_loop(&settings(0.0))).unwrap();
     let mut run = RunLoop::start(joints, settings(sag_gain), None).unwrap();
     run.submit(Trajectory {
         points: vec![(0.0, vec![0.0, 0.0]), (1.0, vec![0.6, 0.0])],
@@ -171,7 +176,7 @@ fn planned_joint_move_runs_on_the_simulated_arm() {
         .iter()
         .map(|&(name, id)| Servo::from_joint(&joint(name, id)).unwrap())
         .collect();
-    let joints = Joints::open(bus, robot, BENCH_CAPS).unwrap();
+    let joints = Joints::open(bus, robot, Caps::for_loop(&settings(0.0))).unwrap();
     let mut run = RunLoop::start(joints, settings(0.0), None).unwrap();
     let dt = PERIOD.as_secs_f64();
     // 저크를 제한한 관절 이동을 만들어 실행 루프에 넣는다

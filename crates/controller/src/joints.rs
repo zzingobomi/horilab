@@ -19,7 +19,7 @@ use horilab_servo::feetech::bus::Reply;
 use horilab_servo::feetech::registers::{self as reg, Fault, Register};
 
 use crate::prepare::{model_name, plan};
-use crate::settings::{Calibration, Joint, angle_limits};
+use crate::settings::{Calibration, Joint, LoopSettings, RAD_PER_STEP, angle_limits};
 
 /// 토크를 켤 때 쓰는 상한. 토크 한도는 0.1 %, 속도는 서보의 속도 단위(phase 비트에 따라 다르다),
 /// 가속은 100 step/s² 단위다 (레지스터 표).
@@ -36,6 +36,30 @@ pub const BENCH_CAPS: Caps = Caps {
     speed: 300,
     acceleration: 20,
 };
+
+/// 실행 루프의 서보 상한을 궤적 한계보다 넉넉히 두는 배수
+const LOOP_CAPS_MARGIN: f64 = 1.5;
+
+impl Caps {
+    /// 실행 루프의 상한: 서보 안의 속도·가속 상한은 궤적 한계의 1.5배로 두어, 박자마다 쓰는 목표를 서보가 늦게
+    /// 따라가지 않게 한다. 토크는 로봇 설정의 상한이고, 관절마다 더 낮은 토크 한도를 주면 그것을 쓴다.
+    pub fn for_loop(settings: &LoopSettings) -> Self {
+        let steps = |radians: f64| radians / RAD_PER_STEP * LOOP_CAPS_MARGIN;
+        Self {
+            torque_limit: settings.torque_cap,
+            speed: steps(settings.max_speed).ceil() as i32,
+            acceleration: (steps(settings.max_acceleration) / 100.0)
+                .ceil()
+                .clamp(1.0, 254.0) as i32,
+        }
+    }
+
+    /// 이 상한으로 서보가 실행 루프의 속도·가속 한계를 따라갈 수 있는가.
+    pub fn keeps_up_with(&self, settings: &LoopSettings) -> bool {
+        f64::from(self.speed) * RAD_PER_STEP >= settings.max_speed
+            && f64::from(self.acceleration) * 100.0 * RAD_PER_STEP >= settings.max_acceleration
+    }
+}
 
 /// 이만큼 잇달아 실패하면 멈춘다 (0009).
 pub const MAX_FAILURES: u64 = 3;
@@ -701,6 +725,27 @@ mod tests {
             "{message}"
         );
         assert!(!joints.snapshot(3).unwrap().torque_on());
+    }
+
+    #[test]
+    fn loop_caps_keep_up_with_the_run_loop_limits() {
+        // 로봇 설정의 시험값: 30°/s, 60°/s², 토크 상한 40 %
+        let settings = Settings::parse(TEST_J3).unwrap().run_loop;
+        let caps = Caps::for_loop(&settings);
+        // 30°/s = 341.3 step/s의 1.5배, 60°/s² = 682.7 step/s²의 1.5배를 100 step/s² 단위로
+        assert_eq!(
+            caps,
+            Caps {
+                torque_limit: 400,
+                speed: 512,
+                acceleration: 11,
+            }
+        );
+        assert!(caps.keeps_up_with(&settings));
+        assert!(!BENCH_CAPS.keeps_up_with(&LoopSettings {
+            max_speed: 1.0,
+            ..settings
+        }));
     }
 
     #[test]
