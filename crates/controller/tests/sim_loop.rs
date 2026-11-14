@@ -104,6 +104,8 @@ fn settings(sag_gain: f64) -> LoopSettings {
         voltage_warn: 11.0,
         sag_gain,
         sag_max: 0.05,
+        max_acceleration: 2.0,
+        max_jerk: 10.0,
     }
 }
 

@@ -599,6 +599,8 @@ mod tests {
         voltage_warn: 11.0,
         sag_gain: 0.0,
         sag_max: 0.05,
+        max_acceleration: 2.0,
+        max_jerk: 10.0,
     };
     const DT: f64 = 0.01;
 

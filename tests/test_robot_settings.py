@@ -8,9 +8,10 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
-from horilab_design.values import load_arm
+from horilab_design.values import load_arm, load_robot
 
 ROOT = Path(__file__).resolve().parents[1]
 JOINTS: dict[str, Any] = tomllib.loads((ROOT / "data" / "robot.toml").read_text(encoding="utf-8"))[
@@ -30,3 +31,15 @@ def test_joint_matches_design(name: str) -> None:
     assert design_lower <= lower < upper <= design_upper, (
         f"{name}: 소프트 한계 {lower}~{upper}°가 설계 범위 {design_lower}~{design_upper}° 밖이다"
     )
+
+
+def test_kinematics_match_design() -> None:
+    """컨트롤러의 기구학(robot.toml의 [kinematics])이 설계의 로봇 기술과 같다 (0033)."""
+    settings = tomllib.loads((ROOT / "data" / "robot.toml").read_text(encoding="utf-8"))
+    kinematics = settings["kinematics"]
+    robot = load_robot()
+    assert np.allclose(np.array(kinematics["origins_mm"]) * 1e-3, [j.origin for j in robot.joints])
+    assert np.allclose(kinematics["axes"], [j.axis for j in robot.joints])
+    flange = robot.T_last_flange
+    assert np.allclose(np.array(kinematics["flange_position_mm"]) * 1e-3, flange[:3, 3])
+    assert np.allclose(kinematics["flange_rotation"], flange[:3, :3])

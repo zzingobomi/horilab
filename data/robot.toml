@@ -22,6 +22,17 @@ temperature_rest_c = 55 # 닿으면 멈추고 쉰다 (쉬는 자세가 정해지
 voltage_warn_v = 11.0 # 서보 전압이 이보다 낮으면 알린다 (전원 12 V). 서보 전원을 정할 때 정한다
 sag_gain_per_s = 0 # 처짐 보정의 이득. 0이면 끈다. 다 만든 팔에서 서보 I 게인과 견주어 고른다 (0012)
 sag_max_deg = 3 # 처짐 보정의 최대 크기
+max_acceleration_deg_s2 = 60 # 관절 이동의 가속 한계
+max_jerk_deg_s3 = 300 # 관절 이동의 저크 한계
+
+# 팔의 기구학 (0009, 0033): 영점 자세(팔이 곧게 섬)에서 관절마다 부모 좌표계에서 본 원점 [mm]과 축, 그리고
+# 플랜지(J6 좌표계에서 본 위치 [mm]와 회전). 영점 자세에서는 모든 링크 좌표계가 베이스와 같은 방향이다.
+# 설계(params/arm.toml, horilab_design.values.arm_robot)와 같아야 한다 (tests/test_robot_settings.py가 본다).
+[kinematics]
+origins_mm = [[0, 0, 0], [0, 0, 160], [0, 0, 220], [0, 0, 180], [0, 63, 0], [0, 0, 63]]
+axes = [[0, 0, 1], [0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 0, 1], [0, 1, 0]]
+flange_position_mm = [0, 50, 0]
+flange_rotation = [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
 
 # 서보 모델마다 구울 EEPROM 값 (값 적용, 0024). 키는 메모리 표의 레지스터 이름이고 값은 레지스터 값
 # 그대로다 (단위는 crates/servo/src/feetech/registers.rs). 여기 없는 칸은 메모리 표의 초기값으로 맞추고,

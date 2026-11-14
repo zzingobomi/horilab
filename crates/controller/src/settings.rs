@@ -15,6 +15,8 @@ use std::path::Path;
 use horilab_servo::feetech::registers::{self as reg, Area, MODELS, Register, STEPS_PER_TURN};
 use serde::Deserialize;
 
+use crate::kinematics::Kinematics;
+
 /// 관절 이름. MJCF, URDF, 메시지와 같은 이름이고(docs/conventions.md), 서보 ID는 관절 번호다 (0024).
 pub const JOINT_NAMES: [&str; 6] = ["j1", "j2", "j3", "j4", "j5", "j6"];
 
@@ -44,6 +46,8 @@ pub struct Settings {
     pub boundary_clearance: f64,
     /// 실행 루프의 기준값 (0032)
     pub run_loop: LoopSettings,
+    /// 팔의 기구학 (0009, 0033)
+    pub kinematics: Kinematics,
     /// 관절 번호 순
     pub joints: Vec<Joint>,
     /// 달린 그리퍼 (서보가 있는 도구)
@@ -85,6 +89,10 @@ pub struct LoopSettings {
     pub sag_gain: f64,
     /// 처짐 보정의 최대 크기 [rad]
     pub sag_max: f64,
+    /// 관절 이동의 가속 한계 [rad/s²]
+    pub max_acceleration: f64,
+    /// 관절 이동의 저크 한계 [rad/s³]
+    pub max_jerk: f64,
 }
 
 /// 관절 하나.
@@ -309,6 +317,13 @@ impl Settings {
                 None
             }
         };
+        let kinematics = match file.kinematics.check() {
+            Ok(kinematics) => Some(kinematics),
+            Err(problem) => {
+                problems.push(problem);
+                None
+            }
+        };
 
         let mut models: BTreeMap<&str, Vec<(Register, i32)>> = BTreeMap::new();
         for (name, model) in &file.models {
@@ -358,6 +373,7 @@ impl Settings {
         Ok(Self {
             boundary_clearance: clearance,
             run_loop: run_loop.expect("문제가 없으면 읽었다"),
+            kinematics: kinematics.expect("문제가 없으면 읽었다"),
             joints,
             gripper,
         })
@@ -453,6 +469,30 @@ struct SettingsFile {
     models: BTreeMap<String, ModelFile>,
     joints: BTreeMap<String, JointFile>,
     gripper: Option<GripperFile>,
+    kinematics: KinematicsFile,
+}
+
+/// 기구학: 영점 자세에서 관절마다 부모 좌표계의 원점 [mm]과 축, 플랜지의 위치 [mm]와 회전.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KinematicsFile {
+    origins_mm: [[f64; 3]; 6],
+    axes: [[f64; 3]; 6],
+    flange_position_mm: [f64; 3],
+    flange_rotation: [[f64; 3]; 3],
+}
+
+impl KinematicsFile {
+    fn check(&self) -> Result<Kinematics, String> {
+        let meters = |v: [f64; 3]| v.map(|x| x * 1e-3);
+        Kinematics::new(
+            self.origins_mm.map(meters),
+            self.axes,
+            self.flange_rotation,
+            meters(self.flange_position_mm),
+        )
+        .map_err(|e| format!("kinematics: {e}"))
+    }
 }
 
 #[derive(Deserialize)]
@@ -466,6 +506,8 @@ struct LoopFile {
     voltage_warn_v: f64,
     sag_gain_per_s: f64,
     sag_max_deg: f64,
+    max_acceleration_deg_s2: f64,
+    max_jerk_deg_s3: f64,
 }
 
 impl LoopFile {
@@ -478,6 +520,8 @@ impl LoopFile {
             ("temperature_warn_c", self.temperature_warn_c),
             ("temperature_rest_c", self.temperature_rest_c),
             ("voltage_warn_v", self.voltage_warn_v),
+            ("max_acceleration_deg_s2", self.max_acceleration_deg_s2),
+            ("max_jerk_deg_s3", self.max_jerk_deg_s3),
         ];
         for (name, value) in positive {
             if !(value.is_finite() && value > 0.0) {
@@ -510,6 +554,8 @@ impl LoopFile {
             voltage_warn: self.voltage_warn_v,
             sag_gain: self.sag_gain_per_s,
             sag_max: self.sag_max_deg.to_radians(),
+            max_acceleration: self.max_acceleration_deg_s2.to_radians(),
+            max_jerk: self.max_jerk_deg_s3.to_radians(),
         })
     }
 }
@@ -812,6 +858,14 @@ temperature_rest_c = 55
 voltage_warn_v = 11.0
 sag_gain_per_s = 0
 sag_max_deg = 3
+max_acceleration_deg_s2 = 60
+max_jerk_deg_s3 = 300
+
+[kinematics]
+origins_mm = [[0, 0, 0], [0, 0, 160], [0, 0, 220], [0, 0, 180], [0, 63, 0], [0, 0, 63]]
+axes = [[0, 0, 1], [0, 1, 0], [0, 1, 0], [0, 1, 0], [0, 0, 1], [0, 1, 0]]
+flange_position_mm = [0, 50, 0]
+flange_rotation = [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
 
 [models.STS3250.registers]
 response_delay = 0
@@ -1147,6 +1201,21 @@ mod tests {
         );
         let message = error(&J3.replace("sag_gain_per_s = 0", "sag_gain_per_s = -1"));
         assert!(message.contains("sag_gain_per_s는 0 이상이다"), "{message}");
+    }
+
+    #[test]
+    fn kinematics_are_read_and_checked() {
+        let settings = Settings::parse(J3).unwrap();
+        let pose = settings.kinematics.forward(&[0.0; 6]);
+        assert!(close(pose.position[1], 0.113) && close(pose.position[2], 0.623));
+        assert!(close(settings.run_loop.max_jerk, 300f64.to_radians()));
+        let message = error(&J3.replace("axes = [[0, 0, 1],", "axes = [[1, 0, 0],"));
+        assert!(message.contains("kinematics: J1의 축"), "{message}");
+        let message = error(&J3.replace("max_jerk_deg_s3 = 300", "max_jerk_deg_s3 = 0"));
+        assert!(
+            message.contains("max_jerk_deg_s3는 0보다 크다"),
+            "{message}"
+        );
     }
 
     #[test]
