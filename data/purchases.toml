@@ -233,6 +233,7 @@ qty = 1
 stage = 3
 ordered = 2026-11-13
 arrive = [2026-11-15, 2026-11-17]
+received = 2026-11-14
 vendor = "뱀부랩"
 lead_days = [2, 4]
 unit_price_krw = 25000

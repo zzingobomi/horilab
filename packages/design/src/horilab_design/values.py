@@ -165,6 +165,13 @@ class Cable(_Values):
     diameter_mm: float = Field(gt=0)
 
 
+class ThinCable(_Values):
+    """재는 중인 선 [mm]: 길이부터 쟀고 굵기는 재면 채운다."""
+
+    length_mm: float = Field(gt=0)  # 플러그 끝에서 끝까지
+    diameter_mm: float | None = Field(default=None, gt=0)
+
+
 class ServoPlug(_Values):
     """서보 선 플러그(5264 3핀) 몸통 치수 [mm]."""
 
@@ -182,7 +189,8 @@ class Measured(_Values):
     servo_body: dict[ServoModel, ServoBody] = {}
     servo_depth: ServoDepth | None = None
     servo_wire: ServoWire | None = None
-    d405_cable: Cable | None = None
+    d405_cable: Cable | None = None  # D405 기본 선 (USB 3, 1 m)
+    d405_usb2_cable: ThinCable | None = None  # D405에 쓸 얇은 USB 2 선 (0031)
     servo_plug: ServoPlug | None = None
     fit: dict[Filament, PrintFit] = {}
 

@@ -68,6 +68,11 @@ thickness_mm = 1.5
 [d405_cable]
 diameter_mm = 5.12
 
+# D405에 쓸 얇은 USB 2 마이크로 USB 선 [mm] (docs/decisions/0031-wiring.md의 D405 선). 길이는 플러그 끝에서 끝까지
+# (2026-11-14). 굵기, 무게, 플러그 치수는 아직 재지 않았다
+[d405_usb2_cable]
+length_mm = 1550
+
 # 서보 선 플러그(5264 3핀) 몸통 [mm] (디지털 캘리퍼스, 2026-11-12). 구멍으로 지나가려면 9.6 × 5.4 넘는 틈이 필요하다
 [servo_plug]
 length_mm = 9.58 # 꽂는 방향
