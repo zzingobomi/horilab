@@ -61,7 +61,7 @@ name = "나사식 4 mm 바나나 플러그 Mueller BU-P1825 (빨강 -2, 검정 -
 qty = 2
 stage = 2
 ordered = 2026-11-08
-arrive = [2026-11-12, 2026-11-14]
+arrive = [2026-11-18, 2026-11-20]
 vendor = "아이씨뱅큐"
 url = "https://www.icbanq.com/P006425009"
 search = "BU-P1825-2, BU-P1825-0"
@@ -91,6 +91,7 @@ stage = 3
 ordered = 2026-11-12
 # 2026-11-13 출하 (미스미 주문 화면)
 arrive = [2026-11-14, 2026-11-16]
+received = 2026-11-14
 vendor = "미스미"
 url = "https://kr.misumi-ec.com/vona2/detail/221000058301/?HissuCode=6806ZZ"
 lead_days = [1, 3]
@@ -105,6 +106,7 @@ stage = 3
 ordered = 2026-11-12
 # 2026-11-13 출하 (미스미 주문 화면)
 arrive = [2026-11-14, 2026-11-16]
+received = 2026-11-14
 vendor = "미스미"
 search = "6808ZZ (엔에스케이 NSK, 단열 깊은 홈 볼 베어링)"
 lead_days = [1, 3]
