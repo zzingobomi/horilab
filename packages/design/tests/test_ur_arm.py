@@ -176,6 +176,19 @@ def test_camera_sees_past_the_gripper_in_the_arm_model() -> None:
 
 
 @pytest.mark.slow
+def test_joint_efforts_leave_torque_for_acceleration() -> None:
+    c = ur_arm.Concept()
+    torques, inertias = ur_arm.joint_efforts(c)
+    rated = np.asarray(ur_arm.hori(c).rated, dtype=float)
+    assert len(torques) > 0
+    # 쓰는 해는 버팀 토크가 정격의 0.8배 안이라 정격의 0.2배 넘게 남는다
+    assert np.all(torques >= 0.2 * rated - 1e-9) and np.all(torques <= rated + 1e-9)
+    # J1은 축이 서 있어 무게를 버티지 않는다
+    assert torques[:, 0] == pytest.approx(rated[0])
+    assert np.all(inertias > 0)
+
+
+@pytest.mark.slow
 def test_camera_view_agrees_with_the_cad_ray_cast() -> None:
     # 상자와 기둥으로 넣은 그리퍼가 실제 형상으로 센 값(parts/gripper.py)과 점 두 줄(7 × 7점) 안으로 맞는다
     seen = ur_arm.views(ur_arm.Concept(), ur_arm.gripper(gp.OPEN_MAX), turns=(0,))[0]

@@ -21,6 +21,7 @@
     uv run python -m horilab_design.studies.ur_arm lengths       # 링크 길이 후보의 주 작업 영역 지표
     uv run python -m horilab_design.studies.ur_arm view          # D405가 도구 끝점 둘레를 보는 몫
     uv run python -m horilab_design.studies.ur_arm calib         # 손목 카메라의 캘리브레이션 자세 (0018)
+    uv run python -m horilab_design.studies.ur_arm accel 60      # 관절의 가속 상한, 60°/s²를 내는 회전자 관성 (0032)
 
 뒤에 키=값을 붙여 바꿔 볼 수 있다 (길이는 mm, 무게는 g):
     shoulder=180 upper=230 fore=170 extra=30 tube_scale=0.62 plug=none wires=0
@@ -1232,6 +1233,58 @@ def zone(c: Concept) -> dict:
     }
 
 
+def joint_efforts(c: Concept) -> tuple[np.ndarray, np.ndarray]:
+    """주 작업 영역의 작업 갈래 해마다, 관절의 남는 토크(정격 - 버팀) [N·m]와 링크 관성 [kg·m²] (둘 다 해 수 × 6).
+
+    칸은 zone()과 같다: 평행 그리퍼(+ 짐 150 g), 도구 돌림 0°와 90°가 같은 갈래로 다 되는 칸. 관성은 질량 행렬의
+    대각(관절 하나만 움직일 때)이고, 서보 안 모터 회전자의 관성은 자료가 없어 넣지 않는다.
+    """
+    tool = GRIPPER
+    h = hori(c)
+    by_branch: dict[str, list[np.ndarray]] = {}
+    for r in RADII:
+        for z in HEIGHTS:
+            per: dict[str, list[tuple[float, np.ndarray]]] = {}
+            for yaw in (0.0, 90 * DEG):
+                pose = pk.tool_pose((r, 0.0, z), 0.0, 0.0, yaw, tool.length)
+                for q in good_solutions(h, pose):
+                    per.setdefault(_branch(q), []).append((yaw, q))
+            for name, lst in per.items():
+                if len({yaw for yaw, _ in lst}) == 2:
+                    by_branch.setdefault(name, []).extend(q for _, q in lst)
+    best = max(by_branch, key=lambda name: len(by_branch[name]))
+    rated = np.asarray(h.rated, dtype=float)
+    torques, inertias = [], []
+    for q in by_branch[best]:
+        torques.append(rated - np.abs(holding_torques(h.robot, q, h.masses)))
+        inertias.append(np.diag(_mass_matrix(h.robot, q, h.masses)))
+    return np.array(torques), np.array(inertias)
+
+
+def print_accelerations(c: Concept, target: float | None) -> None:
+    """관절 하나만 움직일 때의 가속 상한과, `target` [rad/s²]을 낼 수 있는 회전자 관성의 상한 (0032의 이동 한계)."""
+    torques, inertias = joint_efforts(c)
+    limits = (torques / inertias).min(axis=0)
+    print("##", describe(c))
+    print(
+        "- 관절 하나만 움직일 때의 가속 상한 [°/s²] (주 작업 영역에서 가장 작은 값, 회전자 관성 뺌): "
+        + ", ".join(f"J{i + 1} {math.degrees(a):.0f}" for i, a in enumerate(limits))
+    )
+    worst = (torques / inertias).argmin(axis=0)
+    print(
+        "  - 그 자세의 남는 토크 [N·m] / 링크 관성 [kg·m²]: "
+        + ", ".join(
+            f"J{i + 1} {torques[k, i]:.3f} / {inertias[k, i]:.4f}" for i, k in enumerate(worst)
+        )
+    )
+    if target is not None:
+        room = (torques / target - inertias).min(axis=0)
+        print(
+            f"- {math.degrees(target):.0f}°/s²를 내는 회전자 관성(기어비의 제곱을 곱한 값)의 상한 [kg·m²]: "
+            + ", ".join(f"J{i + 1} {r:.3f}" for i, r in enumerate(room))
+        )
+
+
 def tilts(c: Concept) -> dict[int, tuple[int, int]]:
     """포인터 끝을 한 점에 두고 30°·45°로 8방향 기울이기: (8방향이 다 되는 칸 수, 6방향 이상 되는 칸 수)."""
     tool = TOOLS["pointer"]
@@ -1440,6 +1493,9 @@ def parse(args: list[str]) -> Concept:
 def main() -> None:
     args = sys.argv[1:]
     mode = args.pop(0) if args and "=" not in args[0] else "check"
+    target = None
+    if mode == "accel" and args and "=" not in args[0]:
+        target = float(args.pop(0)) * DEG
     c = parse(args)
     if mode == "check":
         check(c)
@@ -1469,8 +1525,10 @@ def main() -> None:
         print_views(c)
     elif mode == "calib":
         print_calibration(c)
+    elif mode == "accel":
+        print_accelerations(c, target)
     else:
-        raise SystemExit(f"모르는 일: {mode} (check, compare, zone, lengths, view, calib)")
+        raise SystemExit(f"모르는 일: {mode} (check, compare, zone, lengths, view, calib, accel)")
 
 
 if __name__ == "__main__":
