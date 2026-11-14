@@ -202,6 +202,50 @@ impl Kinematics {
     }
 }
 
+/// 두 플랜지 자세 사이의 곧은 길 (직선 이동): 위치는 곧은 선을 따라가고, 방향은 가장 짧은 회전으로 고르게
+/// 바뀐다. `u`는 0(시작)에서 1(끝)까지다.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PoseLine {
+    start: Pose,
+    /// 위치 변화 [m]
+    shift: Vec3,
+    /// 시작 자세의 좌표계에서 본 회전 축 (단위 벡터)
+    axis: Vec3,
+    /// 도는 각 [rad] (0~π)
+    angle: f64,
+}
+
+impl PoseLine {
+    pub fn new(start: &Pose, end: &Pose) -> Self {
+        let relative = mat_mul(&transpose(&start.rotation), &end.rotation);
+        let (axis, angle) = axis_angle(&relative);
+        Self {
+            start: *start,
+            shift: sub(end.position, start.position),
+            axis,
+            angle,
+        }
+    }
+
+    /// 곧은 선의 길이 [m]
+    pub fn length(&self) -> f64 {
+        dot(self.shift, self.shift).sqrt()
+    }
+
+    /// 도는 각 [rad] (0~π)
+    pub fn angle(&self) -> f64 {
+        self.angle
+    }
+
+    /// 길 위의 자세 (u = 0이면 시작, 1이면 끝).
+    pub fn at(&self, u: f64) -> Pose {
+        Pose {
+            position: add(self.start.position, self.shift.map(|v| v * u)),
+            rotation: mat_mul(&self.start.rotation, &rot(self.axis, self.angle * u)),
+        }
+    }
+}
+
 /// 6×6 연립 방정식 (부분 피벗 가우스 소거). 풀 수 없으면 없다.
 fn solve6(mut a: [[f64; 6]; 6], mut b: [f64; 6]) -> Option<[f64; 6]> {
     for col in 0..6 {
@@ -272,6 +316,53 @@ fn mat_mul(a: &Mat3, b: &Mat3) -> Mat3 {
         [dot(a[1], t[0]), dot(a[1], t[1]), dot(a[1], t[2])],
         [dot(a[2], t[0]), dot(a[2], t[1]), dot(a[2], t[2])],
     ]
+}
+
+/// 회전 행렬의 축(단위 벡터)과 각 (0~π). 사원수를 거치고 대각 성분이 가장 큰 쪽에서 계산해, 각이 π 가까이에서도
+/// 정확하다. 돌지 않으면 축은 x다.
+fn axis_angle(m: &Mat3) -> (Vec3, f64) {
+    let trace = m[0][0] + m[1][1] + m[2][2];
+    let [w, x, y, z] = if trace > 0.0 {
+        let s = 2.0 * (1.0 + trace).sqrt();
+        [
+            0.25 * s,
+            (m[2][1] - m[1][2]) / s,
+            (m[0][2] - m[2][0]) / s,
+            (m[1][0] - m[0][1]) / s,
+        ]
+    } else if m[0][0] >= m[1][1] && m[0][0] >= m[2][2] {
+        let s = 2.0 * (1.0 + m[0][0] - m[1][1] - m[2][2]).sqrt();
+        [
+            (m[2][1] - m[1][2]) / s,
+            0.25 * s,
+            (m[0][1] + m[1][0]) / s,
+            (m[0][2] + m[2][0]) / s,
+        ]
+    } else if m[1][1] >= m[2][2] {
+        let s = 2.0 * (1.0 + m[1][1] - m[0][0] - m[2][2]).sqrt();
+        [
+            (m[0][2] - m[2][0]) / s,
+            (m[0][1] + m[1][0]) / s,
+            0.25 * s,
+            (m[1][2] + m[2][1]) / s,
+        ]
+    } else {
+        let s = 2.0 * (1.0 + m[2][2] - m[0][0] - m[1][1]).sqrt();
+        [
+            (m[1][0] - m[0][1]) / s,
+            (m[0][2] + m[2][0]) / s,
+            (m[1][2] + m[2][1]) / s,
+            0.25 * s,
+        ]
+    };
+    // 가장 짧은 회전 (w ≥ 0)
+    let sign = if w < 0.0 { -1.0 } else { 1.0 };
+    let v = [x * sign, y * sign, z * sign];
+    let size = dot(v, v).sqrt();
+    if size < 1e-15 {
+        return (X, 0.0);
+    }
+    (v.map(|c| c / size), 2.0 * size.atan2(w * sign))
 }
 
 /// 단위 축 둘레로 angle만큼 도는 회전 (로드리게스).
@@ -402,6 +493,49 @@ mod tests {
         for row in 0..6 {
             let got: f64 = (0..6).map(|k| jacobian[row][k] * qd[k]).sum();
             assert!((got - twist[row]).abs() < 1e-6, "{row}: {got}");
+        }
+    }
+
+    #[test]
+    fn pose_line_goes_straight_and_turns_evenly() {
+        let arm = arm();
+        let start = arm.forward(&[0.3, -0.5, 1.1, 0.4, 0.8, -1.2]);
+        let end = arm.forward(&[0.1, -0.3, 0.9, 0.7, 1.0, -0.6]);
+        let line = PoseLine::new(&start, &end);
+        assert!(same_pose(&line.at(0.0), &start));
+        assert!(same_pose(&line.at(1.0), &end));
+        let middle = line.at(0.5);
+        for i in 0..3 {
+            let half_way = (start.position[i] + end.position[i]) / 2.0;
+            assert!((middle.position[i] - half_way).abs() < 1e-12);
+        }
+        // 가운데는 시작에서 절반만큼 돌았고, 나머지 절반은 같은 축으로 돈다
+        let first = PoseLine::new(&start, &middle);
+        assert!((first.angle() - line.angle() / 2.0).abs() < 1e-9);
+        assert!((first.length() - line.length() / 2.0).abs() < 1e-12);
+        assert!(same_pose(&first.at(2.0), &end));
+    }
+
+    #[test]
+    fn pose_line_reaches_half_turns_and_no_turn() {
+        let size = (0.3f64 * 0.3 + 0.5 * 0.5 + 0.8 * 0.8).sqrt();
+        let axis = [0.3 / size, -0.5 / size, 0.8 / size];
+        let start = Pose {
+            rotation: rot(Z, 0.4),
+            position: [0.0; 3],
+        };
+        for angle in [PI, PI - 1e-7, 2.0, 1e-9, 0.0] {
+            let end = Pose {
+                rotation: mat_mul(&start.rotation, &rot(axis, angle)),
+                position: [0.1, 0.0, 0.0],
+            };
+            let line = PoseLine::new(&start, &end);
+            assert!(same_pose(&line.at(1.0), &end), "{angle}");
+            assert!(
+                (line.angle() - angle).abs() < 1e-7,
+                "{angle}: {}",
+                line.angle()
+            );
         }
     }
 

@@ -93,9 +93,9 @@ pub struct LoopSettings {
     pub max_acceleration: f64,
     /// 관절 이동의 저크 한계 [rad/s³]
     pub max_jerk: f64,
-    /// 직교 조그의 손끝 속도 한계 [m/s]
+    /// 직교 조그와 직선 이동의 손끝 속도 한계 [m/s]
     pub max_tool_speed: f64,
-    /// 직교 조그의 손끝 회전 한계 [rad/s]
+    /// 직교 조그와 직선 이동의 손끝 회전 한계 [rad/s]
     pub max_tool_rotation: f64,
 }
 

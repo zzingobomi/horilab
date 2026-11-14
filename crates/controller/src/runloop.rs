@@ -1342,6 +1342,41 @@ mod tests {
     }
 
     #[test]
+    fn planned_line_runs_to_the_end() {
+        use crate::plan::{MotionLimits, ToolLimits, move_joints, move_line};
+        let mut run = six_joints();
+        let bent = [0.0, 0.4, 0.9, 0.6, 0.7, 0.0];
+        let motion = MotionLimits::from_settings(&SETTINGS, 6);
+        run.submit(move_joints(run.targets(), &bent, &motion, DT).unwrap())
+            .unwrap();
+        until_holding(&mut run);
+        let kinematics = Settings::parse(TEST_J3).unwrap().kinematics;
+        let mut target = kinematics.forward(&bent);
+        target.position[0] += 0.02;
+        target.position[2] -= 0.01;
+        let trajectory = move_line(
+            &kinematics,
+            &target,
+            &bent,
+            &[(-3.0, 3.0); 6],
+            &motion,
+            &ToolLimits::from_settings(&SETTINGS),
+            DT,
+        )
+        .unwrap();
+        let last = trajectory.points.last().unwrap().1.clone();
+        // 실행 루프가 속도 한계, 시작 자리, 소프트 한계를 다시 보고 받는다
+        run.submit(trajectory).unwrap();
+        until_holding(&mut run);
+        assert_eq!(run.targets(), last.as_slice());
+        let q: [f64; 6] = std::array::from_fn(|i| run.targets()[i]);
+        let reached = kinematics.forward(&q);
+        for i in 0..3 {
+            assert!((reached.position[i] - target.position[i]).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn cartesian_jog_needs_six_joints_and_kinematics() {
         let mut run = two_joints();
         assert!(run.jog_cartesian(&[0.01, 0.0, 0.0, 0.0, 0.0, 0.0]).is_err());

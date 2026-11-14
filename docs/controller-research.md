@@ -183,10 +183,29 @@
 | [Ruckig](https://github.com/pantor/ruckig) (C++ 커뮤니티판) | 0.19.4 | MIT | 소스로 빌드 (C++20) | 500 µs 주기까지 된다. 중간 웨이포인트는 유료 Pro판이나 실시간이 아닌 클라우드 API로만 |
 | Ruckig 공식 크레이트 | 0.19.4, 2026-07 | MIT | C++를 같이 빌드해서 교차 컴파일에 aarch64 C++ 도구가 필요하다 | |
 | [rsruckig](https://github.com/petrikosk/rsruckig) | 3.0.1, 2026-08 | MIT | 순수 Rust | 커뮤니티판을 옮기고 자체 위치 한계와 웨이포인트 풀이를 더했다. 웨이포인트 풀이는 시간 최적이 아니다 (Pro판보다 평균 1.4%, 최악 7.3% 길다, 주장) |
-| [TOPP-RA](https://github.com/hungpham2511/toppra) | Python 0.6.11, 2026-11 | MIT | Python 휠은 x86_64뿐, C++는 CMake | Python 지원은 그만둘 예정이라고 한다 |
-| [copp](https://github.com/TOPP-THU/copp) | 0.2.3, 2026-09 | MIT (유료 PRO판 따로) | 순수 Rust | 속도, 가속, 토크, 저크 한계. 아직 젊다 |
+| [TOPP-RA](https://github.com/hungpham2511/toppra) | Python 0.6.11, 2026-11 | MIT | Python 휠은 x86_64뿐, C++는 CMake | 속도, 가속, 토크 한계. 저크 한계는 없다 (소스 확인). README에 Python 지원을 그만둔다고 적혀 있다 |
+| [copp](https://github.com/TOPP-THU/copp) | 0.2.3, 2026-09 | MIT (유료 PRO판 따로) | 순수 Rust | 속도, 가속, 토크, 저크 한계. 무료판의 저크 풀이는 clarabel(원뿔 최적화)로 푸는 TOPP3-SOCP와 TOPP3-LP이고, 빠른 TOPP3-RA는 유료판이다. clarabel, nalgebra, rayon을 끌고 온다. 아직 젊다 |
 
 - 모서리를 둥글게 잇는(블렌드) Rust 크레이트는 찾지 못했다.
+
+#### 직선 이동에 재 본 값
+
+2026-11-14에 직선 이동의 시간 매기기를 골랐다 ([0033](decisions/0033-planning-and-simulation.md)). 같은 직선을 관절 한계(30°/s, 60°/s², 300°/s³)와 손끝 한계(30 mm/s, 20°/s) 안에서 100 Hz 궤적으로 만들고, 박자마다의 관절 각을 차분해 견줬다.
+
+- 고른 방식(`crates/controller/src/timing.rs`)은 길의 곳마다 빠르기 상한을 두고 2차 풀이(TOPP-RA와 같은 도달 가능 집합)를 한 뒤 이동 평균으로 저크를 제한한다. 처음 방식은 경로 위 위치 하나를 rsruckig로 움직이고, 관절 한계를 넘으면 길 전체를 같은 비율로 늦췄다.
+- copp에는 IK로 푼 관절 경로를 역 1001개에서 1~3차 도함수와 함께 넣었고, 손끝 한계는 손끝 거리와 회전각을 축으로 더해 걸었다. copp의 TOPP2-RA는 TOPP-RA와 같은 풀이다.
+- 비교 프로그램은 레포에 넣지 않았다 (copp를 의존성으로 들이지 않으려고).
+
+| | 고른 방식 (그곳만 늦춤) | 처음 방식 (길 전체를 같은 비율로 늦춤) | copp TOPP3-LP (저크를 제한한 시간 최적) | copp TOPP2-RA (저크 한계 없음) |
+|---|---|---|---|---|
+| 시험의 직선 (46 mm, 16° 돌기) | 2.11 s. 관절 한계 대비 가장 클 때 속도 0.36, 가속 0.64, 저크 0.96 | 2.31 s. 속도 0.32, 가속 0.63, 저크 0.97 | 1.97 s. 가속 0.92, 저크 1.00 | 1.74 s. 저크가 한계의 39배 |
+| 무작위 직선 30개 (30~150 mm, 1~49° 돌기)의 시간, TOPP3-LP 대비 | 평균 1.07배, 가장 많이 1.39배 | 평균 1.30배, 가장 많이 2.32배 | 1 | |
+| 팔꿈치가 거의 펴진 자리(2.9°)에서 안으로 71 mm | 4.54 s | 23.9 s | 4.23 s. 저크가 한계를 1% 넘는다 | 3.73 s. 저크가 한계의 19배 |
+| 직선 하나의 계산 시간, 파이 4 | 무작위 직선 평균 9.6 ms, 팔꿈치 직선 14 ms | 무작위 직선 평균 9.6 ms, 팔꿈치 직선 36 ms | 4.2~5.1 s (TOPP3-SOCP는 6.3~6.9 s) | 3.5 ms |
+
+- TOPP3-SOCP는 팔꿈치 직선을 PC에서는 풀지 못했고(InsufficientProgress), 파이에서는 풀었다.
+- 시간 최적 궤적은 길의 곳곳에서 어느 한계 하나에 붙어 움직인다. 위 TOPP3-LP는 저크가 늘 한계까지 간다.
+- 이동 평균으로 저크를 제한하는 방법은 공개된 연구가 있다: 가속을 제한한 궤적을 이동 평균(FIR)으로 걸러 저크를 제한한 궤적을 만든다 ([Besset, Béarée](https://sam.ensam.eu/handle/10985/11974), [Biagiotti, Melchiorri](https://iris.unimore.it/retrieve/e31e124d-a218-987f-e053-3705fe0a095a/Trajectory%20Generation%20via%20FIR%20Filters%20%20a%20Procedure%20for%20Time-Optimization.pdf), 검색 결과의 요약만 보았다). TOPP-RA의 결과에 붙인 공개 사례는 찾지 못했다. 거르면 한계를 넘을 수 있어 박자마다 다시 본다.
 
 ## 5. 파이 컨트롤러: 실행 환경, 빌드, 배포, 기록
 
