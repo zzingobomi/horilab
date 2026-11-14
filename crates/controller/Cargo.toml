@@ -1,6 +1,6 @@
 [package]
 name = "horilab-controller"
-description = "로봇 컨트롤러: 로봇 설정, 관절 층과 안전 검사, 서보 준비·관절 시험 명령 (docs/decisions/0024-servo-bus.md)"
+description = "로봇 컨트롤러: 로봇 설정, 관절 층, 실행 루프와 안전 검사, 경로 계획, 서보 준비·맨 서보 확인 명령 (docs/decisions/0024-servo-bus.md, 0032, 0033)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

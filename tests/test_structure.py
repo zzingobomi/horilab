@@ -21,7 +21,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# 패키지마다 불러와도 되는 다른 horilab 패키지. 아직 없는 패키지(client, sim)도 미리 적어 둔다.
+# 패키지마다 불러와도 되는 다른 horilab 패키지. 아직 없는 패키지(client)도 미리 적어 둔다.
 # 새 패키지는 여기에 규칙을 먼저 넣어야 테스트가 통과한다.
 ALLOWED_INTERNAL: dict[str, set[str]] = {
     "horilab_design": set(),

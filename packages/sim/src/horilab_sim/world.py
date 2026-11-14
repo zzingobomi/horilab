@@ -101,8 +101,8 @@ class World:
             actuator.forcerange = [-stall, stall]
             planned.append((servo_id, joint, model, stall))
         self.model = spec.compile()
-        # 막대 모델은 관절 둘레에서 막대끼리 겹친다. 그대로 두면 부딪힘 힘이 서보를 밀어서 끈다
-        # (자기 충돌 검사는 실행 전 궤적 검사가 따로 한다, 0009)
+        # 막대 모델은 관절 둘레에서 막대끼리 겹친다. 그대로 두면 부딪힘 힘이 서보를 밀어서 끈다.
+        # 그래서 시뮬레이션에서도 자기 충돌을 막는 것이 아직 없다 (실행 전 궤적 검사로 만들 일, 0032)
         self.model.geom_contype[:] = 0
         self.model.geom_conaffinity[:] = 0
         self.model.dof_damping[:] = JOINT_DAMPING

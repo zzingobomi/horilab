@@ -90,7 +90,7 @@
 
 - [0009](0009-control-architecture.md)의 안전 표를 고쳤다: 컨트롤러만 다시 켜질 때와 서보 전원이 꺼졌다 켜질 때를 나눈다.
 - 팔 움직이기 단계의 일에 더한다: `tools/deploy.py`와 처음 설정 스크립트, [setup.md](../setup.md) 절차, `tools/sync.py`의 `RCLONE_SHA256`에 `linux-arm64`, 파이 업로드 타이머와 오래된 기록 지우기, 끄기 명령과 켤 때 업로드.
-- PC의 Rust(1.80)를 올린다. cross는 1.85, mujoco-rs는 1.95 이상이 필요하다.
+- Rust 도구 모음은 레포의 `rust-toolchain.toml`로 고정한다 (지금 1.99.1).
 - 게임패드 크레이트는 evdev를 같이 따진다 (0023의 8번).
 - 직접 할 일: hori3의 SD 카드를 PC의 카드 리더로 통째 이미지로 떠서 NAS에 두고, 그 카드로 부트로더를 올린 뒤 26.04를 시험한다. 나머지 두 대의 SD 이미지도 떠 둔다 (카메라 파이 먼저). NAS Cloud Sync에 구글 로그인을 한다.
 - 실물로 확인할 것은 controller-research.md 5·6절 끝에 있다.

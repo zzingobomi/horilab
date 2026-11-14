@@ -19,7 +19,7 @@ from horilab_design.values import REPO_ROOT, _Values, read_toml
 
 PURCHASES_FILE = REPO_ROOT / "data" / "purchases.toml"
 BOM_FILE = REPO_ROOT / "docs" / "bom.md"
-BUDGET_KRW = 300_000  # 서보를 뺀 추가 부품 예산 (0004)
+BUDGET_KRW = 300_000  # 예산 기준, 서보도 들어간다 (0004)
 
 # 언제 사나. 주문한 것(ordered)은 이것과 상관없이 "배송 중"이다.
 When = Literal["now", "stage", "pick", "if_needed"]

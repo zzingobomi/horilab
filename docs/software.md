@@ -1,6 +1,6 @@
 # 소프트웨어
 
-결정 기록: 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md), 시험 기록과 데이터 넘기기 [0022](decisions/0022-records-and-sync.md), 로봇 컨트롤러와 응용의 경계 [0023](decisions/0023-robot-controller.md), 서보 버스 [0024](decisions/0024-servo-bus.md), 컨트롤러 자리와 하드웨어 연결 [0025](decisions/0025-controller-on-pi.md), 파이의 실행 환경·배포·기록 [0026](decisions/0026-pi-runtime-deploy-records.md).
+결정 기록: 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md), 시험 기록과 데이터 넘기기 [0022](decisions/0022-records-and-sync.md), 로봇 컨트롤러와 응용의 경계 [0023](decisions/0023-robot-controller.md), 서보 버스 [0024](decisions/0024-servo-bus.md), 컨트롤러 자리와 하드웨어 연결 [0025](decisions/0025-controller-on-pi.md), 파이의 실행 환경·배포·기록 [0026](decisions/0026-pi-runtime-deploy-records.md), 실행 루프 [0032](decisions/0032-run-loop.md), 경로 계획과 시뮬레이션 [0033](decisions/0033-planning-and-simulation.md).
 
 ## 하나의 치수 값에서 모든 결과물을
 
@@ -25,32 +25,7 @@
 
 ## 레포 구조
 
-```
-horilab/
-├── Cargo.toml, rust-toolchain.toml   Rust 워크스페이스
-├── crates/
-│   ├── servo/       서보 버스 (라이브러리)
-│   ├── controller/  컨트롤러: 실행 루프, 안전 검사, 조종권, API 서버(펜던트 화면, WSS), 기록, 서보 준비·맨 서보 확인 명령
-│   └── bench/       파이에서 미리 재는 시험 프로그램
-├── pendant/         펜던트 화면 (웹, R3F)
-├── pyproject.toml, uv.lock, .python-version   Python 워크스페이스
-├── packages/
-│   ├── design/      치수 값 → 부품·조립 → 출력 파일·URDF·MJCF·부품표 → 검사
-│   ├── servo/       서보 버스의 Python 기준 구현, 첫 연결 명령
-│   ├── client/      컨트롤러 API의 Python 클라이언트
-│   ├── sim/         시뮬레이션 서버 (MuJoCo)
-│   └── camera/      영상 메시지 형식, PC 쪽 수신
-├── apps/            응용 (팔레타이징 등): 작업 순서, 비전. 응용마다 패키지 하나
-├── pi/              파이에 올리는 것: 컨트롤러 파이 설정(controller/), 카메라 파이 프로그램(camera/)
-├── params/          설계 값 (TOML). 응용에 딸린 값은 params/<응용>/
-├── data/            실측 값, 로봇 설정·캘리브레이션, 구매 데이터 (TOML)
-├── tools/           레포 도구 (시험 기록 올리고 받기, 파이 배포)
-└── build/, target/  생성물 (git 제외)
-```
-
-- 폴더는 첫 코드를 넣을 때 만든다. 지금 있는 패키지는 design, servo, camera다. 자리와 이름을 고른 이유는 [0007](decisions/0007-repo-structure.md)에 있다.
-- 의존 방향: design, servo, camera, client는 다른 패키지를 불러오지 않고, sim은 camera만 불러온다. 응용은 client와 camera만 불러온다. 서보에 직접 명령하는 코드는 servo(Rust 크레이트와 Python 기준 구현)뿐이다. 문서에만 두지 않고 테스트(`tests/test_structure.py`)와 ruff로 막는다 ([0007](decisions/0007-repo-structure.md)).
-- 응용은 컨트롤러 API가 자리 잡을 때까지 이 레포에 두고, 무거운 의존성(AI 모델 등)이 들어오면 다른 레포로 빼거나 별도 환경으로 둔다 ([0023](decisions/0023-robot-controller.md)).
+맨 위는 언어 도구별로 나눈다: Rust 크레이트는 `crates/`, Python 패키지는 `packages/`, 펜던트 화면은 `pendant/`, 응용은 `apps/`, 파이에 올리는 것은 `pi/`다. 폴더 구조, 지금 있는 폴더, 이름, 의존 방향은 [0007](decisions/0007-repo-structure.md)에 있다. 의존 방향은 문서에만 두지 않고 테스트(`tests/test_structure.py`)와 ruff로 막는다.
 
 ## 설계 도구
 
@@ -60,6 +35,7 @@ horilab/
 
 ## 시뮬레이션 (MuJoCo)
 
+- 지금 MJCF는 골격 설계용 막대 모델이다 (`horilab_design.mjcf`, 옛 골격 값). 아래의 충돌 형상, 보이는 메시, 무게는 골격 값을 새 관절로 바꿀 때부터 넣는다 ([status.md](status.md)의 설계 순서).
 - MJCF를 같은 치수 값에서 MuJoCo의 MjSpec으로 만든다. 그리퍼는 따로 만들어 플랜지 사이트에 붙인다.
 - 충돌 형상은 치수 값에서 만든 기본 도형(상자, 원기둥, 캡슐)이고, 튀어나온 볼트 머리까지 부품을 다 감싸는 크기로 만든다. CAD 부품이 그 안에 들어가는지 테스트로 확인한다. 보이는 모양만 CAD 메시를 쓴다.
 - 출력하기 전에 시뮬레이션에서 움직여 보고 작업 범위, IK, 특이점, 충돌을 확인한다. 이전 프로젝트의 손목 문제 같은 걸 만들기 전에 잡으려는 것이다.
@@ -73,24 +49,24 @@ horilab/
      │  이동 명령 ↓  ↑ 상태, 이벤트 (컨트롤러 API, WSS)
 [컨트롤러 (Rust)]                                          컨트롤러 파이
  ├─ API 서버, 조종권, 펜던트 화면
- ├─ 경로 계획: IK, 블렌드, 시간 매기기 (팔 움직이기 단계에서는 PC에 있다)
+ ├─ 경로 계획: IK, 블렌드, 시간 매기기, 조그
  │     │  관절 궤적, 정지, 토크 켜기·끄기 ↓  ↑ 관절 위치, 부하, 온도, 전압, 오류
  └─ 실행 루프 + 안전 검사
-       ├─ 실물 백엔드: 서보 버스 → Feetech 서보
-       └─ 시뮬레이션 백엔드: MuJoCo 시뮬레이션 서버 (PC)
+       └─ 서보 버스 자리 ─┬─ 실물: Feetech 버스 → 서보
+                          └─ 시뮬레이션: MuJoCo 시뮬레이션 서버 (PC, TCP)
 ```
 
 - 응용은 이동 명령을 보내고, 컨트롤러가 IK와 블렌드로 관절 궤적을 만들어 실행 루프가 일정한 주기로 실행한다. 응용은 상대가 시뮬레이션인지 실물인지 모른다. 경계, API, 조종권, 펜던트는 [0023](decisions/0023-robot-controller.md), 실행 루프와 안전은 [0009](decisions/0009-control-architecture.md)에 있다.
-- 관절은 이름으로 부르고, 단위는 rad와 s다. 서보 값과 rad 사이 변환은 실물 백엔드 안에서만 한다.
+- 관절은 이름으로 부르고, 단위는 rad와 s다. 서보 값과 rad 사이 변환은 관절 층에서만 한다 (실물과 시뮬레이션이 같이 쓴다).
 - 컨트롤러는 Rust로 짜고(`crates/controller`, 서보 버스는 `crates/servo`) 로봇 옆 컨트롤러 파이에서 돈다. 개발과 시뮬레이션은 PC에서 같은 프로그램으로 한다 ([0025](decisions/0025-controller-on-pi.md)). 로봇 설정은 data/에서만 읽는다.
-- 안전 검사(시작 절차, 한계, 자기 충돌, 안전 평면, 통신 오류, 과부하, 정지)는 실행 루프에 있다. 실물을 처음 움직이기 전에 통과할 시험은 [0009](decisions/0009-control-architecture.md)에 있다.
+- 안전 검사(시작 절차, 한계, 통신 오류, 서보 보호, 막힘과 부하, 온도, 정지)는 실행 루프에 있다 ([0032](decisions/0032-run-loop.md)). 자기 충돌과 안전 평면은 실행 전에 궤적을 통째로 검사하며, 팔 부품이 정해진 뒤 만든다. 실물을 처음 움직이기 전에 통과할 시험은 [0009](decisions/0009-control-architecture.md)에 있다.
 - 서보 버스는 메모리 표, 서보마다 확인하는 동기 읽기, EEPROM 쓰기 절차를 둔다. 실물이 없는 PC에서는 가짜 서보 버스로 시험한다 ([0024](decisions/0024-servo-bus.md)). 공식 SDK 위에 Python으로 먼저 짠 것(`horilab_servo.feetech`)은 기준 구현이다.
 - 프로그램은 기본으로 시뮬레이션만 움직이고, 실물은 명시적으로 켰을 때만 움직인다.
 
 ## 하드웨어 연결
 
 ```
-[PC (Windows)]  개발, 경로 계획, 시뮬레이션, 영상 처리, 응용
+[PC (Windows)]  개발, 시뮬레이션, 영상 처리, 응용
  └─ 유선 랜 ─┬─ [컨트롤러 파이, 로봇 옆] ── USB ── [Waveshare 버스 서보 어댑터] ── 서보 7개
              └─ [카메라 파이, 로봇 옆] ── USB 3 ── [D405]
 ```
@@ -99,7 +75,7 @@ horilab/
 - 개발할 때는 어댑터를 PC에 꽂고(5 m USB 2) 같은 컨트롤러를 PC에서 돌려도 된다. 맨 서보 확인이 그렇다.
 - 카메라 파이는 D405 영상을 PC로 보내는 일만 하고, 켜지면 자동으로 실행된다.
 - 펜던트: 게임패드는 컨트롤러 파이에 꽂고, 안드로이드 폰과 PC 브라우저는 집 랜으로 컨트롤러의 웹 화면에 들어간다 ([0023](decisions/0023-robot-controller.md)).
-- 경로 계획(IK)은 지금은 PC에 있다. PC 없이 쓰는 단계에서 파이로 옮긴다 ([0025](decisions/0025-controller-on-pi.md)).
+- 경로 계획(IK, 궤적, 조그)은 처음부터 컨트롤러 안에 있다 ([0033](decisions/0033-planning-and-simulation.md)).
 
 ## 시험 기록과 데이터
 
@@ -131,16 +107,14 @@ horilab/
 | 값 파일 | tomllib (읽기), tomlkit (쓰기), pydantic (검사) |
 | 시뮬레이션, MJCF | mujoco |
 | URDF | xml.etree (작성), yourdfpy (테스트에서 읽기) |
-| IK | EAIK (해석적, 가능한 해를 전부 준다), mink (수치, 관절 한계와 충돌을 지키며 이어지는 동작) |
+| IK | 컨트롤러는 직접 짠 닫힌 해 (Rust, [0033](decisions/0033-planning-and-simulation.md)). 설계 검토와 그 대조 시험은 EAIK (해석적, 가능한 해를 전부 준다) |
+| 궤적 (컨트롤러) | rsruckig (순수 Rust). 직선 이동의 시간 매기기는 직접 짠다 (0033) |
 | 서보 | 컨트롤러는 Rust로 직접 짠 서보 버스(`crates/servo`, [0024](decisions/0024-servo-bus.md)), 시리얼은 serialport. Feetech ftservo-python-sdk는 Python 기준 구현에만 |
 | 영상 전송 | pyzmq |
 | 카메라 (파이) | pyrealsense2. 설치 방법은 파이 준비 때 정한다 |
 
 - 버전과 고른 이유는 [0008](decisions/0008-environment-and-packages.md)에 있다.
-- IK 라이브러리는 Windows에서 동작을 확인했다 (2026-11-07, Python 3.12, MuJoCo 3.17.0, 예제 6축 모델).
-  - EAIK 1.2.2: 축 배치만 넣으면 구조를 알아서 판별했다 (구형 손목 예제, UR5e 치수의 UR형). 목표 50개를 모두 풀고, 목표마다 가능한 해를 전부(2~8개) 줬다. 한 번에 약 10 µs.
-  - mink 1.4.0 (QP 풀이기 daqp 0.11.0): 관절 한계를 지키고, 충돌 회피 제한을 걸면 정한 최소 거리(5 mm)에서 멈췄다. 한 번 풀이에 보통 1 ms 안쪽. 다만 고정된 시작 자세에서 먼 목표 50개 중 12개는 국소해에 걸렸다.
-  - 그래서 해석적 IK로 후보 해를 구하고, 그 해를 시작점으로 mink가 관절 한계·충돌·보정 모델까지 반영해 다듬는다.
+- EAIK 1.2.2는 Windows에서 동작을 확인했다 (2026-11-07, Python 3.12, 예제 6축 모델): 축 배치만 넣으면 구조를 알아서 판별했다 (구형 손목 예제, UR5e 치수의 UR형). 목표 50개를 모두 풀고, 목표마다 가능한 해를 전부(2~8개) 줬다. 한 번에 약 10 µs.
 - React(R3F) 화면은 펜던트 화면으로, 컨트롤러가 HTTPS로 준다 ([0023](decisions/0023-robot-controller.md)). 관절 조그, 티칭, 실물 상태를 3D로 보는 디지털 트윈, 카메라 화면 같은 것이다. 같은 URDF와 메쉬(glTF)를 불러와서, 치수 값 하나에서 나온 결과물을 그대로 쓴다.
 
 ## 구현할 때 알아 둘 것

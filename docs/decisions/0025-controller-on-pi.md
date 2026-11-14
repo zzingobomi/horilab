@@ -35,11 +35,11 @@ B로 한다. 컨트롤러는 Rust로 짠다.
   - 와이파이는 깊이 영상을 감당하기 어려워 유선 랜으로 잇는다. 카메라 파이의 카메라 프로그램은 파이가 켜지면 저절로 실행되게 설치한다.
 - 개발할 때는 어댑터를 PC에 꽂고 같은 컨트롤러를 PC에서 돌려도 된다. 맨 서보 확인이 그렇다. 어댑터는 한 번에 한 기계에만 꽂히므로 컨트롤러가 둘이 되지 않는다.
 - PC에서는 같은 컨트롤러를 시뮬레이션 백엔드로 돌린다 (UR의 URSim처럼). 경로 계획과 응용은 상대가 시뮬레이션인지 실물인지 모른다 (0009 그대로).
-- 언어: 컨트롤러(서보 프로토콜, 관절 변환, 안전 검사, 실행 루프, 실물 기록, 서보 준비와 맨 서보 확인 명령)는 Rust다. 공식 서보 SDK는 Python과 C++뿐이라 서보 프로토콜도 Rust로 직접 짠다 ([0024](0024-servo-bus.md)에서 파악한 세부와 SDK의 결함을 바탕으로). 설계, 경로 계획(IK), 시뮬레이션 물리, 비전, 분석, 도구는 Python 그대로다.
+- 언어: 컨트롤러(서보 프로토콜, 관절 변환, 안전 검사, 실행 루프, 실물 기록, 서보 준비와 맨 서보 확인 명령)는 Rust다. 공식 서보 SDK는 Python과 C++뿐이라 서보 프로토콜도 Rust로 직접 짠다 ([0024](0024-servo-bus.md)에서 파악한 세부와 SDK의 결함을 바탕으로). 경로 계획(IK, 궤적)도 컨트롤러 안의 Rust다 ([0033](0033-planning-and-simulation.md)). 설계, 시뮬레이션 물리, 비전, 분석, 도구는 Python 그대로다.
 - 세 단계로 나눠 만든다. 제작 로드맵의 번호와 섞이지 않게 다른 곳에서는 번호 대신 이름으로 부른다.
   1. 맨 서보 확인 ([0028](0028-ur-style-joints.md)): Rust 컨트롤러의 기본(서보 버스, 서보 준비, 관절 층, 맨 서보 확인 명령)을 0024의 순서로 만들고 PC에서 돌린다.
-  2. 팔 움직이기: 컨트롤러를 컨트롤러 파이에 올리고, PC의 경로 계획이 궤적을 네트워크로 보낸다. 파이 배포 명령과 PC 시뮬레이션 컨트롤러를 만든다.
-  3. PC 없이 쓰기: 경로 계획을 파이로 옮긴다. 펜던트 화면은 컨트롤러가 직접 열어서 처음부터 파이에 있다 ([0023](0023-robot-controller.md)).
+  2. 팔 움직이기: 컨트롤러를 컨트롤러 파이에 올리고, PC의 응용이 이동 명령을 네트워크로 보낸다. 경로 계획은 처음부터 컨트롤러 안에 있다 ([0033](0033-planning-and-simulation.md)). 파이 배포 명령과 PC 시뮬레이션 컨트롤러를 만든다.
+  3. PC 없이 쓰기: 폰과 게임패드의 펜던트로 조그, 티칭, 가르친 동작 재생을 한다. 펜던트 화면은 컨트롤러가 직접 열어서 처음부터 파이에 있다 ([0023](0023-robot-controller.md)).
 
 ## 근거
 
@@ -52,14 +52,11 @@ B로 한다. 컨트롤러는 Rust로 짠다.
 ## 영향
 
 - 처음 연결 구조의 기록은 지웠다 (git 기록에 있다). [0007](0007-repo-structure.md)(Rust 크레이트 자리), [0008](0008-environment-and-packages.md)(서보 SDK, Rust), 0009(실행 루프의 자리와 언어), 0023(정할 것 5번), 0024(Rust로 짠다)를 고쳤다.
-- Rust 워크스페이스를 만들었다 (2026-11-11): `crates/servo`와 `crates/bench`([0007](0007-repo-structure.md)), 도구 모음 판 고정(`rust-toolchain.toml`), `.gitignore`의 `target/`, [CLAUDE.md](../../CLAUDE.md#자주-쓰는-명령)의 커밋 전 검사에 cargo fmt·clippy·test, [conventions.md](../conventions.md)의 Rust 규칙(주석은 한국어, 단위 규칙은 Python과 같다). `crates/controller`는 첫 코드를 넣을 때 만든다.
-- Python으로 만든 0024 만드는 순서 1번(`packages/servo`의 `horilab_servo.feetech`)은 기준 구현으로 남긴다. 실물에서 첫 덤프를 뜨고 Rust 버스와 결과를 맞춰 보는 데 쓰고, Rust 버스가 실물에서 확인되면 지운다. 컨트롤러와 이야기하는 Python 쪽은 따로 클라이언트(`packages/client`)로 만든다 (전송은 [0023](0023-robot-controller.md)의 WSS).
+- Rust 워크스페이스를 만들었다 (2026-11-11): `crates/servo`와 `crates/bench`([0007](0007-repo-structure.md)), 도구 모음 판 고정(`rust-toolchain.toml`), `.gitignore`의 `target/`, [CLAUDE.md](../../CLAUDE.md#자주-쓰는-명령)의 커밋 전 검사에 cargo fmt·clippy·test, [conventions.md](../conventions.md)의 Rust 규칙(주석은 한국어, 단위 규칙은 Python과 같다). `crates/controller`는 첫 코드와 같이 만들었다.
+- Python으로 만든 0024 만드는 순서 1번(`packages/servo`의 `horilab_servo.feetech`)은 기준 구현으로 남긴다. 실물에서 첫 덤프를 뜨고 Rust 버스와 결과를 맞춰 보는 데 쓰고, 첫 연결 명령을 Rust로 옮기면 지운다 ([0024](0024-servo-bus.md)). 컨트롤러와 이야기하는 Python 쪽은 따로 클라이언트(`packages/client`)로 만든다 (전송은 [0023](0023-robot-controller.md)의 WSS).
 - Rust 서보 라이브러리 rustypot(Pollen, Apache-2.0)을 0024의 확인 항목(지난 값을 돌려주지 않는지, 서보마다 결과, 상태 바이트, EEPROM 잠금, 타임아웃, 섞인 모델, ST-3120)으로 평가했다 (2026-11-11). 동기 읽기가 서보 하나만 실패해도 통째로 실패하고 잠금을 LeRobot식으로 다뤄서, 참고만 하고 서보 버스를 직접 짰다 ([0024](0024-servo-bus.md)의 검토한 대안).
 - 팔 움직이기 전에 정할 것이던 경로 계획의 자리와 시뮬레이션 연결은 [0033](0033-planning-and-simulation.md)에서 정했다: 경로 계획은 처음부터 컨트롤러 안에 Rust로, 시뮬레이션은 Python MuJoCo 서버를 서보 버스 자리에 TCP로 붙인다 (조사는 [controller-research.md](../controller-research.md#4-시뮬레이션-연결과-파이용-계획-라이브러리)).
   - 빌드, 배포, 파이 실시간 환경은 [0026](0026-pi-runtime-deploy-records.md)에서 정했다.
-- PC 없이 쓰기 전에 정할 것: 파이에서 돌릴 경로 계획. 리서치의 추천:
-  - IK: 우리 팔은 평행 축 셋 꼴이라 닫힌 해가 있다. IK-Geo의 그 풀이만 Rust로 옮기고 PC의 EAIK와 대조해 검증한다. Python으로 둔다면 EAIK는 파이(aarch64)용 휠이 있다.
-  - 궤적: 조그, 관절 이동, 재생, 관절 공간 블렌드는 순수 Rust인 rsruckig(MIT)로 한다. 반지름 블렌드가 있는 직선 이동은 기하 블렌드 → 같은 해 가지의 IK → 시간 매기기로 한다. 시간 매기기는 시간 최적 도구(TOPP-RA C++, copp)를 쓰지 않고 직접 짜기로 정했다 ([0033](0033-planning-and-simulation.md)).
 - 랜: PC와 두 파이를 유선으로 잇는다. 파이 자리와 집 네트워크(공유기 포트, 스위치)를 정할 때 랜 케이블 수를 다시 센다. [부품표](../bom.md)의 랜 케이블은 지금 하나다.
 - 서보 어댑터와 PC를 잇는 5 m USB 2 케이블은 개발할 때(맨 서보 확인 등) 쓴다. 컨트롤러 파이에서는 짧은 케이블이면 된다.
 - 0009가 제작 로드맵 2단계에 하기로 한 부하 시험(영상 처리를 돌린 채 몇 시간 동안 명령 간격과 통신 오류를 기록)은 컨트롤러 파이에서 한다.
