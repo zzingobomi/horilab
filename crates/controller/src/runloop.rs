@@ -22,12 +22,15 @@ use horilab_servo::feetech::ServoBus;
 use rsruckig::prelude::*;
 
 use crate::joints::{Joints, MAX_FAILURES, Snapshot};
+use crate::kinematics::Kinematics;
 use crate::settings::{GripperSettings, LoopSettings};
 
 /// 조그 명령이 이 시간 [s] 안에 다시 오지 않으면 멈춘다 (펜던트나 게임패드가 누르는 동안 거듭 보낸다)
 pub const JOG_TIMEOUT: f64 = 0.2;
 /// 조그가 소프트 한계 앞에서 남기는 여유 [rad]
 const JOG_MARGIN: f64 = 0.01;
+/// 직교 조그의 감쇠 최소 제곱 감쇠 (특이 자세 가까이에서 관절 속도를 누른다)
+const CARTESIAN_DAMPING: f64 = 0.02;
 
 /// 시간이 붙은 관절 궤적: 점마다 시작에서의 시각 [s]과 관절 각 [rad] (루프의 관절 순서).
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +94,8 @@ struct Jog {
     at_limit: Vec<bool>,
     /// 마지막 조그 명령 뒤로 흐른 시간 [s]
     since: f64,
+    /// 직교 조그의 손끝 속도 [vx, vy, vz, wx, wy, wz] (베이스 좌표계). 있으면 박자마다 관절 속도로 바꾼다
+    cartesian: Option<[f64; 6]>,
 }
 
 struct Playing {
@@ -119,6 +124,8 @@ pub struct RunLoop<B: ServoBus> {
     /// 서보가 뜨거워 쉬는 까닭. 있으면 새 궤적을 받지 않는다
     hot: Option<String>,
     jog: Option<Jog>,
+    /// 직교 조그에 쓰는 기구학 (팔 관절이 여섯일 때)
+    kinematics: Option<Kinematics>,
     /// 상태를 읽지 못한 박자가 잇달아 몇 번인지
     missed: u64,
 }
@@ -172,10 +179,23 @@ impl<B: ServoBus> RunLoop<B> {
             mode: Mode::Holding,
             hot: None,
             jog: None,
+            kinematics: None,
             missed: 0,
         };
         run.hold_present_goals()?;
         Ok(run)
+    }
+
+    /// 직교 조그에 쓸 기구학을 준다. 팔 관절이 J1~J6 여섯이어야 한다.
+    pub fn set_kinematics(&mut self, kinematics: Kinematics) -> Result<(), String> {
+        if self.ids.len() != 6 {
+            return Err(format!(
+                "직교 조그는 팔 관절 여섯이 있어야 한다: {}개",
+                self.ids.len()
+            ));
+        }
+        self.kinematics = Some(kinematics);
+        Ok(())
     }
 
     pub fn mode(&self) -> &Mode {
@@ -340,8 +360,41 @@ impl<B: ServoBus> RunLoop<B> {
         if velocity.len() != n || velocity.iter().any(|v| !v.is_finite()) {
             return Err(format!("조그 속도는 관절 {n}개의 수다: {velocity:?}"));
         }
+        self.start_jog(velocity.to_vec(), None);
+        Ok(())
+    }
+
+    /// 직교 조그: 손끝을 베이스 좌표계의 선속도 [m/s]와 각속도 [rad/s]로 움직인다 ([vx, vy, vz, wx, wy, wz]).
+    /// 손끝 속도 한계로 자르고, 박자마다 야코비안(감쇠 최소 제곱)으로 관절 속도로 바꿔 관절 조그와 같은 길로
+    /// 간다 (명령이 끊기면 멈춤, 소프트 한계 앞에 섬). 관절 속도가 한계를 넘으면 방향을 지킨 채 같은 비율로 줄인다.
+    pub fn jog_cartesian(&mut self, twist: &[f64; 6]) -> Result<(), String> {
+        if self.kinematics.is_none() {
+            return Err("직교 조그에 쓸 기구학이 없다 (set_kinematics)".to_owned());
+        }
+        self.jog(&vec![0.0; self.ids.len()])?;
+        if twist.iter().any(|v| !v.is_finite()) {
+            return Err(format!("손끝 속도에 수가 아닌 값이 있다: {twist:?}"));
+        }
+        let scale = |part: &[f64], limit: f64| {
+            let size = part.iter().map(|v| v * v).sum::<f64>().sqrt();
+            if size > limit { limit / size } else { 1.0 }
+        };
+        let linear = scale(&twist[..3], self.settings.max_tool_speed);
+        let angular = scale(&twist[3..], self.settings.max_tool_rotation);
+        let clamped: [f64; 6] =
+            std::array::from_fn(|i| twist[i] * if i < 3 { linear } else { angular });
         if let Some(jog) = &mut self.jog {
-            jog.requested = velocity.to_vec();
+            jog.cartesian = Some(clamped);
+        }
+        Ok(())
+    }
+
+    /// 조그를 시작하거나 명령을 새로 받는다 (관절 속도, 직교 조그면 손끝 속도).
+    fn start_jog(&mut self, velocity: Vec<f64>, cartesian: Option<[f64; 6]>) {
+        let n = self.ids.len();
+        if let Some(jog) = &mut self.jog {
+            jog.requested = velocity;
+            jog.cartesian = cartesian;
             jog.since = 0.0;
         } else {
             let mut input = InputParameter::<0>::new(Some(n));
@@ -358,13 +411,13 @@ impl<B: ServoBus> RunLoop<B> {
                 input,
                 output: OutputParameter::new(Some(n)),
                 dt: 0.0, // 첫 박자에 박자 길이로 다시 만든다
-                requested: velocity.to_vec(),
+                requested: velocity,
                 at_limit: vec![false; n],
                 since: 0.0,
+                cartesian,
             });
         }
         self.mode = Mode::Jogging;
-        Ok(())
     }
 
     /// 사람이 고장을 푼다: 관절 층의 멈춤을 풀고, 서보마다 토크를 켜거나 이어받은 뒤 지금 목표를 붙잡는다.
@@ -595,6 +648,18 @@ impl<B: ServoBus> RunLoop<B> {
         }
         jog.since += dt;
         let alive = jog.since <= JOG_TIMEOUT;
+        // 직교 조그: 지금 자세의 야코비안으로 손끝 속도를 관절 속도로 바꾼다
+        if let (Some(twist), Some(kinematics)) = (jog.cartesian, &self.kinematics) {
+            let q: [f64; 6] = std::array::from_fn(|i| jog.input.current_position[i]);
+            let qd = kinematics.joint_velocity(&q, &twist, CARTESIAN_DAMPING);
+            let fastest = qd.iter().fold(0.0_f64, |m, v| m.max(v.abs()));
+            let shrink = if fastest > settings.max_speed {
+                settings.max_speed / fastest
+            } else {
+                1.0
+            };
+            jog.requested = qd.iter().map(|v| v * shrink).collect();
+        }
         let (a_max, j_max) = (settings.max_acceleration, settings.max_jerk);
         let mut interfaces = vec![ControlInterface::Velocity; n];
         for (i, &(low, high)) in limits.iter().enumerate() {
@@ -774,6 +839,8 @@ mod tests {
         sag_max: 0.05,
         max_acceleration: 2.0,
         max_jerk: 10.0,
+        max_tool_speed: 0.05,
+        max_tool_rotation: 0.5,
     };
     const DT: f64 = 0.01;
 
@@ -1200,5 +1267,85 @@ mod tests {
         let at = run.targets()[0];
         assert!(at <= upper && at > upper - 0.3, "{at}");
         assert!(position(&mut run, 0) <= steps(upper));
+    }
+
+    /// J1~J6 (옛 시험의 J3 값으로, 한계는 넉넉히 -3~3 rad)
+    fn six_joints() -> RunLoop<Bus<FakePort>> {
+        let base = Settings::parse(TEST_J3).unwrap();
+        let template = base.joint("j3").unwrap().clone();
+        let names = ["j1", "j2", "j3", "j4", "j5", "j6"];
+        let servos: Vec<Servo> = names
+            .iter()
+            .zip(1u8..)
+            .map(|(&name, id)| {
+                let mut joint = template.clone();
+                joint.name = name;
+                joint.id = id;
+                joint.lower = -3.0;
+                joint.upper = 3.0;
+                joint.calibration = Some(Calibration {
+                    pin: 0.0,
+                    zero_raw: 2048,
+                    direction: Direction::Same,
+                    position_offset: 0,
+                });
+                Servo::from_joint(&joint).unwrap()
+            })
+            .collect();
+        let bus = open_fake_bus((1..=6).map(|id| FakeServo::with(id, 2825, 2048)));
+        let joints = Joints::open(bus, servos, BENCH_CAPS).unwrap();
+        let mut run = RunLoop::start(joints, SETTINGS, None).unwrap();
+        run.set_kinematics(base.kinematics).unwrap();
+        run
+    }
+
+    #[test]
+    fn cartesian_jog_moves_the_tool_straight() {
+        use crate::plan::{MotionLimits, move_joints};
+        let mut run = six_joints();
+        // 곧게 선 영점은 특이 자세라 굽힌 자세로 먼저 간다
+        let bent = [0.0, 0.4, 0.9, 0.6, 0.7, 0.0];
+        let limits = MotionLimits::same(6, 2.0, 2.0, 10.0);
+        run.submit(move_joints(run.targets(), &bent, &limits, DT).unwrap())
+            .unwrap();
+        until_holding(&mut run);
+        let kinematics = Settings::parse(TEST_J3).unwrap().kinematics;
+        let pose = |run: &RunLoop<Bus<FakePort>>| {
+            let q: [f64; 6] = std::array::from_fn(|i| run.targets()[i]);
+            kinematics.forward(&q)
+        };
+        let start = pose(&run);
+        for _ in 0..100 {
+            run.jog_cartesian(&[0.02, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
+            run.tick(DT);
+        }
+        until_holding(&mut run);
+        let end = pose(&run);
+        let moved: Vec<f64> = (0..3)
+            .map(|i| end.position[i] - start.position[i])
+            .collect();
+        // 20 mm/s로 1초 (가속과 감속, 명령이 끊긴 뒤 0.2초를 더한다)
+        assert!((0.015..0.03).contains(&moved[0]), "{moved:?}");
+        assert!(
+            moved[1].abs() < 0.002 && moved[2].abs() < 0.002,
+            "{moved:?}"
+        );
+        let turned = start
+            .rotation
+            .iter()
+            .flatten()
+            .zip(end.rotation.iter().flatten())
+            .fold(0.0_f64, |m, (a, b)| m.max((a - b).abs()));
+        assert!(turned < 0.01, "{turned}");
+        // 손끝 속도 한계(50 mm/s)로 자른다
+        assert!(run.jog_cartesian(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]).is_ok());
+    }
+
+    #[test]
+    fn cartesian_jog_needs_six_joints_and_kinematics() {
+        let mut run = two_joints();
+        assert!(run.jog_cartesian(&[0.01, 0.0, 0.0, 0.0, 0.0, 0.0]).is_err());
+        let kinematics = Settings::parse(TEST_J3).unwrap().kinematics;
+        assert!(run.set_kinematics(kinematics).unwrap_err().contains("여섯"));
     }
 }

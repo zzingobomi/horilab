@@ -93,6 +93,10 @@ pub struct LoopSettings {
     pub max_acceleration: f64,
     /// 관절 이동의 저크 한계 [rad/s³]
     pub max_jerk: f64,
+    /// 직교 조그의 손끝 속도 한계 [m/s]
+    pub max_tool_speed: f64,
+    /// 직교 조그의 손끝 회전 한계 [rad/s]
+    pub max_tool_rotation: f64,
 }
 
 /// 관절 하나.
@@ -508,6 +512,8 @@ struct LoopFile {
     sag_max_deg: f64,
     max_acceleration_deg_s2: f64,
     max_jerk_deg_s3: f64,
+    max_tool_speed_mm_s: f64,
+    max_tool_rotation_deg_s: f64,
 }
 
 impl LoopFile {
@@ -522,6 +528,8 @@ impl LoopFile {
             ("voltage_warn_v", self.voltage_warn_v),
             ("max_acceleration_deg_s2", self.max_acceleration_deg_s2),
             ("max_jerk_deg_s3", self.max_jerk_deg_s3),
+            ("max_tool_speed_mm_s", self.max_tool_speed_mm_s),
+            ("max_tool_rotation_deg_s", self.max_tool_rotation_deg_s),
         ];
         for (name, value) in positive {
             if !(value.is_finite() && value > 0.0) {
@@ -556,6 +564,8 @@ impl LoopFile {
             sag_max: self.sag_max_deg.to_radians(),
             max_acceleration: self.max_acceleration_deg_s2.to_radians(),
             max_jerk: self.max_jerk_deg_s3.to_radians(),
+            max_tool_speed: self.max_tool_speed_mm_s * 1e-3,
+            max_tool_rotation: self.max_tool_rotation_deg_s.to_radians(),
         })
     }
 }
@@ -860,6 +870,8 @@ sag_gain_per_s = 0
 sag_max_deg = 3
 max_acceleration_deg_s2 = 60
 max_jerk_deg_s3 = 300
+max_tool_speed_mm_s = 30
+max_tool_rotation_deg_s = 20
 
 [kinematics]
 origins_mm = [[0, 0, 0], [0, 0, 160], [0, 0, 220], [0, 0, 180], [0, 63, 0], [0, 0, 63]]

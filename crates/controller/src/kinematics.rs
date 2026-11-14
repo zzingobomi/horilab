@@ -158,6 +158,84 @@ impl Kinematics {
     }
 }
 
+impl Kinematics {
+    /// 야코비안: 관절 속도 → 플랜지의 선속도 [m/s]와 각속도 [rad/s] (베이스 좌표계). 행은 vx, vy, vz, wx, wy, wz이고
+    /// 열은 관절이다.
+    pub fn jacobian(&self, q: &[f64; 6]) -> [[f64; 6]; 6] {
+        let mut rotation = IDENTITY;
+        let mut position = [0.0; 3];
+        let mut axes = [[0.0; 3]; 6];
+        let mut points = [[0.0; 3]; 6];
+        for i in 0..6 {
+            position = add(position, mat_vec(&rotation, &self.origins[i]));
+            axes[i] = mat_vec(&rotation, &AXES[i]);
+            points[i] = position;
+            rotation = mat_mul(&rotation, &rot(AXES[i], q[i]));
+        }
+        let tip = add(position, mat_vec(&rotation, &self.flange_position));
+        let mut jacobian = [[0.0; 6]; 6];
+        for i in 0..6 {
+            let linear = cross(axes[i], sub(tip, points[i]));
+            for row in 0..3 {
+                jacobian[row][i] = linear[row];
+                jacobian[row + 3][i] = axes[i][row];
+            }
+        }
+        jacobian
+    }
+
+    /// 손끝 속도 [vx, vy, vz, wx, wy, wz]에 맞는 관절 속도 (감쇠 최소 제곱: q̇ = Jᵀ (J Jᵀ + λ² I)⁻¹ x). 특이 자세
+    /// 가까이에서는 손끝 속도를 다 맞추지 못하는 대신 관절 속도가 터지지 않는다.
+    pub fn joint_velocity(&self, q: &[f64; 6], twist: &[f64; 6], damping: f64) -> [f64; 6] {
+        let j = self.jacobian(q);
+        let mut a = [[0.0; 6]; 6];
+        for (r, row) in a.iter_mut().enumerate() {
+            for (c, value) in row.iter_mut().enumerate() {
+                *value = (0..6).map(|k| j[r][k] * j[c][k]).sum::<f64>();
+                if r == c {
+                    *value += damping * damping;
+                }
+            }
+        }
+        let y = solve6(a, *twist).unwrap_or([0.0; 6]);
+        std::array::from_fn(|k| (0..6).map(|r| j[r][k] * y[r]).sum())
+    }
+}
+
+/// 6×6 연립 방정식 (부분 피벗 가우스 소거). 풀 수 없으면 없다.
+fn solve6(mut a: [[f64; 6]; 6], mut b: [f64; 6]) -> Option<[f64; 6]> {
+    for col in 0..6 {
+        let pivot = (col..6).max_by(|&x, &y| a[x][col].abs().total_cmp(&a[y][col].abs()))?;
+        if a[pivot][col].abs() < 1e-15 {
+            return None;
+        }
+        a.swap(col, pivot);
+        b.swap(col, pivot);
+        for row in col + 1..6 {
+            let factor = a[row][col] / a[col][col];
+            let pivot_row = a[col];
+            for (k, value) in a[row].iter_mut().enumerate().skip(col) {
+                *value -= factor * pivot_row[k];
+            }
+            b[row] -= factor * b[col];
+        }
+    }
+    let mut x = [0.0; 6];
+    for row in (0..6).rev() {
+        let rest: f64 = (row + 1..6).map(|k| a[row][k] * x[k]).sum();
+        x[row] = (b[row] - rest) / a[row][row];
+    }
+    Some(x)
+}
+
+fn cross(a: Vec3, b: Vec3) -> Vec3 {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
 /// 각을 -π~π로 맞춘다.
 pub fn wrap(angle: f64) -> f64 {
     (angle + PI).rem_euclid(2.0 * PI) - PI
@@ -284,6 +362,47 @@ mod tests {
         let mut target = arm.forward(&[0.0; 6]);
         target.position = [0.0, 0.0, 2.0]; // 팔 길이보다 멀다
         assert!(arm.inverse(&target).is_empty());
+    }
+
+    #[test]
+    fn jacobian_matches_finite_differences() {
+        let arm = arm();
+        let q = [0.3, -0.5, 1.1, 0.4, 0.8, -1.2];
+        let jacobian = arm.jacobian(&q);
+        let h = 1e-6;
+        let base = arm.forward(&q);
+        for i in 0..6 {
+            let mut moved = q;
+            moved[i] += h;
+            let pose = arm.forward(&moved);
+            for (row, (moved_at, base_at)) in pose.position.iter().zip(&base.position).enumerate() {
+                let numeric = (moved_at - base_at) / h;
+                assert!((numeric - jacobian[row][i]).abs() < 1e-5, "v{row} q{i}");
+            }
+            // 각속도: R(q + h) R(q)ᵀ ≈ I + [ω]× h
+            let d = mat_mul(&pose.rotation, &transpose(&base.rotation));
+            let omega = [
+                (d[2][1] - d[1][2]) / (2.0 * h),
+                (d[0][2] - d[2][0]) / (2.0 * h),
+                (d[1][0] - d[0][1]) / (2.0 * h),
+            ];
+            for (row, w) in omega.iter().enumerate() {
+                assert!((w - jacobian[row + 3][i]).abs() < 1e-5, "w{row} q{i}");
+            }
+        }
+    }
+
+    #[test]
+    fn joint_velocity_gives_the_asked_tool_velocity() {
+        let arm = arm();
+        let q = [0.3, -0.5, 1.1, 0.4, 0.8, -1.2];
+        let twist = [0.02, -0.01, 0.005, 0.0, 0.1, -0.05];
+        let qd = arm.joint_velocity(&q, &twist, 1e-6);
+        let jacobian = arm.jacobian(&q);
+        for row in 0..6 {
+            let got: f64 = (0..6).map(|k| jacobian[row][k] * qd[k]).sum();
+            assert!((got - twist[row]).abs() < 1e-6, "{row}: {got}");
+        }
     }
 
     #[test]

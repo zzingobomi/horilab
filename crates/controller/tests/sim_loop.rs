@@ -106,6 +106,8 @@ fn settings(sag_gain: f64) -> LoopSettings {
         sag_max: 0.05,
         max_acceleration: 2.0,
         max_jerk: 10.0,
+        max_tool_speed: 0.05,
+        max_tool_rotation: 0.5,
     }
 }
 
