@@ -18,8 +18,8 @@ use horilab_servo::feetech::ServoBus;
 use horilab_servo::feetech::bus::Reply;
 use horilab_servo::feetech::registers::{self as reg, Fault, Register};
 
-use crate::prepare::model_name;
-use crate::settings::{Calibration, Joint};
+use crate::prepare::{model_name, plan};
+use crate::settings::{Calibration, Joint, angle_limits};
 
 /// 토크를 켤 때 쓰는 상한. 토크 한도는 0.1 %, 속도는 서보의 속도 단위(phase 비트에 따라 다르다),
 /// 가속은 100 step/s² 단위다 (레지스터 표).
@@ -59,6 +59,9 @@ pub struct Servo {
     pub max_raw: i32,
     /// 토크 한도 [0.1 %]. 없으면 관절 층의 상한을 쓰고, 상한보다 크면 상한을 쓴다
     pub torque_limit: Option<i32>,
+    /// 서보에 구워져 있어야 할 EEPROM 값 (로봇 설정의 값 적용 목표. 각도 한계와 위치 오프셋은 이 서보의 영점과
+    /// 소프트 한계로 다시 계산한다). 비어 있으면 토크를 켤 때 위치 오프셋만 견준다
+    pub eeprom: Vec<(Register, i32)>,
     calibration: Option<Calibration>,
 }
 
@@ -72,6 +75,7 @@ impl Servo {
             min_raw,
             max_raw,
             torque_limit: None,
+            eeprom: Vec::new(),
             calibration: None,
         }
     }
@@ -85,6 +89,23 @@ impl Servo {
             calibration.raw_at(joint.lower),
             calibration.raw_at(joint.upper),
         );
+        let (min_angle, max_angle) = angle_limits(joint.lower, joint.upper, Some(calibration));
+        let eeprom = joint
+            .eeprom
+            .iter()
+            .map(|&(register, value)| {
+                let value = if register == reg::MIN_ANGLE_LIMIT {
+                    min_angle
+                } else if register == reg::MAX_ANGLE_LIMIT {
+                    max_angle
+                } else if register == reg::POSITION_OFFSET {
+                    calibration.position_offset
+                } else {
+                    value
+                };
+                (register, value)
+            })
+            .collect();
         Ok(Self {
             name: joint.name.to_owned(),
             id: joint.id,
@@ -92,6 +113,7 @@ impl Servo {
             min_raw: a.min(b).ceil() as i32,
             max_raw: a.max(b).floor() as i32,
             torque_limit: joint.torque_limit,
+            eeprom,
             calibration: Some(calibration),
         })
     }
@@ -370,7 +392,9 @@ impl<B: ServoBus> Joints<B> {
 
     /// 토크를 켠다 (0009). 꺼져 있으면 목표를 현재 위치로 맞추고 상한을 쓴 뒤 켠다. 이미 켜져 있으면 아무것도
     /// 쓰지 않고 이어받는다. 서보 보호 비트가 켜져 있거나(보호가 걸려도 토크 스위치는 켜진 채다), 로봇 관절의
-    /// 위치 오프셋이 로봇 설정과 다르면(읽는 위치가 그만큼 틀어진다) 켜지도 이어받지도 않는다 (0024).
+    /// 위치 오프셋이 로봇 설정과 다르면(읽는 위치가 그만큼 틀어진다) 켜지도 이어받지도 않는다 (0024). 로봇 설정이
+    /// EEPROM 목표를 주면 덤프로 모두 견주고, 하나라도 다르면 켜지 않는다 (예비 서보를 갈아 끼우고 값 적용을
+    /// 빠뜨리면 각도 한계와 보호 설정이 다르다).
     pub fn enable(&mut self, id: u8) -> Result<Enabled, String> {
         self.require_running()?;
         let state = self.snapshot(id)?;
@@ -390,6 +414,18 @@ impl<B: ServoBus> Joints<B> {
                      값 적용으로 맞추거나 영점을 다시 잰다",
                     servo.name, calibration.position_offset
                 ));
+            }
+            if !servo.eeprom.is_empty() {
+                let memory = self.dump(id)?;
+                let changes = plan(&servo.eeprom, &memory)?;
+                if !changes.is_empty() {
+                    let listed: Vec<String> = changes.iter().map(|c| c.describe()).collect();
+                    return Err(format!(
+                        "{}: 서보의 EEPROM 값이 로봇 설정과 다르다 ({}). 값 적용으로 맞춘 뒤 켠다",
+                        servo.name,
+                        listed.join(", ")
+                    ));
+                }
             }
         }
         if state.torque_on() {
@@ -519,6 +555,20 @@ impl Joints<horilab_servo::feetech::Bus<horilab_servo::feetech::fake::FakePort>>
     }
 }
 
+/// 시험용: 서보의 EEPROM 목표를 구운 가짜 서보 (값 적용을 한 것처럼, 전원을 껐다 켜도 남는다).
+#[cfg(test)]
+pub(crate) fn programmed(
+    mut fake: horilab_servo::feetech::fake::FakeServo,
+    servo: &Servo,
+) -> horilab_servo::feetech::fake::FakeServo {
+    for &(register, value) in &servo.eeprom {
+        fake.set(register, value);
+    }
+    let burned = fake.flash.len();
+    fake.flash.copy_from_slice(&fake.memory[..burned]);
+    fake
+}
+
 #[cfg(test)]
 mod tests {
     use horilab_servo::feetech::Bus;
@@ -610,12 +660,9 @@ mod tests {
             position_offset: 300,
         });
         let servo = Servo::from_joint(&joint).unwrap();
-        let mut joints = Joints::open(
-            open_fake_bus([FakeServo::with(3, 2825, 1500)]),
-            vec![servo],
-            BENCH_CAPS,
-        )
-        .unwrap();
+        let mut fake = programmed(FakeServo::with(3, 2825, 1500), &servo);
+        fake.set(reg::POSITION_OFFSET, 0);
+        let mut joints = Joints::open(open_fake_bus([fake]), vec![servo], BENCH_CAPS).unwrap();
         let message = joints.enable(3).unwrap_err();
         assert!(
             message.contains("위치 오프셋 0이 로봇 설정의 300와"),
@@ -623,6 +670,37 @@ mod tests {
         );
         joints.wire().servos[0].set(reg::POSITION_OFFSET, 300);
         assert_eq!(joints.enable(3).unwrap(), Enabled::TurnedOn);
+    }
+
+    #[test]
+    fn robot_joint_eeprom_must_match_the_settings() {
+        let mut joint = Settings::parse(TEST_J3)
+            .unwrap()
+            .joint("j3")
+            .unwrap()
+            .clone();
+        joint.calibration = Some(Calibration {
+            pin: 0.0,
+            zero_raw: 2048,
+            direction: Direction::Same,
+            position_offset: 0,
+        });
+        let servo = Servo::from_joint(&joint).unwrap();
+        // 각도 한계는 이 서보의 영점과 소프트 한계로 계산한 값이다
+        let limit = |register| servo.eeprom.iter().find(|(r, _)| *r == register).unwrap().1;
+        assert_eq!(limit(reg::MIN_ANGLE_LIMIT), servo.min_raw - 1);
+        assert_eq!(limit(reg::MAX_ANGLE_LIMIT), servo.max_raw + 1);
+        // 예비 서보를 갈아 끼우고 값 적용을 빠뜨렸다: 각도 한계와 과부하 보호가 다르다
+        let mut fake = programmed(FakeServo::with(3, 2825, 2048), &servo);
+        fake.set(reg::MAX_ANGLE_LIMIT, 4095);
+        fake.set(reg::OVERLOAD_TORQUE, 100);
+        let mut joints = Joints::open(open_fake_bus([fake]), vec![servo], BENCH_CAPS).unwrap();
+        let message = joints.enable(3).unwrap_err();
+        assert!(
+            message.contains("max_angle_limit") && message.contains("overload_torque"),
+            "{message}"
+        );
+        assert!(!joints.snapshot(3).unwrap().torque_on());
     }
 
     #[test]
@@ -705,12 +783,9 @@ mod tests {
         let servo = Servo::from_joint(&joint).unwrap();
         assert!(servo.min_raw < 1500 && 1500 < servo.max_raw);
         assert_eq!(servo.raw_at(0.0), Some(1500));
-        let mut joints = Joints::open(
-            open_fake_bus([FakeServo::with(3, 2825, 1500)]),
-            vec![servo],
-            BENCH_CAPS,
-        )
-        .unwrap();
+        assert_eq!(servo.raw_at(f64::NAN), None);
+        let fake = programmed(FakeServo::with(3, 2825, 1500), &servo);
+        let mut joints = Joints::open(open_fake_bus([fake]), vec![servo], BENCH_CAPS).unwrap();
         joints.enable(3).unwrap();
         joints.move_angle(3, 0.5).unwrap();
         let raw = joints.snapshot(3).unwrap().position;

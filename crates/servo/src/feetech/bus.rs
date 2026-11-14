@@ -598,7 +598,7 @@ impl<P: Port> Bus<P> {
     }
 }
 
-fn check_id(id: u8) -> Result<(), Error> {
+pub(crate) fn check_id(id: u8) -> Result<(), Error> {
     if id <= reg::MAX_ID {
         Ok(())
     } else {
@@ -609,7 +609,8 @@ fn check_id(id: u8) -> Result<(), Error> {
     }
 }
 
-fn check_ram_write(register: Register, value: i32) -> Result<(), Error> {
+/// RAM 쓰기로 받을 수 있는 레지스터와 값인지 본다 (시뮬레이션 버스도 같은 검사를 한다).
+pub(crate) fn check_ram_write(register: Register, value: i32) -> Result<(), Error> {
     if !register.writable {
         return Err(Error::Invalid(format!("{}은 읽기 전용이다", register.name)));
     }

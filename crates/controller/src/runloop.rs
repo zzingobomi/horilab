@@ -42,6 +42,8 @@ pub const MAX_TICK: f64 = 0.05;
 const STEP_ALLOWANCE: f64 = 1.5;
 /// 궤적 검사의 속도 여유 (비율). 계획기는 한계에 붙여 궤적을 만들어서, 시각을 박자의 배수로 셀 때 끝자리 오차가 난다
 const SPEED_TOLERANCE: f64 = 1e-9;
+/// 그리퍼가 막혀 멈췄다고 보는 박자 수 (위치가 한 칸 안에서 그대로)
+const GRIP_STILL_TICKS: u32 = 3;
 
 /// 시간이 붙은 관절 궤적: 점마다 시작에서의 시각 [s]과 관절 각 [rad] (루프의 관절 순서).
 #[derive(Debug, Clone, PartialEq)]
@@ -90,6 +92,10 @@ struct Gripper {
     /// 가려는 열림 폭 [mm]
     target: f64,
     state: Grip,
+    /// 지난 박자에 읽은 위치 (서보 값)
+    last_position: Option<i32>,
+    /// 위치가 한 칸 안에서 그대로인 박자 수 (막혀 멈췄는지 본다)
+    still_ticks: u32,
 }
 
 /// 조그의 상태: 루프 안의 온라인 궤적 생성기 (속도 제어).
@@ -115,6 +121,8 @@ struct Playing {
     time: f64,
     /// 궤적에서 가장 빠른 관절 속도 [rad/s] (정지할 때 재생 빠르기를 얼마나 빨리 줄일지 정한다)
     peak_speed: f64,
+    /// 지난 박자에 쓴 구간의 끝 점 (시각은 늘기만 하므로 거기서부터 찾는다)
+    cursor: usize,
     /// 정지 중이면 재생 빠르기를 줄이는 생성기
     stop: Option<Stop>,
 }
@@ -195,6 +203,8 @@ impl<B: ServoBus> RunLoop<B> {
             goal: 0.0,
             target: 0.0,
             state: Grip::Idle,
+            last_position: None,
+            still_ticks: 0,
         });
         let mut run = Self {
             joints,
@@ -217,13 +227,21 @@ impl<B: ServoBus> RunLoop<B> {
         Ok(run)
     }
 
-    /// 직교 조그에 쓸 기구학을 준다. 팔 관절이 J1~J6 여섯이어야 한다.
+    /// 직교 조그에 쓸 기구학을 준다. 팔 관절이 j1~j6 여섯이고 그 순서여야 한다 (기구학의 관절 순서).
     pub fn set_kinematics(&mut self, kinematics: Kinematics) -> Result<(), String> {
         if self.ids.len() != 6 {
             return Err(format!(
                 "직교 조그는 팔 관절 여섯이 있어야 한다: {}개",
                 self.ids.len()
             ));
+        }
+        let names: Vec<String> = self.ids.iter().map(|&id| self.name(id)).collect();
+        if names
+            .iter()
+            .zip(["j1", "j2", "j3", "j4", "j5", "j6"])
+            .any(|(name, expected)| name != expected)
+        {
+            return Err(format!("직교 조그는 관절이 j1~j6 순서여야 한다: {names:?}"));
         }
         self.kinematics = Some(kinematics);
         Ok(())
@@ -264,6 +282,8 @@ impl<B: ServoBus> RunLoop<B> {
         }
         gripper.target = width;
         gripper.state = Grip::Moving;
+        gripper.last_position = None;
+        gripper.still_ticks = 0;
         Ok(())
     }
 
@@ -366,6 +386,7 @@ impl<B: ServoBus> RunLoop<B> {
             trajectory,
             time: 0.0,
             peak_speed,
+            cursor: 1,
             stop: None,
         });
         self.mode = Mode::Moving;
@@ -512,20 +533,47 @@ impl<B: ServoBus> RunLoop<B> {
         self.mode = Mode::Jogging;
     }
 
-    /// 사람이 고장을 푼다: 관절 층의 멈춤을 풀고, 서보마다 토크를 켜거나 이어받은 뒤 지금 목표를 붙잡는다.
-    /// 서보 보호가 남아 있으면 풀리지 않는다 (과부하로 묶인 서보는 원인을 없앤 뒤 토크를 껐다 켠다, 0024).
+    /// 사람이 고장을 푼다: 관절 층의 멈춤을 풀고, 서보마다(그리퍼 포함) 토크를 켜거나 이어받은 뒤 지금 목표를
+    /// 붙잡는다. 고장일 때만 받는다. 서보 보호가 남아 있으면 풀리지 않는다: 과부하로 묶인 서보는 원인을 없애고 팔을
+    /// 받친 뒤 [`RunLoop::release`]로 토크를 끄고 푼다 (0024).
     pub fn resume(&mut self) -> Result<(), String> {
+        if !matches!(self.mode, Mode::Fault(_)) {
+            return Err("고장일 때만 푼다".to_owned());
+        }
         self.joints.resume();
-        for id in self.ids.clone() {
+        let gripper = self.gripper.as_ref().map(|gripper| gripper.id);
+        for id in self.ids.clone().into_iter().chain(gripper) {
             self.joints.enable(id)?;
         }
         self.hold_present_goals()
     }
 
-    /// 서보마다 남은 목표를 읽어 붙잡는다. 남은 목표에 처짐 보정이 들어 있으므로 보정은 0에서 다시 쌓는다.
+    /// 보호에 묶인 서보 하나의 토크를 끈다 (보호를 풀려면 토크를 껐다 켠다, 0024). 고장일 때만 받고, 마지막에
+    /// 읽은 상태에서 보호 비트가 켜진 서보만 끈다. 끄면 그 관절은 힘이 없으므로 사람이 팔을 받친 뒤에 부른다. 그다음
+    /// [`RunLoop::resume`]으로 다시 켠다.
+    pub fn release(&mut self, id: u8) -> Result<(), String> {
+        if !matches!(self.mode, Mode::Fault(_)) {
+            return Err("고장일 때만 서보 보호를 푼다".to_owned());
+        }
+        let latched = self
+            .states
+            .iter()
+            .any(|(known, state)| *known == id && !state.status.is_none());
+        if !latched {
+            return Err(format!(
+                "{}: 보호가 걸리지 않은 서보는 토크를 끄지 않는다",
+                self.name(id)
+            ));
+        }
+        self.joints.disable(id)
+    }
+
+    /// 서보마다 남은 목표를 읽어 붙잡는다. 처짐 보정을 켰으면 남은 목표에 보정이 들어 있으므로, 목표는 읽은
+    /// 위치(최대 보정 크기 안, 소프트 한계 안)로 두고 보정은 남은 목표와의 차이로 잇는다: 서보에 쓰는 값이 그대로라
+    /// 움직이지 않는다 (0009). 보정을 끄면 목표는 남은 목표 그대로다.
     fn hold_present_goals(&mut self) -> Result<(), String> {
         let states = self.joints.read_all()?;
-        let goal_of = |id: u8| -> Result<f64, String> {
+        let angle_of = |id: u8, raw_of: fn(&Snapshot) -> i32| -> Result<f64, String> {
             let state = states
                 .iter()
                 .find(|(known, _)| *known == id)
@@ -533,24 +581,36 @@ impl<B: ServoBus> RunLoop<B> {
                 .ok_or_else(|| format!("서보 {id}의 상태가 없다"))?;
             let servo = self.joints.servo(id)?;
             servo
-                .angle_at(state.goal_position)
+                .angle_at(raw_of(state))
                 .ok_or_else(|| format!("{}: 영점이 없다", servo.name))
         };
-        let targets = self
-            .ids
-            .iter()
-            .map(|&id| goal_of(id))
-            .collect::<Result<Vec<f64>, String>>()?;
+        let limits = self.angle_limits()?;
+        let (gain, max) = (self.settings.sag_gain, self.settings.sag_max);
+        let mut targets = Vec::with_capacity(self.ids.len());
+        let mut corrections = Vec::with_capacity(self.ids.len());
+        for (&id, &(low, high)) in self.ids.iter().zip(&limits) {
+            let goal = angle_of(id, |state| state.goal_position)?;
+            let target = if gain > 0.0 {
+                let measured = angle_of(id, |state| state.position)?;
+                (goal - (goal - measured).clamp(-max, max)).clamp(low, high)
+            } else {
+                goal
+            };
+            targets.push(target);
+            corrections.push(goal - target);
+        }
         let gripper_goal = match &self.gripper {
-            Some(gripper) => Some(goal_of(gripper.id)?),
+            Some(gripper) => Some(angle_of(gripper.id, |state| state.goal_position)?),
             None => None,
         };
         if let (Some(gripper), Some(goal)) = (&mut self.gripper, gripper_goal) {
             gripper.goal = goal;
             gripper.target = 2.0 * gripper.radius * goal;
             gripper.state = Grip::Idle;
+            gripper.last_position = None;
+            gripper.still_ticks = 0;
         }
-        self.corrections = vec![0.0; targets.len()];
+        self.corrections = corrections;
         self.targets = targets;
         self.states = states;
         self.playing = None;
@@ -632,7 +692,7 @@ impl<B: ServoBus> RunLoop<B> {
         } else {
             playing.time += dt;
         }
-        let (targets, end) = sample(&playing.trajectory, playing.time);
+        let (targets, end) = sample(&playing.trajectory, playing.time, &mut playing.cursor);
         self.targets = targets;
         if end || stopped {
             self.playing = None;
@@ -694,6 +754,16 @@ impl<B: ServoBus> RunLoop<B> {
             return;
         }
         let (id, radius, tolerance) = (gripper.id, gripper.radius, gripper.tolerance);
+        // 막혀 멈췄는지는 위치로 본다: 서보의 움직임 값은 막힌 채 밀어도 1.5초 동안 1이었다 (2026-11-13 실물 기록)
+        let position = self
+            .states
+            .iter()
+            .find(|(known, _)| *known == id)
+            .map(|(_, state)| state.position);
+        let still = match (gripper.last_position, position) {
+            (Some(before), Some(now)) if (now - before).abs() <= 1 => gripper.still_ticks + 1,
+            _ => 0,
+        };
         let end = gripper.target / (2.0 * radius);
         let step = gripper.speed / (2.0 * radius) * dt;
         // 목표 폭에 이르면 목표를 끝 값 그대로 두므로, 다음 박자부터는 차이가 정확히 0이다
@@ -705,27 +775,37 @@ impl<B: ServoBus> RunLoop<B> {
         };
         let target = gripper.target;
         let judged = if written {
-            self.judge_grip(id, radius, target, tolerance)
+            self.judge_grip(id, radius, target, tolerance, still)
         } else {
             None
         };
         if let Some(gripper) = &mut self.gripper {
             gripper.goal = goal;
+            gripper.last_position = position;
+            gripper.still_ticks = still;
             if let Some(state) = judged {
                 gripper.state = state;
             }
         }
     }
 
-    /// 목표 폭에 이른 뒤의 판정: 폭이 목표 안이면 닿음, 멈춘 채 토크 한도 가까이 밀고 있으면 잡음.
-    fn judge_grip(&self, id: u8, radius: f64, target: f64, tolerance: f64) -> Option<Grip> {
+    /// 목표 폭에 이른 뒤의 판정: 폭이 목표 안이면 닿음, 위치가 [`GRIP_STILL_TICKS`] 박자 동안 그대로인 채 토크
+    /// 한도 가까이 밀고 있으면 잡음.
+    fn judge_grip(
+        &self,
+        id: u8,
+        radius: f64,
+        target: f64,
+        tolerance: f64,
+        still: u32,
+    ) -> Option<Grip> {
         let width = self.width_now(id, radius)?;
         if (width - target).abs() <= tolerance {
             return Some(Grip::Reached(width));
         }
         let (_, state) = self.states.iter().find(|(known, _)| *known == id)?;
         let pushing = state.torque_limit > 0 && state.load.abs() * 10 >= state.torque_limit * 8;
-        (pushing && !state.moving).then_some(Grip::Grasped(width))
+        (pushing && still >= GRIP_STILL_TICKS).then_some(Grip::Grasped(width))
     }
 
     /// 이번 박자에 쓸 목표: 팔 관절(목표 + 처짐 보정)과 그리퍼. 팔 관절의 목표는 소프트 한계 안이어야 하고(아니면
@@ -984,7 +1064,9 @@ fn braking_edge(
     ((edge - position) * toward <= braking).then_some(edge)
 }
 
-fn sample(trajectory: &Trajectory, time: f64) -> (Vec<f64>, bool) {
+/// 궤적의 `time` 시각 관절 각 (점 사이는 곧게 잇는다)과 끝났는지. `cursor`는 지난 구간의 끝 점이고, 시각은 늘기만
+/// 하므로 거기서부터 찾는다 (긴 궤적도 박자마다 처음부터 훑지 않는다).
+fn sample(trajectory: &Trajectory, time: f64, cursor: &mut usize) -> (Vec<f64>, bool) {
     let points = &trajectory.points;
     let Some((last_time, last)) = points.last() else {
         return (Vec::new(), true);
@@ -992,11 +1074,11 @@ fn sample(trajectory: &Trajectory, time: f64) -> (Vec<f64>, bool) {
     if time >= *last_time {
         return (last.clone(), true);
     }
-    let next = points
-        .iter()
-        .position(|(t, _)| *t > time)
-        .unwrap_or(points.len() - 1)
-        .max(1);
+    let mut next = (*cursor).max(1);
+    while next < points.len() - 1 && points[next].0 <= time {
+        next += 1;
+    }
+    *cursor = next;
     let ((t0, q0), (t1, q1)) = (&points[next - 1], &points[next]);
     let s = (time - t0) / (t1 - t0);
     let angles = q0.iter().zip(q1).map(|(a, b)| a + (b - a) * s).collect();
@@ -1010,7 +1092,7 @@ mod tests {
     use horilab_servo::feetech::registers as reg;
 
     use super::*;
-    use crate::joints::{BENCH_CAPS, Servo};
+    use crate::joints::{BENCH_CAPS, Servo, programmed};
     use crate::settings::{Calibration, Direction, RAD_PER_STEP, Settings, TEST_GRIPPER, TEST_J3};
 
     /// 시험용 기준값 (로봇 설정의 시험값보다 빠르게 움직여 시험을 짧게 한다)
@@ -1048,10 +1130,11 @@ mod tests {
             });
             Servo::from_joint(&joint).unwrap()
         });
-        let bus = open_fake_bus([
-            FakeServo::with(3, 2825, 2048),
-            FakeServo::with(4, 2825, 2048),
-        ]);
+        let bus = open_fake_bus(
+            servos
+                .iter()
+                .map(|servo| programmed(FakeServo::with(servo.id, 2825, 2048), servo)),
+        );
         RunLoop::start(
             Joints::open(bus, servos.to_vec(), BENCH_CAPS).unwrap(),
             settings,
@@ -1261,6 +1344,55 @@ mod tests {
     }
 
     #[test]
+    fn a_servo_latched_by_overload_is_released_by_a_person() {
+        let mut run = two_joints();
+        fake(&mut run, 0).overload();
+        assert!(matches!(run.tick(DT), Mode::Fault(_)));
+        // 보호가 남아 있으면 풀리지 않는다
+        assert!(run.resume().unwrap_err().contains("서보 보호"));
+        // 보호가 걸리지 않은 서보는 끄지 않는다
+        assert!(run.release(4).unwrap_err().contains("보호가 걸리지 않은"));
+        // 팔을 받친 사람이 묶인 서보의 토크를 껐다가 푼다
+        run.release(3).unwrap();
+        run.tick(DT);
+        run.resume().unwrap();
+        assert_eq!(run.tick(DT), &Mode::Holding);
+        assert!(run.release(3).unwrap_err().contains("고장일 때만"));
+    }
+
+    #[test]
+    fn resuming_with_sag_correction_on_does_not_move_the_arm() {
+        let settings = LoopSettings {
+            sag_gain: 20.0,
+            sag_max: 0.05,
+            ..SETTINGS
+        };
+        let mut run = two_joints_with(settings);
+        fake(&mut run, 0).sag = 15;
+        for _ in 0..300 {
+            run.tick(DT);
+        }
+        // 보정이 쌓여 읽는 위치가 목표(2048)에 닿았다
+        let settled = position(&mut run, 0);
+        assert!((settled - 2048).abs() <= 1, "{settled}");
+        let goal = fake(&mut run, 0).get(reg::GOAL_POSITION);
+        // 통신이 잇달아 끊겨 고장이 났다가 사람이 푼다 (토크는 켜진 채라 이어받는다)
+        fake(&mut run, 0).faults.silent = true;
+        for _ in 0..3 {
+            run.tick(DT);
+        }
+        assert!(matches!(run.mode(), Mode::Fault(_)));
+        fake(&mut run, 0).faults.silent = false;
+        run.resume().unwrap();
+        for _ in 0..300 {
+            run.tick(DT);
+        }
+        // 서보에 쓰는 목표가 그대로라 처짐을 두 번 보정하지 않는다
+        assert_eq!(fake(&mut run, 0).get(reg::GOAL_POSITION), goal);
+        assert!((position(&mut run, 0) - settled).abs() <= 1);
+    }
+
+    #[test]
     fn a_protection_bit_is_a_fault_until_a_person_clears_it() {
         let mut run = two_joints();
         run.submit(line([1.0, 0.5], 1.0)).unwrap();
@@ -1411,10 +1543,11 @@ mod tests {
             Servo::from_joint(&j3).unwrap(),
             Servo::from_joint(&gripper.joint).unwrap(),
         ];
-        let bus = open_fake_bus([
-            FakeServo::with(3, 2825, 2048),
-            FakeServo::with(11, 2825, 2048),
-        ]);
+        let bus = open_fake_bus(
+            servos
+                .iter()
+                .map(|servo| programmed(FakeServo::with(servo.id, 2825, 2048), servo)),
+        );
         let joints = Joints::open(bus, servos, BENCH_CAPS).unwrap();
         RunLoop::start(joints, SETTINGS, Some(&gripper)).unwrap()
     }
@@ -1476,6 +1609,33 @@ mod tests {
         let servo = fake(&mut run, 1);
         assert_eq!(servo.get(reg::GOAL_POSITION), goal);
         assert_eq!(servo.get(reg::TORQUE_LIMIT), 150);
+    }
+
+    #[test]
+    fn grasp_is_judged_by_standing_still_even_if_the_servo_says_moving() {
+        let mut run = with_gripper();
+        run.grip(40.0).unwrap();
+        for _ in 0..60 {
+            run.tick(DT);
+        }
+        let servo = fake(&mut run, 1);
+        servo.held = true;
+        servo.set(reg::MOVING, 1); // 막힌 채 밀어도 실물은 한동안 움직임 값이 1이었다
+        let Grip::Grasped(width) = until_grip_settles(&mut run) else {
+            panic!("잡지 않았다");
+        };
+        assert!((10.0..14.0).contains(&width), "{width}");
+    }
+
+    #[test]
+    fn resume_is_only_for_faults_and_turns_the_gripper_back_on() {
+        let mut run = with_gripper();
+        assert!(run.resume().unwrap_err().contains("고장일 때만"));
+        fake(&mut run, 1).power_cycle(); // 그리퍼 서보만 전원이 꺼졌다 켜졌다
+        assert!(matches!(run.tick(DT), Mode::Fault(_)));
+        run.resume().unwrap();
+        assert_eq!(run.tick(DT), &Mode::Holding);
+        assert_eq!(fake(&mut run, 1).get(reg::TORQUE_ENABLE), 1);
     }
 
     #[test]
@@ -1639,7 +1799,11 @@ mod tests {
                 Servo::from_joint(&joint).unwrap()
             })
             .collect();
-        let bus = open_fake_bus((1..=6).map(|id| FakeServo::with(id, 2825, 2048)));
+        let bus = open_fake_bus(
+            servos
+                .iter()
+                .map(|servo| programmed(FakeServo::with(servo.id, 2825, 2048), servo)),
+        );
         let joints = Joints::open(bus, servos, BENCH_CAPS).unwrap();
         let mut run = RunLoop::start(joints, SETTINGS, None).unwrap();
         run.set_kinematics(base.kinematics).unwrap();

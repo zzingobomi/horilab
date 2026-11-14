@@ -198,7 +198,7 @@ fn zero_window(lower: f64, upper: f64, clearance: f64, direction: Direction) -> 
 
 /// 서보 각도 한계(EEPROM 9, 11): 영점을 쟀으면 소프트 한계를 바깥쪽으로 반올림한 서보 값이고,
 /// 재기 전에는 한 바퀴 전체다. 서보는 이 밖의 목표로 가지 않아서 컨트롤러 다음의 막이 된다.
-fn angle_limits(lower: f64, upper: f64, calibration: Option<Calibration>) -> (i32, i32) {
+pub(crate) fn angle_limits(lower: f64, upper: f64, calibration: Option<Calibration>) -> (i32, i32) {
     match calibration {
         Some(c) => {
             let (a, b) = (c.raw_at(lower), c.raw_at(upper));

@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::feetech::bus::{check_id, check_ram_write};
 use crate::feetech::registers::{Fault, Register};
 use crate::feetech::{Error, LinkStats, Reply, ServoBus, SyncRead};
 
@@ -29,7 +30,14 @@ pub struct SimBus {
     stats: BTreeMap<u8, LinkStats>,
     /// 시뮬레이션 시간 [s] (마지막 동기 읽기 뒤)
     time: f64,
+    /// 연결을 버린 까닭 (보내거나 받지 못했다)
+    broken: Option<String>,
 }
+
+/// 세계를 만드는 첫 요청의 답을 기다리는 시간
+const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
+/// 그 뒤 요청마다 답을 기다리는 시간. 넘으면 서버가 멈춘 것으로 본다
+const REPLY_TIMEOUT: Duration = Duration::from_secs(1);
 
 impl SimBus {
     /// 서버에 붙고 세계를 새로 만든다. `period`는 동기 읽기 한 번에 진행할 시간이다.
@@ -38,6 +46,10 @@ impl SimBus {
             TcpStream::connect(address).map_err(|e| port("시뮬레이션 서버에 붙지 못했다", e))?;
         writer
             .set_nodelay(true)
+            .map_err(|e| port("연결을 설정하지 못했다", e))?;
+        // 세계를 만드는 첫 요청은 모델을 읽느라 오래 걸릴 수 있다
+        writer
+            .set_read_timeout(Some(HELLO_TIMEOUT))
             .map_err(|e| port("연결을 설정하지 못했다", e))?;
         let reader = BufReader::new(
             writer
@@ -49,6 +61,7 @@ impl SimBus {
             writer,
             stats: BTreeMap::new(),
             time: 0.0,
+            broken: None,
         };
         let servos: Vec<Value> = servos
             .iter()
@@ -60,6 +73,9 @@ impl SimBus {
             "servos": servos,
         }))?;
         check(0, &answer)?;
+        bus.writer
+            .set_read_timeout(Some(REPLY_TIMEOUT))
+            .map_err(|e| port("연결을 설정하지 못했다", e))?;
         Ok(bus)
     }
 
@@ -74,19 +90,30 @@ impl SimBus {
         check(id, &answer)
     }
 
-    /// 요청 한 줄을 보내고 답 한 줄을 받는다.
+    /// 요청 한 줄을 보내고 답 한 줄을 받는다. 보내거나 받지 못하면(제한 시간 포함) 연결을 버린다: 늦게 온 답이
+    /// 다음 요청의 답으로 읽히면 안 된다. 버린 뒤의 요청은 모두 실패하고, 실행 루프는 잇단 실패로 멈춘다.
     fn request(&mut self, body: &Value) -> Result<Value, Error> {
+        if let Some(reason) = &self.broken {
+            return Err(Error::Invalid(format!(
+                "시뮬레이션 연결을 버렸다: {reason}"
+            )));
+        }
         let mut line = body.to_string();
         line.push('\n');
-        self.writer
-            .write_all(line.as_bytes())
-            .map_err(|e| port("요청을 보내지 못했다", e))?;
+        if let Err(e) = self.writer.write_all(line.as_bytes()) {
+            self.broken = Some(e.to_string());
+            return Err(port("요청을 보내지 못했다", e));
+        }
         let mut answer = String::new();
-        let read = self
-            .reader
-            .read_line(&mut answer)
-            .map_err(|e| port("답을 받지 못했다", e))?;
+        let read = match self.reader.read_line(&mut answer) {
+            Ok(read) => read,
+            Err(e) => {
+                self.broken = Some(e.to_string());
+                return Err(port("답을 받지 못했다", e));
+            }
+        };
         if read == 0 {
+            self.broken = Some("서버가 연결을 닫았다".to_owned());
             return Err(port(
                 "시뮬레이션 서버가 연결을 닫았다",
                 io::Error::from(io::ErrorKind::UnexpectedEof),
@@ -195,6 +222,9 @@ impl ServoBus for SimBus {
     }
 
     fn write(&mut self, id: u8, register: Register, value: i32) -> Result<Fault, Error> {
+        // 실물 버스와 같은 검사: 관절 층의 쓰기 잘못이 시뮬레이션에서 그냥 지나가지 않게
+        check_id(id)?;
+        check_ram_write(register, value)?;
         let answer = self.servo_request(
             id,
             &json!({"op": "write", "id": id, "register": register.name, "value": value}),
@@ -203,6 +233,10 @@ impl ServoBus for SimBus {
     }
 
     fn sync_write(&mut self, register: Register, values: &[(u8, i32)]) -> Result<(), Error> {
+        for &(id, value) in values {
+            check_id(id)?;
+            check_ram_write(register, value)?;
+        }
         let answer = self.request(&json!({
             "op": "sync_write",
             "register": register.name,
