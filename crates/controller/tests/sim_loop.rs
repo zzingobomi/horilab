@@ -9,6 +9,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use horilab_controller::joints::{BENCH_CAPS, Joints, Servo};
+use horilab_controller::plan::{MotionLimits, move_joints};
 use horilab_controller::runloop::{Mode, RunLoop, Trajectory};
 use horilab_controller::settings::{Calibration, Direction, Joint, LoopSettings, RAD_PER_STEP};
 use horilab_servo::sim::{SimBus, SimServo};
@@ -148,4 +149,49 @@ fn run_loop_moves_the_simulated_arm_and_sag_correction_closes_the_gap() {
     let (angle, _) = tilt_and_hold(&address, 20.0);
     let sag = (0.6 - angle).abs() / RAD_PER_STEP;
     assert!(sag <= 1.0, "보정한 뒤 처짐 {sag}칸");
+}
+
+#[test]
+fn planned_joint_move_runs_on_the_simulated_arm() {
+    let (_server, address) = start_server();
+    let servos = [("j2", 2), ("j3", 3)];
+    let sim: Vec<SimServo> = servos
+        .iter()
+        .map(|&(joint, id)| SimServo {
+            id,
+            joint: joint.to_owned(),
+            model: 2825,
+        })
+        .collect();
+    let bus = SimBus::connect(&address, PERIOD, &sim).unwrap();
+    let robot: Vec<Servo> = servos
+        .iter()
+        .map(|&(name, id)| Servo::from_joint(&joint(name, id)).unwrap())
+        .collect();
+    let joints = Joints::open(bus, robot, BENCH_CAPS).unwrap();
+    let mut run = RunLoop::start(joints, settings(0.0), None).unwrap();
+    let dt = PERIOD.as_secs_f64();
+    // 저크를 제한한 관절 이동을 만들어 실행 루프에 넣는다
+    let goal = [0.5, -0.3];
+    let limits = MotionLimits::same(2, 0.8, 2.0, 10.0);
+    let trajectory = move_joints(run.targets(), &goal, &limits, dt).unwrap();
+    let duration = trajectory.points.last().unwrap().0;
+    run.submit(trajectory).unwrap();
+    let mut ticks = 1;
+    while run.tick(dt) != &Mode::Holding {
+        ticks += 1;
+        assert!(ticks < 2000, "궤적이 끝나지 않았다");
+    }
+    assert!(
+        (f64::from(ticks) * dt - duration).abs() < 0.05,
+        "{ticks}박자, 궤적 {duration} s"
+    );
+    // 자리를 잡은 뒤 시뮬레이션 팔이 목표에 있다 (팔의 무게로 몇 칸 처질 수 있다)
+    for _ in 0..100 {
+        run.tick(dt);
+    }
+    for (index, (_, state)) in run.states().iter().enumerate() {
+        let angle = f64::from(state.position - 2048) * RAD_PER_STEP;
+        assert!((angle - goal[index]).abs() < 0.02, "{index}: {angle}");
+    }
 }

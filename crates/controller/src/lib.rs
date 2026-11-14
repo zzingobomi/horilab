@@ -7,6 +7,7 @@
 pub mod check;
 pub mod joints;
 pub mod kinematics;
+pub mod plan;
 pub mod prepare;
 pub mod record;
 pub mod runloop;
