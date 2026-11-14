@@ -2,16 +2,24 @@
 
 MuJoCo의 MjSpec으로 코드에서 모델을 만든다 (docs/decisions/0006-data-and-pipeline.md).
 바디 이름은 base, link1 … linkN, 플랜지는 사이트 flange다 (0010).
+
+시뮬레이션 서버(packages/sim)는 설계를 불러오지 않고 이 모듈이 쓴 MJCF 파일만 읽는다 (0007, 0033):
+uv run python -m horilab_design.mjcf [--out build/sim/horibot.xml]
 """
 
 from __future__ import annotations
+
+import argparse
+from pathlib import Path
 
 import mujoco
 import numpy as np
 from numpy.typing import ArrayLike
 
 from horilab_design.robot import Robot
+from horilab_design.values import REPO_ROOT, load_robot
 
+SIM_MODEL = REPO_ROOT / "build" / "sim" / "horibot.xml"  # 시뮬레이션 서버가 읽는 모델
 STICK_RADIUS = 0.012  # [m] 막대 모델의 링크 굵기. 모양을 보려는 값이라 정밀할 필요는 없다
 
 
@@ -54,3 +62,23 @@ def _add_stick(body: mujoco.MjsBody, end: ArrayLike, radius: float) -> None:
             fromto=[0.0, 0.0, 0.0, *end],
             size=[radius, 0.0, 0.0],
         )
+
+
+def write(path: Path = SIM_MODEL) -> Path:
+    """설계 값(params/arm.toml)으로 만든 막대 모델을 MJCF 파일로 쓴다."""
+    spec = build_spec(load_robot())
+    spec.compile()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(spec.to_xml(), encoding="utf-8")
+    return path
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="시뮬레이션용 MJCF를 쓴다 (0033)")
+    parser.add_argument("--out", type=Path, default=SIM_MODEL)
+    args = parser.parse_args(argv)
+    print(write(args.out))
+
+
+if __name__ == "__main__":
+    main()

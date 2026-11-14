@@ -7,6 +7,7 @@ dependencies = [
     "horilab-camera",
     "horilab-design",
     "horilab-servo",
+    "horilab-sim",
 ]
 
 [tool.uv]
@@ -21,6 +22,7 @@ members = ["packages/*"]
 horilab-design = { workspace = true }
 horilab-servo = { workspace = true }
 horilab-camera = { workspace = true }
+horilab-sim = { workspace = true }
 
 [dependency-groups]
 dev = [

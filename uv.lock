@@ -8,6 +8,7 @@ members = [
     "horilab-camera",
     "horilab-design",
     "horilab-servo",
+    "horilab-sim",
 ]
 
 [[package]]
@@ -644,6 +645,7 @@ dependencies = [
     { name = "horilab-camera" },
     { name = "horilab-design" },
     { name = "horilab-servo" },
+    { name = "horilab-sim" },
 ]
 
 [package.dev-dependencies]
@@ -661,6 +663,7 @@ requires-dist = [
     { name = "horilab-camera", editable = "packages/camera" },
     { name = "horilab-design", editable = "packages/design" },
     { name = "horilab-servo", editable = "packages/servo" },
+    { name = "horilab-sim", editable = "packages/sim" },
 ]
 
 [package.metadata.requires-dev]
@@ -728,6 +731,21 @@ dependencies = [
 requires-dist = [
     { name = "ftservo-python-sdk", specifier = ">=2.0.1,<3" },
     { name = "pyserial", specifier = ">=3.5" },
+]
+
+[[package]]
+name = "horilab-sim"
+version = "0.1.0"
+source = { editable = "packages/sim" }
+dependencies = [
+    { name = "mujoco" },
+    { name = "numpy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mujoco", specifier = ">=3.17,<4" },
+    { name = "numpy", specifier = ">=1.26" },
 ]
 
 [[package]]

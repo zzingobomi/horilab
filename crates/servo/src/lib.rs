@@ -4,6 +4,7 @@
 //! Python 기준 구현(packages/servo)과 같은 설계이고, 실물에서 두 구현의 결과를 맞춰 본다.
 
 pub mod feetech;
+pub mod sim;
 
 /// 이 컴퓨터에서 보이는 시리얼 포트 이름. 서보 어댑터를 찾을 때 쓴다.
 pub fn port_names() -> Result<Vec<String>, serialport::Error> {

@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 # 기본 기능의 libudev(C 라이브러리)를 빼야 파이용 정적 실행 파일(musl)이 된다 (0026).
 serialport = { version = "4.10.1", default-features = false }
+# 시뮬레이션 서버와 주고받는 JSON (0033)
+serde_json = "1.0.154"
 
 [lints]
 workspace = true

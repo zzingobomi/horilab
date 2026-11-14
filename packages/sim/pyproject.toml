@@ -1,0 +1,16 @@
+[project]
+name = "horilab-sim"
+version = "0.1.0"
+description = "시뮬레이션 서버 (MuJoCo): 컨트롤러가 실물 서보 대신 TCP로 붙는다 (docs/decisions/0033)"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "mujoco>=3.17,<4",
+    "numpy>=1.26",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+extend = "../../pyproject.toml"

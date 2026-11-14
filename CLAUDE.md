@@ -61,6 +61,7 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
   - `uv run python -m horilab_design.studies.ur_arm [compare|zone|lengths|view|calib]` (팔 전체: 쌓임과 무게, UR3e와 같은 자세 시험, 주 작업 영역, 링크 길이 후보, D405 화면, 손목 카메라의 캘리브레이션 자세)
   - `uv run python -m horilab_design.studies.wiring` (배선: 관절을 넘는 선 길이, 구간마다 쓸 선, D405 선, [0031](docs/decisions/0031-wiring.md))
   - `uv run python -m horilab_design.pages.joint_page`, `... pages.arm_page` (`build/pages/`에 3D 페이지를 만든다: `joint.html`, `shoulder.html`, `base.html`, `wrist_end.html`, `gripper.html`, `arm.html`. 올려 둔 페이지 "STS 관절 구조", "어깨 관절 구조", "J1 관절 구조", "손목 끝 구조", "평행 그리퍼 구조", "horilab 팔 전체"를 고칠 때는 아티팩트 목록에서 제목으로 찾아 같은 주소에 다시 올린다)
+- 시뮬레이션 서버 ([0033](docs/decisions/0033-planning-and-simulation.md)): 모델을 먼저 `uv run python -m horilab_design.mjcf`로 쓰고(`build/sim/horibot.xml`) `uv run python -m horilab_sim [--port 5600] [--realtime]`로 띄운다. 컨트롤러가 실물 서보 대신 TCP로 붙는다. `cargo test`의 시뮬레이션 통합 시험은 `.venv`의 Python으로 서버를 띄우므로 `uv sync`가 먼저다.
 - 파이용 실행 파일 만들기 ([0026](docs/decisions/0026-pi-runtime-deploy-records.md)): `uv run tools/pi_build.py -p <크레이트> --bin <실행 파일>`
 - 실물 서보·카메라 테스트는 `uv run pytest --hardware -n 0`이다 (한 프로세스로만 돈다). 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
 - 서보 첫 연결(찾기, 덤프, 통신 시간, ID 바꾸기): `uv run python -m horilab_servo ports|scan|dump|timing|set-id` ([docs/servo-setup.md](docs/servo-setup.md)). `timing`과 `set-id`는 서보에 값을 쓰므로(움직이지는 않는다) 확인을 받은 뒤 `--yes`로 돌린다.

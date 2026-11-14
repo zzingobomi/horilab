@@ -158,7 +158,7 @@ pub struct LinkStats {
 }
 
 impl LinkStats {
-    fn record(&mut self, outcome: Result<(), &Error>) {
+    pub(crate) fn record(&mut self, outcome: Result<(), &Error>) {
         match outcome {
             Ok(()) => {
                 self.ok += 1;
