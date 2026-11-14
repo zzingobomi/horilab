@@ -1,0 +1,104 @@
+# 출력 설정 (docs/manufacturing.md의 출력 설정, docs/decisions/0035-slicer-automation.md).
+# 공차 시험편을 이 판과 이 설정으로 뽑아 쟀다. 하나라도 바꾸면 중요한 맞춤을 다시 확인한다.
+# 출력 준비 도구(horilab_design.slicing)가 이 파일을 읽고, 맞지 않으면 파일을 내지 않는다.
+
+[studio]
+version = "02.04.00.70"          # 뱀부랩 스튜디오 앱 판
+profiles_version = "02.04.00.01" # 시스템 프리셋 묶음 판 (사용자 폴더의 system/BBL.json)
+
+[printer]
+machine = "Bambu Lab P1S 0.4 nozzle"
+filament = "Bambu PLA Basic @BBL P1S 0.4 nozzle"
+bed_type = "Textured PEI Plate" # 프린터에 딸려 온 판 (P1S 구성품)
+max_height_mm = 250.0           # 출력 범위 256 mm에서 여유
+overnight_hours = 4.0           # 이보다 긴 판은 밤에 돌리게 표시한다
+
+[process]
+strength = "0.20mm Strength @BBL X1C" # 구조 부품
+standard = "0.20mm Standard @BBL X1C" # 힘을 받지 않는 덮개
+
+[colors] # 필라멘트 색 (3MF와 판 그림에 들어간다)
+white = "#FFFFFF"
+black = "#202020"
+
+# 펼친 프리셋 내용의 지문 (sha256 앞 12자리, 열쇠를 정렬한 JSON). 판이 같아도 내용이 바뀌면 잡는다.
+[presets_sha]
+machine = "a626d66bfae7"
+strength = "f62753feb400"
+standard = "6e844f899929"
+filament = "5d2da95b0e1b"
+
+# 3MF에 들어간 설정 전체의 지문. 화면에서 자른 기준과 견준 뒤(가정 B) 적는다. 비어 있으면 뽑을 파일을 내지 않는다.
+[settings_sha]
+strength = ""
+standard = ""
+ignore = ["filament_colour"] # 지문에서 빼는 칸: 색은 묶음마다 일부러 바꾼다
+
+# 공차에 닿는 핵심 설정. 3MF에 들어간 값이 이와 다르면 뽑지 않는다. 값이 여럿인 칸은 첫 값(일반 노즐)을 본다.
+[key_settings.common]
+printer_settings_id = "Bambu Lab P1S 0.4 nozzle"
+filament_settings_id = "Bambu PLA Basic @BBL P1S 0.4 nozzle"
+curr_bed_type = "Textured PEI Plate"
+nozzle_diameter = "0.4"
+layer_height = "0.2"
+initial_layer_print_height = "0.2"
+line_width = "0.42"
+outer_wall_line_width = "0.42"
+wall_generator = "classic"
+sparse_infill_pattern = "grid"
+enable_support = "0"
+xy_hole_compensation = "0"
+xy_contour_compensation = "0"
+elefant_foot_compensation = "0.15"
+filament_shrink = "100%"
+filament_flow_ratio = "0.98"
+print_flow_ratio = "1"
+filament_density = "1.26"
+nozzle_temperature = "220"
+nozzle_temperature_initial_layer = "220"
+textured_plate_temp = "55"
+textured_plate_temp_initial_layer = "55"
+fan_min_speed = "100"
+fan_max_speed = "100"
+fan_cooling_layer_time = "100"
+slow_down_layer_time = "4"
+slow_down_min_speed = "20"
+close_fan_the_first_x_layers = "1"
+
+[key_settings.strength]
+print_settings_id = "0.20mm Strength @BBL X1C"
+wall_loops = "6"
+sparse_infill_density = "25%"
+top_shell_layers = "5"
+bottom_shell_layers = "3"
+outer_wall_speed = "60"
+
+[key_settings.standard]
+print_settings_id = "0.20mm Standard @BBL X1C"
+wall_loops = "2"
+sparse_infill_density = "15%"
+top_shell_layers = "5"
+bottom_shell_layers = "3"
+outer_wall_speed = "200"
+
+# 무해하다고 확인한 스튜디오 로그 줄. "[error]"나 "[warning]" 뒤의 문구 전체가 같아야 뺀다.
+# 처음 보는 경고가 나오면 그 판은 "검토 필요"로 막는다.
+[[harmless]]
+level = "error"
+text = "3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P1S 0.4 nozzle, extruder_count 1"
+why = "P1S는 노즐 종류 칸이 없다. 이 줄이 나도 3MF의 설정과 G-code가 정상이다 (가정 B에서 확인)"
+
+[[harmless]]
+level = "warning"
+text = "cli mode, Current BambuStudio Version 02.04.00.70"
+why = "명령 모드에서 판을 알리는 줄"
+
+[[harmless]]
+level = "warning"
+text = "no filament colors found in projects"
+why = "STL을 불러올 때 색이 없다는 줄. 색은 필라멘트 설정으로 준다"
+
+[[harmless]]
+level = "warning"
+text = "tree support default to organic support"
+why = "서포트를 꺼서 쓰이지 않는다"

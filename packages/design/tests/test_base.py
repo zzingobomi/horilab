@@ -23,7 +23,9 @@ def parts() -> list[j.Part]:
 
 @pytest.mark.slow
 def test_printed_parts_are_single_valid_solids_without_steep_overhang() -> None:
-    for name, (shape, up, _color, _preset) in b.printed().items():
+    printed = b.printed()
+    assert set(b.LABELS) == set(printed)  # 출력 안내의 한글 이름
+    for name, (shape, up, _color, _preset) in printed.items():
         assert shape.is_valid, name
         assert len(shape.solids()) == 1, name
         bb = shape.bounding_box()

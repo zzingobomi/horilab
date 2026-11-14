@@ -223,6 +223,9 @@ def sweep_gaps(parts: list[j.Part]) -> dict[str, float]:
 
 
 # 뽑는 부품: 이름 → (형상, 뽑을 때 위를 보는 방향, 색, 프리셋)
+LABELS = {"d405_mount": "D405 받침"}  # 출력 안내의 한글 이름
+
+
 def printed() -> dict[str, tuple[Compound, tuple[float, float, float], str, str]]:
     return {"d405_mount": (mount(), (1.0, 0.0, 0.0), "black", "strength")}
 

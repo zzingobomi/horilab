@@ -14,7 +14,9 @@ from horilab_design.printcheck import overhangs
 
 @pytest.mark.slow
 def test_printed_parts_are_single_valid_solids_without_steep_overhang() -> None:
-    for name, (shape, up, _color, _preset, _n) in g.printed().items():
+    printed = g.printed()
+    assert set(g.LABELS) == set(printed)  # 출력 안내의 한글 이름
+    for name, (shape, up, _color, _preset, _n) in printed.items():
         assert shape.is_valid, name
         assert len(shape.solids()) == 1, name
         over = overhangs(shape, up)

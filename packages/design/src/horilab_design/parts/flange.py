@@ -164,6 +164,9 @@ def clearances(
 
 
 # 뽑는 부품: 이름 → (형상, 뽑을 때 위를 보는 방향, 색, 프리셋)
+LABELS = {"flange_disc": "플랜지 원판", "tool_adapter": "도구 어댑터 판"}  # 출력 안내의 한글 이름
+
+
 def printed() -> dict[str, tuple[Compound, tuple[float, float, float], str, str]]:
     return {
         "flange_disc": (flange_disc(), (0.0, -1.0, 0.0), "black", "strength"),

@@ -535,6 +535,14 @@ def clearances(
 # 뽑는 부품: 이름 → (형상, 뽑을 때 위를 보는 방향, 색, 프리셋).
 # 집과 뒷덮개는 여기 없다. 뽑는 것은 목이 돌림판까지 내려오고 바닥판이 달린 J1 몸통과 그 뒷덮개다
 # (parts/base.py의 printed: j1_body, j1_cover)
+LABELS = {  # 뽑는 부품의 한글 이름 (출력 안내에 쓴다, horilab_design.slicing)
+    "shoulder_out_disc": "어깨 출력 원판",
+    "shoulder_hub_plate": "어깨 허브 판",
+    "shoulder_retainer": "어깨 누름 틀",
+    "shoulder_carrier": "어깨 서보 받침",
+}
+
+
 def printed() -> dict[str, tuple[Compound, tuple[float, float, float], str, str]]:
     return {
         "shoulder_out_disc": (out_disc(), (0.0, -1.0, 0.0), "black", "strength"),

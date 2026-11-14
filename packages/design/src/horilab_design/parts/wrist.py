@@ -209,6 +209,17 @@ def clearances(model: ServoModel, q_deg: float, limit: float = 2.5) -> dict[tupl
     return out
 
 
+# 뽑는 부품의 한글 이름 (출력 안내에 쓴다, horilab_design.slicing)
+LABELS = {
+    "wrist_body": "손목 몸통",
+    "out_disc": "출력 원판",
+    "hub_plate": "허브 판",
+    "retainer": "누름 틀",
+    "carrier": "서보 받침",
+    "wrist_cover": "뒷덮개",
+}
+
+
 # 뽑는 부품: 이름 → (형상, 뽑을 때 위를 보는 방향, 색, 프리셋)
 def printed() -> dict[str, tuple[Compound, tuple[float, float, float], str, str]]:
     return {

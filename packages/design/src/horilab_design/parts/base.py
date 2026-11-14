@@ -697,6 +697,18 @@ def screw_checks(model: ServoModel) -> dict[str, float]:
 
 
 # 뽑는 부품: 이름 → (형상, 뽑을 때 위를 보는 방향, 색, 프리셋). J1 몸통과 그 뒷덮개(어깨 원통의 뒷면)는 어깨의 서보 좌표다
+LABELS = {  # 뽑는 부품의 한글 이름 (출력 안내에 쓴다, horilab_design.slicing)
+    "base_core": "베이스 몸통",
+    "base_plate": "책상에 무는 판",
+    "base_turntable": "돌림판",
+    "base_hub": "베이스 허브",
+    "base_spacer": "사이 고리",
+    "base_retainer": "베이스 누름 틀",
+    "j1_body": "J1 몸통",
+    "j1_cover": "J1 뒷덮개",
+}
+
+
 def printed() -> dict[str, tuple[Compound, tuple[float, float, float], str, str]]:
     return {
         "base_core": (core(), (0.0, -1.0, 0.0), "black", "strength"),

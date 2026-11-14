@@ -18,7 +18,9 @@ def parts() -> list[j.Part]:
 
 @pytest.mark.slow
 def test_mount_is_a_single_valid_solid_printed_on_its_side() -> None:
-    shape, up, _color, _preset = cm.printed()["d405_mount"]
+    printed = cm.printed()
+    assert set(cm.LABELS) == set(printed)  # 출력 안내의 한글 이름
+    shape, up, _color, _preset = printed["d405_mount"]
     assert shape.is_valid
     assert len(shape.solids()) == 1
     # 옆으로 눕혀 뽑으면 걸치는 면은 가로 구멍 넷의 윗변뿐이다

@@ -14,7 +14,9 @@ BED = 256.0  # 출력 범위 [mm]
 
 @pytest.mark.slow
 def test_printed_parts_are_single_valid_solids_that_fit_the_bed() -> None:
-    for name, (shape, _up, _color, _preset) in wrist.printed().items():
+    printed = wrist.printed()
+    assert set(wrist.LABELS) == set(printed)  # 출력 안내의 한글 이름
+    for name, (shape, _up, _color, _preset) in printed.items():
         assert shape.is_valid, name
         assert len(shape.solids()) == 1, name
         bb = shape.bounding_box()

@@ -694,6 +694,16 @@ def travel() -> dict[str, float]:
 
 
 # 뽑는 부품: 이름 → (형상, 뽑을 때 위를 보는 방향, 색, 프리셋, 개수)
+LABELS = {  # 뽑는 부품의 한글 이름 (출력 안내에 쓴다, horilab_design.slicing)
+    "gripper_frame": "그리퍼 몸통",
+    "gripper_floor": "그리퍼 바닥판",
+    "gripper_tub": "랙 집",
+    "gripper_pinion": "피니언",
+    "gripper_slider": "손가락 받침",
+    "gripper_finger": "손가락",
+}
+
+
 def printed() -> dict[str, tuple[Compound, tuple[float, float, float], str, str, int]]:
     return {
         "gripper_frame": (frame(), (0.0, 1.0, 0.0), "black", "strength", 1),
