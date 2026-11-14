@@ -164,12 +164,31 @@ pub trait Clock {
 }
 
 /// 터미널 (표준 입출력). 표준 입력은 스레드 하나가 줄마다 읽어 넘긴다.
-#[derive(Default)]
 pub struct Terminal {
     lines: Option<Receiver<String>>,
+    /// 표준 입력이 닫히면 Enter를 누른 것으로 본다 (기다리는 단계가 끝없이 서지 않게)
+    closed_presses_enter: bool,
+}
+
+impl Default for Terminal {
+    fn default() -> Self {
+        Self {
+            lines: None,
+            closed_presses_enter: true,
+        }
+    }
 }
 
 impl Terminal {
+    /// 표준 입력이 닫혀도 Enter로 보지 않는 터미널: 실행 명령은 Enter가 "멈춤"이라, 입력이 없는 곳에서 돌려도
+    /// 멈추지 않게 한다.
+    pub fn closed_is_silent() -> Self {
+        Self {
+            lines: None,
+            closed_presses_enter: false,
+        }
+    }
+
     fn lines(&mut self) -> &Receiver<String> {
         self.lines.get_or_insert_with(|| {
             let (sender, receiver) = mpsc::channel();
@@ -212,7 +231,11 @@ impl Console for Terminal {
     }
 
     fn enter_pressed(&mut self) -> bool {
-        !matches!(self.lines().try_recv(), Err(TryRecvError::Empty))
+        match self.lines().try_recv() {
+            Ok(_) => true,
+            Err(TryRecvError::Empty) => false,
+            Err(TryRecvError::Disconnected) => self.closed_presses_enter,
+        }
     }
 
     fn status(&mut self, text: &str) {

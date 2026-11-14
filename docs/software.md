@@ -1,6 +1,6 @@
 # 소프트웨어
 
-결정 기록: 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md), 시험 기록과 데이터 넘기기 [0022](decisions/0022-records-and-sync.md), 로봇 컨트롤러와 응용의 경계 [0023](decisions/0023-robot-controller.md), 서보 버스 [0024](decisions/0024-servo-bus.md), 컨트롤러 자리와 하드웨어 연결 [0025](decisions/0025-controller-on-pi.md), 파이의 실행 환경·배포·기록 [0026](decisions/0026-pi-runtime-deploy-records.md), 실행 루프 [0032](decisions/0032-run-loop.md), 경로 계획과 시뮬레이션 [0033](decisions/0033-planning-and-simulation.md).
+결정 기록: 값의 형식과 생성 흐름 [0006](decisions/0006-data-and-pipeline.md), 레포 구조 [0007](decisions/0007-repo-structure.md), 개발 환경과 패키지 [0008](decisions/0008-environment-and-packages.md), 제어 구조 [0009](decisions/0009-control-architecture.md), 시험 기록과 데이터 넘기기 [0022](decisions/0022-records-and-sync.md), 로봇 컨트롤러와 응용의 경계 [0023](decisions/0023-robot-controller.md), 서보 버스 [0024](decisions/0024-servo-bus.md), 컨트롤러 자리와 하드웨어 연결 [0025](decisions/0025-controller-on-pi.md), 파이의 실행 환경·배포·기록 [0026](decisions/0026-pi-runtime-deploy-records.md), 실행 루프 [0032](decisions/0032-run-loop.md), 경로 계획과 시뮬레이션 [0033](decisions/0033-planning-and-simulation.md), 영점 명령과 시험 순서 실행 [0034](decisions/0034-first-power-tools.md).
 
 ## 하나의 치수 값에서 모든 결과물을
 

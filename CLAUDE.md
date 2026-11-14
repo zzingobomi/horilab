@@ -67,6 +67,9 @@ horilab: 3D 프린터로 출력한 부품과 Feetech 서보로 만드는 6축 �
 - 실물 서보·카메라 테스트는 `uv run pytest --hardware -n 0`이다 (한 프로세스로만 돈다). 실물이 움직이므로 확인을 받은 뒤에만 돌린다.
 - 서보 첫 연결(찾기, 덤프, 통신 시간, ID 바꾸기): `uv run python -m horilab_servo ports|scan|dump|timing|set-id` ([docs/servo-setup.md](docs/servo-setup.md)). `timing`과 `set-id`는 서보에 값을 쓰므로(움직이지는 않는다) 확인을 받은 뒤 `--yes`로 돌린다.
 - 로봇 설정 확인과 값 적용: `cargo run -p horilab-controller -- settings|ports|apply` ([docs/servo-setup.md](docs/servo-setup.md#값-적용)). `apply --yes`는 서보 EEPROM에 쓰므로(움직이지는 않는다) 확인을 받은 뒤에 돌린다.
+- 영점 재기와 시험 순서 실행 ([0034](docs/decisions/0034-first-power-tools.md)):
+  - 영점 재기: `cargo run -p horilab-controller -- zero --port <포트> --joint <관절> [--yes]`. `--yes`는 위치 오프셋을 굽는다(움직이지는 않는다). 사람이 핀을 꽂으며 Enter를 누르는 일이라 확인을 받은 뒤, 사용자가 보는 창으로 띄운다.
+  - 시험 순서 실행: `cargo run -p horilab-controller -- run --script <파일> (--port <포트> | --sim 127.0.0.1:5600) [--yes]`. 실물에서 `--yes`는 서보를 움직이므로 확인을 받은 뒤 돌린다. 시뮬레이션에서 먼저 돌려 본다.
 - 맨 서보 확인: `cargo run -p horilab-controller -- check|check-state --port <포트> --id 20` ([docs/servo-setup.md](docs/servo-setup.md#맨-서보-확인)). `check --yes`는 서보를 움직이므로 확인을 받은 뒤, 사용자가 보는 창으로 띄운다 (손으로 하는 단계에서 사용자가 Enter를 누른다). `check-state`는 `--situation <번호>`로 Claude가 돌린다. 한 단계만 다시 할 때는 `--only <단계>`다.
 - 시험 기록 올리고 받기 ([0022](docs/decisions/0022-records-and-sync.md)). 실물 시험이 끝나면 올리고, 분석을 시작할 때 받는다:
   - `uv run tools/sync.py push`

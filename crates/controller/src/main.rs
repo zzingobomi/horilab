@@ -1,7 +1,7 @@
 //! 로봇 컨트롤러 (docs/decisions/0023-robot-controller.md, 0024-servo-bus.md).
 //!
-//! 로봇 설정 확인, 포트 목록, 값 적용(0024 만드는 순서 2~3), 맨 서보 확인(만드는 순서 5)이 있다.
-//! 레포 루트에서 돌린다:
+//! 로봇 설정 확인, 포트 목록, 값 적용(0024 만드는 순서 2~3), 맨 서보 확인(만드는 순서 5), 영점 재기와 시험
+//! 순서 실행(0034)이 있다. 레포 루트에서 돌린다:
 //!
 //!     cargo run -p horilab-controller -- settings
 //!     cargo run -p horilab-controller -- apply --port COM5            (바꿀 칸만 보여 준다)
@@ -9,20 +9,31 @@
 //!     cargo run -p horilab-controller -- check --port COM5 --id 20    (할 일을 보여 주고 상태를 읽는다)
 //!     cargo run -p horilab-controller -- check --port COM5 --id 20 --yes
 //!     cargo run -p horilab-controller -- check-state --port COM5 --id 20
+//!     cargo run -p horilab-controller -- zero --port COM5 --joint j2 [--yes]
+//!     cargo run -p horilab-controller -- run --script <파일> --port COM5 [--yes]
+//!     cargo run -p horilab-controller -- run --script <파일> --sim 127.0.0.1:5600 --yes
 
+use std::collections::BTreeSet;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
 use chrono::Local;
-use horilab_controller::check::{self, BENCH_RANGE, Check, SPARE_IDS, STEPS, Terminal, WallClock};
-use horilab_controller::joints::{BENCH_CAPS, Joints, Servo, Snapshot};
+use horilab_controller::check::{
+    self, BENCH_RANGE, Check, Clock, Console, SPARE_IDS, STEPS, Terminal, WallClock,
+};
+use horilab_controller::joints::{BENCH_CAPS, Caps, Joints, Servo, Snapshot};
 use horilab_controller::prepare::{self, Change};
 use horilab_controller::record::{self, Log};
-use horilab_controller::settings::{Joint, Settings};
+use horilab_controller::runloop::{Mode, RunLoop};
+use horilab_controller::runner::{Runner, Script, Status, Step};
+use horilab_controller::settings::{Direction, Joint, Settings};
+use horilab_controller::zero;
 use horilab_servo::feetech::registers::BAUD_RATES;
-use horilab_servo::feetech::{Bus, Error, SerialLink};
+use horilab_servo::feetech::{Bus, Error, SerialLink, ServoBus};
+use horilab_servo::sim::{SimBus, SimServo};
 use serde_json::{Value, json};
 
 const USAGE: &str = "\
@@ -38,6 +49,11 @@ const USAGE: &str = "\
                       --yes가 있으면 서보가 움직인다. --only로 단계를 고르면 그 단계만 한다
   check-state         맨 서보의 상태만 읽는다 (끊김 확인). 서보는 움직이지 않는다.
                       --situation이 없으면 상황을 묻는다
+  zero                영점 재기: 관절 하나(--joint)의 영점 핀 자리를 읽어 위치 오프셋을 굽는다.
+                      --yes가 없으면 지금 상태와 할 일만 보여 준다. --yes가 있으면 방향을 재고(로봇
+                      설정에 방향이 없으면) 핀 자리를 읽어 굽는다. 토크가 꺼져 있어야 하고 움직이지 않는다
+  run                 시험 순서(--script)를 실행 루프로 돌린다. --yes가 없으면 순서를 검사해 보여 주고
+                      서보 상태만 읽는다. --yes가 있으면 서보가 움직인다. 움직이는 동안 Enter로 멈춘다
 
 옵션:
   --settings <파일>   로봇 설정 파일. 기본 data/robot.toml (레포 루트에서 돌릴 때)
@@ -48,11 +64,18 @@ const USAGE: &str = "\
   --only <단계,단계>  맨 서보 확인에서 이 단계만 한다 (예: state,overload_hold,voltage)
   --situation <1~4>   끊김 확인의 상황 (check-state): 1 프로그램을 끈 뒤, 2 USB를 뺐다 꽂은 뒤,
                       3 + 플러그를 뺀 채, 4 + 플러그를 다시 꽂은 뒤
-  --records <폴더>    기록 폴더. 기본 records (그 아래 servo/에 쓴다)
+  --records <폴더>    기록 폴더. 기본 records (그 아래 servo/, run/에 쓴다)
+  --direction <1|-1>  영점을 잴 때 방향을 재지 않고 이 값을 쓴다 (zero)
+  --script <파일>     시험 순서 (run). 쓰는 법은 crates/controller/src/runner.rs
+  --sim <주소>        서보 대신 시뮬레이션 서버에 붙는다 (run, 예: 127.0.0.1:5600)
 ";
 
 /// 서보 응답 하나를 더 기다리는 여유. 서보 준비는 박자가 없어 넉넉히 둔다.
 const LATENCY: Duration = Duration::from_millis(20);
+/// 실행 루프가 박자마다 응답을 기다리는 여유
+const LOOP_LATENCY: Duration = Duration::from_millis(5);
+/// 실행 루프의 주기 (100 Hz, 0032의 후보)
+const LOOP_PERIOD: Duration = Duration::from_millis(10);
 
 #[derive(Debug, PartialEq)]
 enum Command {
@@ -61,6 +84,8 @@ enum Command {
     Apply,
     Check,
     CheckState,
+    Zero,
+    Run,
 }
 
 #[derive(Debug)]
@@ -74,6 +99,9 @@ struct Options {
     only: Vec<String>,
     situation: Option<usize>,
     records: PathBuf,
+    direction: Option<Direction>,
+    script: Option<PathBuf>,
+    sim: Option<String>,
 }
 
 fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, String> {
@@ -88,6 +116,9 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, String>
         only: Vec::new(),
         situation: None,
         records: PathBuf::from("records"),
+        direction: None,
+        script: None,
+        sim: None,
     };
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -131,6 +162,20 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, String>
             "--records" => {
                 options.records = PathBuf::from(args.next().ok_or("--records 뒤에 폴더가 없다")?)
             }
+            "--direction" => {
+                let text = args.next().ok_or("--direction 뒤에 1이나 -1이 없다")?;
+                options.direction = Some(match text.as_str() {
+                    "1" => Direction::Same,
+                    "-1" => Direction::Reversed,
+                    _ => return Err(format!("방향은 1이나 -1이다: {text}")),
+                });
+            }
+            "--script" => {
+                options.script = Some(PathBuf::from(
+                    args.next().ok_or("--script 뒤에 파일이 없다")?,
+                ))
+            }
+            "--sim" => options.sim = Some(args.next().ok_or("--sim 뒤에 주소가 없다")?),
             "-h" | "--help" => return Err(String::new()),
             name if command.is_none() && !name.starts_with('-') => {
                 command = Some(match name {
@@ -139,6 +184,8 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, String>
                     "apply" => Command::Apply,
                     "check" => Command::Check,
                     "check-state" => Command::CheckState,
+                    "zero" => Command::Zero,
+                    "run" => Command::Run,
                     other => return Err(format!("모르는 명령이다: {other}")),
                 })
             }
@@ -148,7 +195,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, String>
     options.command = command.ok_or("명령이 없다")?;
     let needs_port = matches!(
         options.command,
-        Command::Apply | Command::Check | Command::CheckState
+        Command::Apply | Command::Check | Command::CheckState | Command::Zero
     );
     if needs_port && options.port.is_none() {
         return Err(
@@ -158,6 +205,17 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Options, String>
     let needs_id = matches!(options.command, Command::Check | Command::CheckState);
     if needs_id && options.id.is_none() {
         return Err("이 명령에는 맨 서보의 --id가 있어야 한다 (예비 서보는 20)".to_owned());
+    }
+    if options.command == Command::Zero && options.joints.len() != 1 {
+        return Err("영점은 관절 하나씩 잰다: --joint를 하나 준다".to_owned());
+    }
+    if options.command == Command::Run {
+        if options.script.is_none() {
+            return Err("run에는 --script가 있어야 한다".to_owned());
+        }
+        if options.port.is_some() == options.sim.is_some() {
+            return Err("run은 --port(서보)나 --sim(시뮬레이션) 가운데 하나에 붙는다".to_owned());
+        }
     }
     Ok(options)
 }
@@ -179,6 +237,8 @@ fn main() -> ExitCode {
         Command::Apply => apply(&options),
         Command::Check => run_check(&options),
         Command::CheckState => check_state(&options),
+        Command::Zero => measure_zero(&options),
+        Command::Run => run_script(&options),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -489,6 +549,454 @@ fn last_check_results(records: &Path, id: u8) -> Option<Value> {
     })
 }
 
+/// 영점 재기 ([`zero`], 0024의 영점, 0034). --yes가 없으면 지금 상태와 할 일만 보여 준다.
+fn measure_zero(options: &Options) -> Result<(), String> {
+    let settings = Settings::load(&options.settings)?;
+    let joint = selected(&settings, &options.joints)?[0];
+    let port = options.port.as_deref().unwrap_or_default();
+    let baud = BAUD_RATES[0].1;
+    let mut bus = Bus::open(port, baud, LATENCY).map_err(|e| e.to_string())?;
+    let before = prepare::inspect(&mut bus, joint)?;
+    let (torque_off, offset_now) = zero::state_in(&before)?;
+    let reading = zero::read_position(&mut bus, joint.id, zero::READS)?;
+    let known = options
+        .direction
+        .or(joint.calibration.map(|calibration| calibration.direction));
+    println!(
+        "{} (ID {}, {}): 지금 서보 값 {reading}, 위치 오프셋 {offset_now}, 토크 {}",
+        joint.name,
+        joint.id,
+        joint.model,
+        if torque_off { "꺼짐" } else { "켜짐" }
+    );
+    println!(
+        "영점 핀 자리의 관절 각은 {:.1}°다 (설계 값). 핀 구멍의 틈은 + 쪽(관절 각이 느는 쪽)으로 붙인다.",
+        joint.pin.to_degrees()
+    );
+    match known {
+        Some(direction) => println!("방향 {:+} (재지 않는다)", direction.number()),
+        None => println!("방향은 핀을 꽂기 전에 관절을 + 쪽으로 돌려 잰다"),
+    }
+    if !torque_off {
+        return Err(
+            "토크가 켜져 있다. 팔을 받친 뒤 서보 전원을 껐다 켜면 토크가 꺼진다 (영점은 토크를 끈 채 잰다)"
+                .to_owned(),
+        );
+    }
+    if !options.yes {
+        println!("--yes를 붙이면 순서대로 안내하고 위치 오프셋을 굽는다 (서보는 움직이지 않는다)");
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        return Err(
+            "영점은 사람이 핀을 꽂으며 Enter를 누르는 일이라 터미널 창에서 돌린다".to_owned(),
+        );
+    }
+
+    let mut console = Terminal::default();
+    let direction = match known {
+        Some(direction) => direction,
+        None => {
+            console.ask("영점 핀을 빼고, 관절을 손으로 돌릴 수 있게 되면 Enter: ");
+            let start = zero::read_position(&mut bus, joint.id, zero::READS)?;
+            console.ask("관절을 + 쪽(관절 각이 느는 쪽)으로 20°쯤 돌린 채 Enter: ");
+            let end = zero::read_position(&mut bus, joint.id, zero::READS)?;
+            let direction = zero::direction_from(start, end)?;
+            println!("서보 값 {start} → {end}: 방향 {:+}", direction.number());
+            direction
+        }
+    };
+    console.ask("영점 핀을 꽂고, 핀 구멍의 틈을 + 쪽으로 밀어 붙인 채 Enter: ");
+    let reading = zero::read_position(&mut bus, joint.id, zero::READS)?;
+    let plan = zero::plan(
+        joint,
+        settings.boundary_clearance,
+        direction,
+        reading,
+        offset_now,
+    )?;
+    println!(
+        "핀 자리 {reading} (오프셋 {offset_now}): 오프셋 {}을 구우면 {}로 읽힌다",
+        plan.offset_new, plan.target
+    );
+
+    let started = Local::now();
+    let folder = record::new_record_dir(&options.records, "servo", "zero", &started)?;
+    let meta_path = folder.join("meta.json");
+    let mut meta = json!({
+        "kind": "servo-zero",
+        "started": record::time_text(&started),
+        "run": record::run_info(port, baud),
+        "joint": {
+            "name": joint.name,
+            "id": joint.id,
+            "model": joint.model,
+            "pin_deg": joint.pin.to_degrees(),
+        },
+        "direction": direction.number(),
+        "direction_measured": known.is_none(),
+        "plan": {
+            "reading": plan.reading,
+            "offset_now": plan.offset_now,
+            "encoder": plan.encoder,
+            "target": plan.target,
+            "offset_new": plan.offset_new,
+        },
+        "before": record::dump_json(&before),
+    });
+    record::write_json(&meta_path, &meta)?;
+    let burned = zero::burn_offset(&mut bus, joint, plan.offset_new).and_then(|after| {
+        meta["after"] = record::dump_json(&after);
+        bus.pause(Duration::from_millis(20));
+        let zero_raw = zero::read_position(&mut bus, joint.id, zero::READS)?;
+        meta["zero_raw"] = json!(zero_raw);
+        zero::check_zero(&plan, zero_raw).map(|()| zero_raw)
+    });
+    meta["ended"] = json!(record::time_text(&Local::now()));
+    match &burned {
+        Ok(zero_raw) => {
+            let lines = zero::settings_lines(*zero_raw, direction, plan.offset_new);
+            meta["settings_lines"] = json!(lines);
+            meta["end"] = json!("normal");
+            println!(
+                "로봇 설정(data/robot.toml)의 [joints.{}]에 적는다:\n{lines}그다음 apply로 각도 한계를 굽는다 (영점에서 계산한다)",
+                joint.name
+            );
+        }
+        Err(error) => {
+            meta["error"] = json!(error);
+            meta["end"] = json!("error");
+        }
+    }
+    record::write_json(&meta_path, &meta)?;
+    println!("기록: {}", folder.display());
+    burned.map(|_| ())
+}
+
+/// 시험 순서를 실행 루프로 돌린다 ([`horilab_controller::runner`], 0034).
+fn run_script(options: &Options) -> Result<(), String> {
+    let settings = Settings::load(&options.settings)?;
+    let path = options.script.as_ref().ok_or("--script가 없다")?;
+    let text =
+        fs::read_to_string(path).map_err(|e| format!("{}을 읽지 못했다: {e}", path.display()))?;
+    let script = Script::parse(&text, &settings)?;
+    print!("{}", script.describe());
+    let joints: Vec<&Joint> = script
+        .joints
+        .iter()
+        .map(|name| {
+            settings
+                .joint(name)
+                .ok_or_else(|| format!("로봇 설정에 없는 관절이다: {name}"))
+        })
+        .collect::<Result<_, _>>()?;
+    let servos: Vec<Servo> = joints
+        .iter()
+        .map(|joint| Servo::from_joint(joint))
+        .collect::<Result<_, _>>()?;
+    let caps = Caps::for_loop(&settings.run_loop);
+    let robot_toml = fs::read_to_string(&options.settings)
+        .map_err(|e| format!("{}을 읽지 못했다: {e}", options.settings.display()))?;
+    let source = Source {
+        settings: &settings,
+        script_text: &text,
+        robot_toml: &robot_toml,
+    };
+    if let Some(address) = &options.sim {
+        let sim: Vec<SimServo> = joints
+            .iter()
+            .map(|joint| SimServo {
+                id: joint.id,
+                joint: joint.name.to_owned(),
+                model: joint.model_number,
+            })
+            .collect();
+        let bus = SimBus::connect(address, LOOP_PERIOD, &sim).map_err(|e| e.to_string())?;
+        let link = json!({ "sim": address });
+        // 시뮬레이션은 메모리 표(EEPROM)를 흉내 내지 않아서, 토크를 켤 때 값 적용의 목표와 견주지 않는다
+        let servos = servos
+            .into_iter()
+            .map(|mut servo| {
+                servo.eeprom.clear();
+                servo
+            })
+            .collect();
+        return start_script(
+            options,
+            &source,
+            script,
+            Joints::open(bus, servos, caps)?,
+            link,
+        );
+    }
+    let port = options.port.as_deref().unwrap_or_default();
+    let bus = Bus::open(port, BAUD_RATES[0].1, LOOP_LATENCY).map_err(|e| e.to_string())?;
+    let link = record::run_info(port, BAUD_RATES[0].1);
+    start_script(
+        options,
+        &source,
+        script,
+        Joints::open(bus, servos, caps)?,
+        link,
+    )
+}
+
+/// 시험 순서를 돌릴 때 기록에 함께 남길 것.
+struct Source<'a> {
+    settings: &'a Settings,
+    script_text: &'a str,
+    robot_toml: &'a str,
+}
+
+/// --yes가 없으면 서보 상태만 읽어 보이고, 있으면 실행 루프를 세워 순서를 돌린다.
+fn start_script<B: ServoBus>(
+    options: &Options,
+    source: &Source,
+    script: Script,
+    mut joints: Joints<B>,
+    link: Value,
+) -> Result<(), String> {
+    if !options.yes {
+        for id in joints.ids() {
+            let state = joints.snapshot(id)?;
+            println!("서보 {id}: {}", check::describe(&state));
+        }
+        println!(
+            "--yes를 붙이면 토크를 켜고 순서대로 움직인다. 움직이거나 버티는 동안 Enter를 누르면 감속해 선다"
+        );
+        return Ok(());
+    }
+    let pauses = script
+        .steps
+        .iter()
+        .any(|step| matches!(step, Step::Pause(_)));
+    if pauses && !std::io::stdin().is_terminal() {
+        return Err("멈춤 단계가 있는 순서는 Enter를 눌러야 해서 터미널 창에서 돌린다".to_owned());
+    }
+    let run = RunLoop::start(joints, source.settings.run_loop, None)?;
+    drive_script(options, source, script, run, link)
+}
+
+/// 실행 명령의 터미널: 같은 줄을 고쳐 쓰는 상태 줄 뒤에 알림을 낼 때 먼저 줄을 바꾼다.
+struct RunConsole {
+    terminal: Terminal,
+    status_shown: bool,
+}
+
+impl RunConsole {
+    fn end_status(&mut self) {
+        if self.status_shown {
+            println!();
+            self.status_shown = false;
+        }
+    }
+}
+
+impl Console for RunConsole {
+    fn say(&mut self, text: &str) {
+        self.end_status();
+        self.terminal.say(text);
+    }
+
+    fn ask(&mut self, question: &str) -> String {
+        self.end_status();
+        self.terminal.ask(question)
+    }
+
+    fn begin_wait(&mut self, prompt: &str) {
+        self.end_status();
+        self.terminal.begin_wait(prompt);
+    }
+
+    fn enter_pressed(&mut self) -> bool {
+        self.terminal.enter_pressed()
+    }
+
+    fn status(&mut self, text: &str) {
+        self.terminal.status(text);
+        self.status_shown = true;
+    }
+}
+
+/// 기록 칸: 모드, 그리고 관절마다 목표, 위치, 속도, 부하, 온도, 전압, 전류, 상태, 토크 스위치.
+const RUN_FIELDS: [&str; 9] = [
+    "goal",
+    "position",
+    "speed",
+    "load",
+    "temperature",
+    "voltage",
+    "current",
+    "status",
+    "torque",
+];
+
+fn mode_code(mode: &Mode) -> i32 {
+    match mode {
+        Mode::Holding => 0,
+        Mode::Moving => 1,
+        Mode::Stopping => 2,
+        Mode::Jogging => 3,
+        Mode::Fault(_) => 9,
+    }
+}
+
+fn run_row<B: ServoBus>(run: &RunLoop<B>) -> Vec<i32> {
+    let mut row = vec![mode_code(run.mode())];
+    for (_, state) in run.states() {
+        row.extend([
+            state.goal_position,
+            state.position,
+            state.speed,
+            state.load,
+            state.temperature,
+            state.voltage,
+            state.current,
+            i32::from(state.status.0),
+            state.torque_enable,
+        ]);
+    }
+    row
+}
+
+/// 사람이 볼 한 줄: 관절마다 각, 부하, 온도.
+fn run_status<B: ServoBus>(run: &RunLoop<B>, settings: &Settings, names: &[&str]) -> String {
+    let parts: Vec<String> = run
+        .states()
+        .iter()
+        .zip(names)
+        .map(|((_, state), name)| {
+            let angle = settings
+                .joint(name)
+                .and_then(|joint| joint.calibration)
+                .map_or(f64::NAN, |c| {
+                    c.angle_at(f64::from(state.position)).to_degrees()
+                });
+            format!(
+                "{name} {angle:.1}° 부하 {:.1}% {}°C",
+                f64::from(state.load) / 10.0,
+                state.temperature
+            )
+        })
+        .collect();
+    parts.join(" | ")
+}
+
+fn drive_script<B: ServoBus>(
+    options: &Options,
+    source: &Source,
+    script: Script,
+    mut run: RunLoop<B>,
+    link: Value,
+) -> Result<(), String> {
+    let names = script.joints.clone();
+    let started = Local::now();
+    let folder = record::new_record_dir(&options.records, "run", "run", &started)?;
+    let meta_path = folder.join("meta.json");
+    let mut meta = json!({
+        "kind": "run",
+        "started": record::time_text(&started),
+        "link": link,
+        "script_name": script.name,
+        "script": source.script_text,
+        "robot_toml": source.robot_toml,
+        "period_s": LOOP_PERIOD.as_secs_f64(),
+        "joints": names,
+    });
+    record::write_json(&meta_path, &meta)?;
+    let mut columns = vec!["mode".to_owned()];
+    for name in &names {
+        for field in RUN_FIELDS {
+            columns.push(format!("{name}_{field}"));
+        }
+    }
+    let column_refs: Vec<&str> = columns.iter().map(String::as_str).collect();
+    let mut log = Log::create(&folder, &column_refs)?;
+    let mut console = RunConsole {
+        terminal: Terminal::closed_is_silent(),
+        status_shown: false,
+    };
+    let mut clock = WallClock::default();
+    let mut runner = Runner::new(script, &source.settings.run_loop, LOOP_PERIOD.as_secs_f64());
+    let period = LOOP_PERIOD.as_secs_f64();
+    let mut seen = BTreeSet::new();
+    let mut last = clock.now();
+    let mut next = last;
+    let mut ticks: u64 = 0;
+    let mut tick = |run: &mut RunLoop<B>,
+                    clock: &mut WallClock,
+                    log: &mut Log,
+                    label: &str|
+     -> Result<f64, String> {
+        next += period;
+        let now = clock.now();
+        if next > now {
+            clock.sleep(next - now);
+        } else if now - next > 0.2 {
+            next = now; // 많이 밀렸으면 따라잡으려 서두르지 않는다
+        }
+        let now = clock.now();
+        let dt = (now - last).max(1e-4);
+        last = now;
+        run.tick(dt);
+        log.sample(now, label, &run_row(run))?;
+        Ok(now)
+    };
+    let status = loop {
+        let label = runner.label();
+        let now = tick(&mut run, &mut clock, &mut log, &label)?;
+        let status = runner.tick(&mut run, &mut console, now);
+        for event in runner.take_events() {
+            log.event(now, &label, &event)?;
+        }
+        for warning in run.warnings() {
+            if seen.insert(warning.clone()) {
+                console.say(&format!("알림: {warning}"));
+                log.event(now, &label, &warning)?;
+            }
+        }
+        ticks += 1;
+        if ticks.is_multiple_of(50) {
+            console.status(&run_status(&run, source.settings, &names));
+        }
+        if status != Status::Running {
+            break status;
+        }
+    };
+    // 멈췄으면 감속이 끝나 붙잡을 때까지 박자를 더 돌린다 (그 전에 끝내면 마지막 목표에서 갑자기 선다)
+    if matches!(status, Status::Stopped(_)) {
+        for _ in 0..1000 {
+            if matches!(run.mode(), Mode::Holding | Mode::Fault(_)) {
+                break;
+            }
+            tick(&mut run, &mut clock, &mut log, "settle")?;
+        }
+    }
+    console.end_status();
+    meta["end"] = json!(match &status {
+        Status::Stopped(_) => "stopped",
+        _ => "done",
+    });
+    meta["result"] = json!(match &status {
+        Status::Stopped(reason) => reason.clone(),
+        _ => "순서를 마쳤다".to_owned(),
+    });
+    meta["released"] = json!(runner.released());
+    meta["mode_at_end"] = json!(format!("{:?}", run.mode()));
+    meta["ended"] = json!(record::time_text(&Local::now()));
+    record::write_json(&meta_path, &meta)?;
+    if !runner.released() {
+        println!(
+            "서보는 마지막 자리에서 버틴다 (토크 켜짐). 끝내려면 팔을 받친 뒤 + 플러그를 뺀다 (0016)"
+        );
+    }
+    println!("기록: {}", folder.display());
+    match status {
+        Status::Stopped(reason) => Err(reason),
+        _ => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -550,6 +1058,23 @@ mod tests {
         assert!(parse_args(args("check --port COM5")).is_err());
         assert!(parse_args(args("check --id 20")).is_err());
         assert!(parse_args(args("check --port COM5 --id 300")).is_err());
+    }
+
+    #[test]
+    fn zero_and_run_take_their_options() {
+        let options = parse_args(args("zero --port COM5 --joint j2 --direction -1")).unwrap();
+        assert_eq!(options.command, Command::Zero);
+        assert_eq!(options.direction, Some(Direction::Reversed));
+        assert!(parse_args(args("zero --port COM5")).is_err()); // 관절이 없다
+        assert!(parse_args(args("zero --port COM5 --joint j2 --joint j3")).is_err());
+        assert!(parse_args(args("zero --port COM5 --joint j2 --direction 2")).is_err());
+        let options = parse_args(args("run --script a.toml --sim 127.0.0.1:5600 --yes")).unwrap();
+        assert_eq!(options.command, Command::Run);
+        assert_eq!(options.script, Some(PathBuf::from("a.toml")));
+        assert_eq!(options.sim.as_deref(), Some("127.0.0.1:5600"));
+        assert!(parse_args(args("run --script a.toml")).is_err()); // 붙을 곳이 없다
+        assert!(parse_args(args("run --script a.toml --port COM5 --sim x:1")).is_err());
+        assert!(parse_args(args("run --port COM5")).is_err()); // 순서가 없다
     }
 
     #[test]

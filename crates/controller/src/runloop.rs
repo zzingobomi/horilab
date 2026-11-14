@@ -587,6 +587,28 @@ impl<B: ServoBus> RunLoop<B> {
         self.joints.disable(id)
     }
 
+    /// 시험용: 관절 층 (가짜 서보를 바꾼다).
+    #[cfg(test)]
+    pub(crate) fn joints_for_test(&mut self) -> &mut Joints<B> {
+        &mut self.joints
+    }
+
+    /// 모든 서보(그리퍼 포함)의 토크를 끈다: 시험 순서의 끝에서 사람이 팔을 받친 뒤에 부른다 (팔에 힘이 없어진다,
+    /// 0034). 붙잡고 있거나 고장일 때만 받는다. 끈 뒤에는 박자를 더 돌리지 않는다: 꺼진 토크를 고장으로 본다.
+    pub fn release_all(&mut self) -> Result<(), String> {
+        if !matches!(self.mode, Mode::Holding | Mode::Fault(_)) {
+            return Err("움직이는 중에는 토크를 끄지 않는다 (정지한 뒤 끈다)".to_owned());
+        }
+        let gripper = self.gripper.as_ref().map(|gripper| gripper.id);
+        let mut failed = None;
+        for id in self.ids.clone().into_iter().chain(gripper) {
+            if let Err(e) = self.joints.disable(id) {
+                failed.get_or_insert(e);
+            }
+        }
+        failed.map_or(Ok(()), Err)
+    }
+
     /// 서보마다 남은 목표를 읽어 붙잡는다. 처짐 보정을 켰으면 남은 목표에 보정이 들어 있으므로, 목표는 읽은
     /// 위치(최대 보정 크기 안, 소프트 한계 안)로 두고 보정은 남은 목표와의 차이로 잇는다: 서보에 쓰는 값이 그대로라
     /// 움직이지 않는다 (0009). 보정을 끄면 목표는 남은 목표 그대로다.
