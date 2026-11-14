@@ -98,7 +98,6 @@ fn settings(sag_gain: f64) -> LoopSettings {
     LoopSettings {
         max_speed: 1.0,
         start_tolerance: 0.01,
-        stop_time: 0.2,
         temperature_warn: 50.0,
         temperature_rest: 55.0,
         voltage_warn: 11.0,

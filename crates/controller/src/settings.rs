@@ -77,8 +77,6 @@ pub struct LoopSettings {
     pub max_speed: f64,
     /// 궤적의 첫 점이 지금 목표에서 이만큼까지 떨어져도 받는다 [rad]
     pub start_tolerance: f64,
-    /// 정지 명령에서 재생 빠르기를 0으로 줄이는 시간 [s]
-    pub stop_time: f64,
     /// 서보 온도가 이 이상이면 알린다 [°C]
     pub temperature_warn: f64,
     /// 서보 온도가 이 이상이면 멈추고 쉰다 [°C]. 쉬는 자세가 정해지기 전에는 그 자리에서 버틴다
@@ -89,9 +87,9 @@ pub struct LoopSettings {
     pub sag_gain: f64,
     /// 처짐 보정의 최대 크기 [rad]
     pub sag_max: f64,
-    /// 관절 이동의 가속 한계 [rad/s²]
+    /// 관절의 가속 한계 [rad/s²] (관절 이동, 조그, 직선 이동, 정지)
     pub max_acceleration: f64,
-    /// 관절 이동의 저크 한계 [rad/s³]
+    /// 관절의 저크 한계 [rad/s³] (관절 이동, 조그, 직선 이동, 정지)
     pub max_jerk: f64,
     /// 직교 조그와 직선 이동의 손끝 속도 한계 [m/s]
     pub max_tool_speed: f64,
@@ -400,9 +398,10 @@ impl Settings {
             "꺼짐".to_owned()
         };
         lines.push(format!(
-            "실행 루프: 속도 한계 {}/s, 정지 {} s, 온도 알림 {}°C와 쉬기 {}°C, 전압 알림 {} V, 처짐 보정 {sag}",
+            "실행 루프: 속도 한계 {}/s, 가속 한계 {}/s², 저크 한계 {}/s³, 온도 알림 {}°C와 쉬기 {}°C, 전압 알림 {} V, 처짐 보정 {sag}",
             deg(r.max_speed),
-            r.stop_time,
+            deg(r.max_acceleration),
+            deg(r.max_jerk),
             r.temperature_warn,
             r.temperature_rest,
             r.voltage_warn
@@ -504,7 +503,6 @@ impl KinematicsFile {
 struct LoopFile {
     max_speed_deg_s: f64,
     start_tolerance_deg: f64,
-    stop_time_s: f64,
     temperature_warn_c: f64,
     temperature_rest_c: f64,
     voltage_warn_v: f64,
@@ -522,7 +520,6 @@ impl LoopFile {
         let positive = [
             ("max_speed_deg_s", self.max_speed_deg_s),
             ("start_tolerance_deg", self.start_tolerance_deg),
-            ("stop_time_s", self.stop_time_s),
             ("temperature_warn_c", self.temperature_warn_c),
             ("temperature_rest_c", self.temperature_rest_c),
             ("voltage_warn_v", self.voltage_warn_v),
@@ -556,7 +553,6 @@ impl LoopFile {
         Ok(LoopSettings {
             max_speed: self.max_speed_deg_s.to_radians(),
             start_tolerance: self.start_tolerance_deg.to_radians(),
-            stop_time: self.stop_time_s,
             temperature_warn: self.temperature_warn_c,
             temperature_rest: self.temperature_rest_c,
             voltage_warn: self.voltage_warn_v,
@@ -862,7 +858,6 @@ boundary_clearance_deg = 15
 [run_loop]
 max_speed_deg_s = 30
 start_tolerance_deg = 0.5
-stop_time_s = 0.3
 temperature_warn_c = 50
 temperature_rest_c = 55
 voltage_warn_v = 11.0

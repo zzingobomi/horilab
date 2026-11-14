@@ -101,8 +101,11 @@ impl Servo {
         self.calibration.is_none()
     }
 
-    /// 관절 각 [rad]의 서보 값. 맨 서보는 없다.
+    /// 관절 각 [rad]의 서보 값. 맨 서보이거나 각이 수가 아니면 없다.
     pub fn raw_at(&self, angle: f64) -> Option<i32> {
+        if !angle.is_finite() {
+            return None;
+        }
         self.calibration.map(|c| c.raw_at(angle).round() as i32)
     }
 
