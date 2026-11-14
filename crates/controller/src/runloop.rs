@@ -13,12 +13,21 @@
 //!   동안에는 쌓은 값을 그대로 쓰고, 이득이 0이면 끈다.
 //! - 그리퍼 서보는 관절과 같은 박자로 읽고 쓴다. 명령은 열림 폭이고, 정한 빠르기로 그 폭까지 간다. 목표 폭에
 //!   닿으면 닿음, 그 전에 막혀 부하가 오르면 잡음이다 (0023). 정지나 고장에도 쥔 채 둔다.
+//! - 관절 조그: 사람이 준 관절 속도로 움직인다. 루프 안의 rsruckig가 박자마다 지금 위치·속도·가속에서 이어
+//!   계산해서 속도가 바뀌어도 매끄럽다. 명령이 [`JOG_TIMEOUT`] 안에 다시 오지 않으면 멈추고(명령이 끊기면 멈춘다,
+//!   0023), 소프트 한계 앞에서 멈출 수 있는 거리를 남기고 선다.
 //! - 시간은 부르는 쪽이 준다. 실물에서는 주기마다, 시험에서는 가짜 시계로 [`RunLoop::tick`]을 부른다.
 
 use horilab_servo::feetech::ServoBus;
+use rsruckig::prelude::*;
 
 use crate::joints::{Joints, MAX_FAILURES, Snapshot};
 use crate::settings::{GripperSettings, LoopSettings};
+
+/// 조그 명령이 이 시간 [s] 안에 다시 오지 않으면 멈춘다 (펜던트나 게임패드가 누르는 동안 거듭 보낸다)
+pub const JOG_TIMEOUT: f64 = 0.2;
+/// 조그가 소프트 한계 앞에서 남기는 여유 [rad]
+const JOG_MARGIN: f64 = 0.01;
 
 /// 시간이 붙은 관절 궤적: 점마다 시작에서의 시각 [s]과 관절 각 [rad] (루프의 관절 순서).
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +44,8 @@ pub enum Mode {
     Moving,
     /// 정지 명령으로 같은 길에서 감속하는 중
     Stopping,
+    /// 관절 조그 중
+    Jogging,
     /// 고장: 새 목표를 쓰지 않는다. 사람이 풀기 전에는 궤적을 받지 않는다
     Fault(String),
 }
@@ -67,6 +78,21 @@ struct Gripper {
     state: Grip,
 }
 
+/// 조그의 상태: 루프 안의 온라인 궤적 생성기 (속도 제어).
+struct Jog {
+    otg: Ruckig<0, ThrowErrorHandler>,
+    input: InputParameter<0>,
+    output: OutputParameter<0>,
+    /// 생성기를 만든 박자 길이 [s]. 박자 길이가 바뀌면 다시 만든다
+    dt: f64,
+    /// 사람이 준 관절 속도 [rad/s]
+    requested: Vec<f64>,
+    /// 소프트 한계 앞에 세우려고 위치 제어로 바꾼 관절
+    at_limit: Vec<bool>,
+    /// 마지막 조그 명령 뒤로 흐른 시간 [s]
+    since: f64,
+}
+
 struct Playing {
     trajectory: Trajectory,
     /// 궤적 안의 시각 [s]
@@ -92,6 +118,7 @@ pub struct RunLoop<B: ServoBus> {
     mode: Mode,
     /// 서보가 뜨거워 쉬는 까닭. 있으면 새 궤적을 받지 않는다
     hot: Option<String>,
+    jog: Option<Jog>,
     /// 상태를 읽지 못한 박자가 잇달아 몇 번인지
     missed: u64,
 }
@@ -144,6 +171,7 @@ impl<B: ServoBus> RunLoop<B> {
             playing: None,
             mode: Mode::Holding,
             hot: None,
+            jog: None,
             missed: 0,
         };
         run.hold_present_goals()?;
@@ -236,7 +264,14 @@ impl<B: ServoBus> RunLoop<B> {
             return &self.mode;
         }
         self.watch_heat();
-        self.advance(dt);
+        if self.mode == Mode::Jogging {
+            if let Err(e) = self.advance_jog(dt) {
+                self.fault(e);
+                return &self.mode;
+            }
+        } else {
+            self.advance(dt);
+        }
         self.correct_sag(dt);
         self.advance_gripper(dt);
         if let Err(e) = self
@@ -254,7 +289,7 @@ impl<B: ServoBus> RunLoop<B> {
         match &self.mode {
             Mode::Holding => {}
             Mode::Fault(reason) => return Err(format!("고장이라 궤적을 받지 않는다: {reason}")),
-            Mode::Moving | Mode::Stopping => {
+            Mode::Moving | Mode::Stopping | Mode::Jogging => {
                 return Err("움직이는 중에는 새 궤적을 받지 않는다 (정지한 뒤 보낸다)".to_owned());
             }
         }
@@ -275,9 +310,61 @@ impl<B: ServoBus> RunLoop<B> {
 
     /// 정지: 움직이는 중이면 같은 길에서 감속해 그 자리에서 버틴다. 붙잡고 있거나 고장이면 그대로다.
     pub fn stop(&mut self) {
-        if self.mode == Mode::Moving {
-            self.mode = Mode::Stopping;
+        match self.mode {
+            Mode::Moving => self.mode = Mode::Stopping,
+            Mode::Jogging => {
+                if let Some(jog) = &mut self.jog {
+                    jog.requested.fill(0.0);
+                }
+            }
+            _ => {}
         }
+    }
+
+    /// 관절 조그: 관절마다 속도 [rad/s]로 움직인다 (속도 한계로 자른다). 명령이 [`JOG_TIMEOUT`] 안에 다시 오지
+    /// 않으면 멈춘다. 붙잡고 있거나 조그 중일 때만 받는다.
+    pub fn jog(&mut self, velocity: &[f64]) -> Result<(), String> {
+        match &self.mode {
+            Mode::Holding | Mode::Jogging => {}
+            Mode::Fault(reason) => return Err(format!("고장이라 조그하지 않는다: {reason}")),
+            Mode::Moving | Mode::Stopping => {
+                return Err("궤적을 따라가는 중에는 조그하지 않는다 (정지한 뒤 한다)".to_owned());
+            }
+        }
+        if let Some(reason) = &self.hot {
+            return Err(format!(
+                "서보가 뜨거워 쉬는 중이라 조그하지 않는다: {reason}"
+            ));
+        }
+        let n = self.ids.len();
+        if velocity.len() != n || velocity.iter().any(|v| !v.is_finite()) {
+            return Err(format!("조그 속도는 관절 {n}개의 수다: {velocity:?}"));
+        }
+        if let Some(jog) = &mut self.jog {
+            jog.requested = velocity.to_vec();
+            jog.since = 0.0;
+        } else {
+            let mut input = InputParameter::<0>::new(Some(n));
+            input.control_interface = ControlInterface::Velocity;
+            input.synchronization = Synchronization::None; // 관절마다 따로 움직인다
+            for i in 0..n {
+                input.current_position[i] = self.targets[i];
+                input.max_velocity[i] = self.settings.max_speed;
+                input.max_acceleration[i] = self.settings.max_acceleration;
+                input.max_jerk[i] = self.settings.max_jerk;
+            }
+            self.jog = Some(Jog {
+                otg: Ruckig::new(Some(n), 0.01),
+                input,
+                output: OutputParameter::new(Some(n)),
+                dt: 0.0, // 첫 박자에 박자 길이로 다시 만든다
+                requested: velocity.to_vec(),
+                at_limit: vec![false; n],
+                since: 0.0,
+            });
+        }
+        self.mode = Mode::Jogging;
+        Ok(())
     }
 
     /// 사람이 고장을 푼다: 관절 층의 멈춤을 풀고, 서보마다 토크를 켜거나 이어받은 뒤 지금 목표를 붙잡는다.
@@ -322,6 +409,7 @@ impl<B: ServoBus> RunLoop<B> {
         self.targets = targets;
         self.states = states;
         self.playing = None;
+        self.jog = None;
         self.mode = Mode::Holding;
         self.missed = 0;
         Ok(())
@@ -490,8 +578,93 @@ impl<B: ServoBus> RunLoop<B> {
             .collect()
     }
 
+    /// 조그를 한 박자 진행한다. 명령이 끊기면 목표 속도를 0으로 둔다. 소프트 한계에 다가간 관절은 위치 제어로 바꿔
+    /// 한계 바로 앞에 세우고, 명령이 한계 쪽을 가리키는 동안 그대로 둔다 (속도 제어로 멈추게 하면 감속하는 사이 남은
+    /// 거리가 다시 넉넉해 보여 또 가속하다 한계를 넘었다). 명령이 끊기거나 0이 되고 다 서면 붙잡는다.
+    fn advance_jog(&mut self, dt: f64) -> Result<(), String> {
+        let limits = self.angle_limits()?;
+        let settings = self.settings;
+        let Some(jog) = &mut self.jog else {
+            self.mode = Mode::Holding;
+            return Ok(());
+        };
+        let n = jog.requested.len();
+        if jog.dt != dt {
+            jog.otg = Ruckig::new(Some(n), dt);
+            jog.dt = dt;
+        }
+        jog.since += dt;
+        let alive = jog.since <= JOG_TIMEOUT;
+        let (a_max, j_max) = (settings.max_acceleration, settings.max_jerk);
+        let mut interfaces = vec![ControlInterface::Velocity; n];
+        for (i, &(low, high)) in limits.iter().enumerate() {
+            let want = if alive {
+                jog.requested[i].clamp(-settings.max_speed, settings.max_speed)
+            } else {
+                0.0
+            };
+            let (position, velocity, acceleration) = (
+                jog.input.current_position[i],
+                jog.input.current_velocity[i],
+                jog.input.current_acceleration[i],
+            );
+            // 가려는 쪽으로 멈추는 데 드는 거리 어림: 그쪽으로 가속 중이면 가속을 거두는 동안 더 빨라진다
+            let toward = want.signum();
+            let speed = (velocity * toward).max(0.0)
+                + (acceleration * toward).max(0.0).powi(2) / (2.0 * j_max);
+            let braking =
+                speed * speed / (2.0 * a_max) + speed * (a_max / j_max + 2.0 * dt) + JOG_MARGIN;
+            let edge = if want > 0.0 {
+                high - JOG_MARGIN
+            } else {
+                low + JOG_MARGIN
+            };
+            let near = want != 0.0 && (edge - position) * toward <= braking;
+            if want != 0.0 && (near || jog.at_limit[i]) {
+                interfaces[i] = ControlInterface::Position;
+                jog.input.target_position[i] = edge;
+                jog.input.target_velocity[i] = 0.0;
+                jog.at_limit[i] = true;
+            } else {
+                jog.input.target_velocity[i] = want;
+                jog.at_limit[i] = false;
+            }
+        }
+        jog.input.per_dof_control_interface = Some(DataArrayOrVec::Heap(interfaces));
+        let result = jog
+            .otg
+            .update(&jog.input, &mut jog.output)
+            .map_err(|e| format!("조그 궤적을 만들지 못했다: {e:?}"))?;
+        for i in 0..n {
+            self.targets[i] = jog.output.new_position[i];
+        }
+        jog.output.pass_to_input(&mut jog.input);
+        let released = !alive || jog.requested.iter().all(|v| *v == 0.0);
+        if released && matches!(result, RuckigResult::Finished) {
+            self.jog = None;
+            self.mode = Mode::Holding;
+        }
+        Ok(())
+    }
+
+    /// 팔 관절마다 소프트 한계 [rad] (서보 값의 한계에서, 관절 순서).
+    fn angle_limits(&self) -> Result<Vec<(f64, f64)>, String> {
+        self.ids
+            .iter()
+            .map(|&id| {
+                let servo = self.joints.servo(id)?;
+                let (a, b) = (servo.angle_at(servo.min_raw), servo.angle_at(servo.max_raw));
+                match (a, b) {
+                    (Some(a), Some(b)) => Ok((a.min(b), a.max(b))),
+                    _ => Err(format!("{}: 영점이 없다", servo.name)),
+                }
+            })
+            .collect()
+    }
+
     fn fault(&mut self, reason: String) {
         self.playing = None;
+        self.jog = None;
         if !matches!(self.mode, Mode::Fault(_)) {
             self.mode = Mode::Fault(reason);
         }
@@ -975,5 +1148,57 @@ mod tests {
         let servo = fake(&mut run, 1);
         assert_eq!(servo.get(reg::GOAL_POSITION), goal);
         assert_eq!(servo.get(reg::TORQUE_LIMIT), 150);
+    }
+
+    /// 조그 명령을 박자마다 거듭 보내며 박자를 돈다.
+    fn jog_for(run: &mut RunLoop<Bus<FakePort>>, velocity: &[f64], ticks: usize) {
+        for _ in 0..ticks {
+            run.jog(velocity).unwrap();
+            run.tick(DT);
+        }
+    }
+
+    #[test]
+    fn jog_moves_while_commanded_and_stops_when_released() {
+        let mut run = two_joints();
+        jog_for(&mut run, &[0.5, 0.0], 100);
+        assert_eq!(run.mode(), &Mode::Jogging);
+        let moved = run.targets()[0];
+        assert!((0.3..0.5).contains(&moved), "{moved}");
+        assert_eq!(run.targets()[1], 0.0);
+        assert!(
+            run.submit(line([0.0, 0.0], 1.0))
+                .unwrap_err()
+                .contains("움직이는 중")
+        );
+        // 명령이 끊기면 감속해 선다 (0.2초 기다린 뒤 감속하므로 그만큼 더 간다)
+        until_holding(&mut run);
+        let stopped = run.targets()[0];
+        assert!(
+            stopped > moved && stopped < moved + 0.3,
+            "{moved} → {stopped}"
+        );
+        assert_eq!(position(&mut run, 0), steps(stopped));
+    }
+
+    #[test]
+    fn stop_ends_a_jog_smoothly() {
+        let mut run = two_joints();
+        jog_for(&mut run, &[0.0, -0.4], 50);
+        run.stop();
+        run.jog(&[0.0, -0.4]).unwrap(); // 정지 뒤의 새 조그 명령은 다시 움직인다
+        run.stop();
+        until_holding(&mut run);
+        assert!(run.targets()[1] < -0.05, "{:?}", run.targets());
+    }
+
+    #[test]
+    fn jog_stops_before_the_soft_limit() {
+        let mut run = two_joints();
+        jog_for(&mut run, &[5.0, 0.0], 400); // 속도 한계(2 rad/s)로 잘린다
+        let upper = 118f64.to_radians();
+        let at = run.targets()[0];
+        assert!(at <= upper && at > upper - 0.3, "{at}");
+        assert!(position(&mut run, 0) <= steps(upper));
     }
 }
